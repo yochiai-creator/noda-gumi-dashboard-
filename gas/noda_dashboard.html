@@ -3732,8 +3732,8 @@ function MonthlyCombinedChart({
     H = 190;
   const padL = 42,
     padR = 10,
-    padT = 16,
-    padB = 34;
+    padT = 24,
+    padB = 34; // padT は棒の上の数字ぶん広げてある
   const plotW = W - padL - padR,
     plotH = H - padT - padB;
   const vals = [];
@@ -3855,7 +3855,46 @@ function MonthlyCombinedChart({
   })(), hasOrders && m.受注 != null && /*#__PURE__*/React.createElement("path", {
     d: vizTopRoundedPath(barX(i, 1), yAt(m.受注), barW, Math.max(padT + plotH - yAt(m.受注), 1), 3),
     fill: VIZ.s3
-  }))), invPts.length > 1 && /*#__PURE__*/React.createElement("polyline", {
+  }))), (() => {
+    const FS = 8.5,
+      GAP = 3;
+    const placed = [];
+    return months.map((m, i) => {
+      if (m.出荷 == null) return null;
+      const txt = vizComma(m.出荷);
+      const w = vizTextW(txt, FS);
+      const cx = barX(i, 0) + barW / 2;
+      const l = cx - w / 2,
+        r = cx + w / 2;
+      if (l < padL - 2 || r > padL + plotW + 2) return null; // 端からはみ出す
+      if (placed.some(p => l < p.r + GAP && r + GAP > p.l)) return null; // 隣とぶつかる
+      placed.push({
+        l: l,
+        r: r
+      });
+      // ★ 文字の幅は棒より広いので、隣の受注の棒の上にはみ出す。
+      //   受注のほうが高い月（7月・8月など）は数字が棒に重なって読めなく
+      //   なるので、その月の「濃い棒」のうち高いほうより上に置く。
+      //   予定（薄い棒）は高さの判定に入れない。入れると当月の数字が
+      //   予定の一番上まで飛んで、予定込みの値だと誤読されるため。
+      const top = Math.min(yAt(m.出荷), m.受注 != null ? yAt(m.受注) : Infinity);
+      return /*#__PURE__*/React.createElement("text", {
+        key: "bl" + m.年月,
+        x: cx,
+        y: top - 4,
+        textAnchor: "middle",
+        fontSize: FS,
+        fontWeight: "700",
+        fill: VIZ.ink2,
+        stroke: VIZ.surface,
+        strokeWidth: "3",
+        paintOrder: "stroke",
+        style: {
+          fontVariantNumeric: "tabular-nums"
+        }
+      }, txt);
+    });
+  })(), invPts.length > 1 && /*#__PURE__*/React.createElement("polyline", {
     points: invPts.map(p => p[0] + "," + p[1]).join(" "),
     fill: "none",
     stroke: VIZ.s1,
@@ -3876,17 +3915,24 @@ function MonthlyCombinedChart({
     const w = vizTextW(v, 8.5);
     // 右端で切れるなら点の左側に出す
     const right = last[0] + 7 + w <= padL + plotW;
-    return /*#__PURE__*/React.createElement("text", {
-      x: last[0] + (right ? 7 : -7),
-      y: last[1] - 5,
-      textAnchor: right ? "start" : "end",
-      fontSize: "8.5",
-      fontWeight: "700",
-      fill: VIZ.s1,
-      style: {
-        fontVariantNumeric: "tabular-nums"
-      }
-    }, v);
+    return (
+      /*#__PURE__*/
+      // 面色で縁取りしておく。棒や別の線に重なっても数字が読めるようにするため。
+      React.createElement("text", {
+        x: last[0] + (right ? 7 : -7),
+        y: last[1] - 5,
+        textAnchor: right ? "start" : "end",
+        fontSize: "8.5",
+        fontWeight: "700",
+        fill: VIZ.s1,
+        stroke: VIZ.surface,
+        strokeWidth: "3",
+        paintOrder: "stroke",
+        style: {
+          fontVariantNumeric: "tabular-nums"
+        }
+      }, v)
+    );
   })(), months.map((m, i) => /*#__PURE__*/React.createElement("text", {
     key: "x" + m.年月,
     x: cxAt(i),
@@ -3946,16 +3992,7 @@ function ActualsTab({
   const mcMonths = mc && mc.months ? mc.months : null;
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
     title: "\u5728\u5EAB\u30FB\u51FA\u8377\u30FB\u53D7\u6CE8",
-    note: mc && mc.startMonth ? vizDateParts(mc.startMonth).y + "年" + vizMonthLabel(mc.startMonth) + "〜（年度）" : "月ごと",
-    extra: mc && mc.sheetUrl && /*#__PURE__*/React.createElement("a", {
-      href: mc.sheetUrl,
-      target: "_blank",
-      rel: "noreferrer",
-      className: "text-[11px] underline whitespace-nowrap shrink-0",
-      style: {
-        color: NAVY
-      }
-    }, "\u5143\u30C7\u30FC\u30BF")
+    note: mc && mc.startMonth ? vizDateParts(mc.startMonth).y + "年" + vizMonthLabel(mc.startMonth) + "〜（年度）" : "月ごと"
   }, !mc ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-400 py-4 text-center"
   }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : mc.error ? /*#__PURE__*/React.createElement("div", {
@@ -4047,16 +4084,7 @@ function ActualsTab({
     className: "text-xs text-slate-500 py-2"
   }, "\u63A8\u79FB\u30B0\u30E9\u30D5\u306F2\u65E5\u5206\u4EE5\u4E0A\u8CAF\u307E\u308B\u3068\u51FA\u307E\u3059\u3002"))), /*#__PURE__*/React.createElement(Card, {
     title: "\u6708\u6B21\u51FA\u8377\u5B9F\u7E3E",
-    note: act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null,
-    extra: act && act.sheetUrl && /*#__PURE__*/React.createElement("a", {
-      href: act.sheetUrl,
-      target: "_blank",
-      rel: "noopener noreferrer",
-      className: "text-[10px] font-semibold",
-      style: {
-        color: NAVY
-      }
-    }, "\u5143\u30C7\u30FC\u30BF")
+    note: act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null
   }, !act ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-400 py-4 text-center"
   }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : act.error ? /*#__PURE__*/React.createElement("div", {

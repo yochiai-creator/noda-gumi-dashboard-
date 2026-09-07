@@ -1306,7 +1306,7 @@ function MonthlyShipChart({ months }) {
 function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
   const [pick, setPick] = useState(null);
   const W = 340, H = 190;
-  const padL = 42, padR = 10, padT = 16, padB = 34;
+  const padL = 42, padR = 10, padT = 24, padB = 34;   // padT は棒の上の数字ぶん広げてある
   const plotW = W - padL - padR, plotH = H - padT - padB;
 
   const vals = [];
@@ -1396,6 +1396,40 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
           </g>
         ))}
 
+        {/* 出荷の本数を棒の上に出す。
+            ★ 狭い幅に6か月ぶん並ぶので、隣とぶつかるものは出さない。
+              SVGは文字が重なっても避けてくれないので、置く前に幅を見て判定する。
+              優先は左から順（古い月から）。
+            ★ 予定が積んである月は、数字が指しているのは実績ぶんなので、
+              実績の棒の上端に置く（積んだ一番上に置くと、予定込みの値だと
+              誤読される）。予定は薄い色なので上に文字が乗っても読める。 */}
+        {(() => {
+          const FS = 8.5, GAP = 3;
+          const placed = [];
+          return months.map((m, i) => {
+            if (m.出荷 == null) return null;
+            const txt = vizComma(m.出荷);
+            const w = vizTextW(txt, FS);
+            const cx = barX(i, 0) + barW / 2;
+            const l = cx - w / 2, r = cx + w / 2;
+            if (l < padL - 2 || r > padL + plotW + 2) return null;          // 端からはみ出す
+            if (placed.some((p) => l < p.r + GAP && r + GAP > p.l)) return null;  // 隣とぶつかる
+            placed.push({ l: l, r: r });
+            // ★ 文字の幅は棒より広いので、隣の受注の棒の上にはみ出す。
+            //   受注のほうが高い月（7月・8月など）は数字が棒に重なって読めなく
+            //   なるので、その月の「濃い棒」のうち高いほうより上に置く。
+            //   予定（薄い棒）は高さの判定に入れない。入れると当月の数字が
+            //   予定の一番上まで飛んで、予定込みの値だと誤読されるため。
+            const top = Math.min(yAt(m.出荷), m.受注 != null ? yAt(m.受注) : Infinity);
+            return (
+              <text key={"bl" + m.年月} x={cx} y={top - 4} textAnchor="middle"
+                fontSize={FS} fontWeight="700" fill={VIZ.ink2}
+                stroke={VIZ.surface} strokeWidth="3" paintOrder="stroke"
+                style={{ fontVariantNumeric: "tabular-nums" }}>{txt}</text>
+            );
+          });
+        })()}
+
         {/* 在庫は残高なので線。棒より前面に、面色のリングを付けた点で置く */}
         {invPts.length > 1 && (
           <polyline points={invPts.map((p) => p[0] + "," + p[1]).join(" ")} fill="none"
@@ -1419,9 +1453,11 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
           // 右端で切れるなら点の左側に出す
           const right = last[0] + 7 + w <= padL + plotW;
           return (
+            // 面色で縁取りしておく。棒や別の線に重なっても数字が読めるようにするため。
             <text x={last[0] + (right ? 7 : -7)} y={last[1] - 5}
               textAnchor={right ? "start" : "end"} fontSize="8.5" fontWeight="700"
-              fill={VIZ.s1} style={{ fontVariantNumeric: "tabular-nums" }}>{v}</text>
+              fill={VIZ.s1} stroke={VIZ.surface} strokeWidth="3" paintOrder="stroke"
+              style={{ fontVariantNumeric: "tabular-nums" }}>{v}</text>
           );
         })()}
 
@@ -1475,15 +1511,15 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
 
   return (
     <div>
-      {/* ---- 在庫・出荷・受注をまとめて（月次） ---- */}
+      {/* ---- 在庫・出荷・受注をまとめて（月次） ----
+           ★「元データ」のリンクは落合さんの指示で外した（別タブが開くのが邪魔）。
+             スプレッドシートのURLはサーバ側が今も返しているので、必要になれば
+             Card に extra を戻すだけで復活する。月次出荷実績のカードも同様。 */}
       <Card title="在庫・出荷・受注"
         note={mc && mc.startMonth
           ? vizDateParts(mc.startMonth).y + "年" + vizMonthLabel(mc.startMonth) + "〜（年度）"
           : "月ごと"}
-        extra={mc && mc.sheetUrl && (
-          <a href={mc.sheetUrl} target="_blank" rel="noreferrer"
-            className="text-[11px] underline whitespace-nowrap shrink-0" style={{ color: NAVY }}>元データ</a>
-        )}>
+        >
         {!mc ? (
           <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
         ) : mc.error ? (
@@ -1604,10 +1640,7 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
       {/* ---- 月次出荷実績 ---- */}
       <Card title="月次出荷実績"
         note={act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null}
-        extra={act && act.sheetUrl && (
-          <a href={act.sheetUrl} target="_blank" rel="noopener noreferrer"
-            className="text-[10px] font-semibold" style={{ color: NAVY }}>元データ</a>
-        )}>
+        >
         {!act ? (
           <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
         ) : act.error ? (
