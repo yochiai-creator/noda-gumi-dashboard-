@@ -802,7 +802,8 @@ export default function App() {
     { id: "dispatch", label: "配車・当日出荷" },
   ];
 
-  const fetchLiveData = () => {
+  // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
+  const fetchLiveData = (force) => {
     setNow(new Date());
     // GAS環境(google.script.run が使える)でだけ実データを取りに行く。
     // それ以外（このプレビューなど）ではダミー/前回確認済みの値のままにする。
@@ -816,22 +817,22 @@ export default function App() {
     google.script.run
       .withSuccessHandler((inv) => { setLive((prev) => ({ ...prev, inventory: inv, loading: false })); markLoaded(); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err), loading: false })); markLoaded(); })
-      .getInventoryDashboardData();
+      .getInventoryDashboardData(force === true);
 
     google.script.run
       .withSuccessHandler((sh) => { setLive((prev) => ({ ...prev, shipping: sh })); markLoaded(); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded(); })
-      .getShippingDashboardData();
+      .getShippingDashboardData(force === true);
 
     google.script.run
       .withSuccessHandler((op) => { setLive((prev) => ({ ...prev, orderPlan: op })); markLoaded(); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded(); })
-      .getOrderPlanDashboardData();
+      .getOrderPlanDashboardData(force === true);
 
     google.script.run
       .withSuccessHandler((d) => { setLive((prev) => ({ ...prev, dispatch: d })); markLoaded(); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded(); })
-      .getDispatchTodayData();
+      .getDispatchTodayData(force === true);
 
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map((b) => ({ pos: String(b.pos) }));
@@ -857,7 +858,7 @@ export default function App() {
 
   useEffect(() => {
     fetchLiveData();
-    const timer = setInterval(fetchLiveData, 5 * 60 * 1000); // 5分ごとに自動更新
+    const timer = setInterval(() => fetchLiveData(false), 5 * 60 * 1000); // 5分ごとに自動更新（キャッシュ利用）
     return () => clearInterval(timer);
   }, []);
 
@@ -996,7 +997,7 @@ export default function App() {
             </div>
             <p className="text-[11px] text-slate-300 mt-0.5">{currentHeader.subtitle}</p>
           </div>
-          <button onClick={fetchLiveData} className="flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white transition-colors">
+          <button onClick={() => fetchLiveData(true)} className="flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white transition-colors">
             <RefreshCw size={13} className={live.loading ? "animate-spin" : ""} />
             <span className="tabular-nums">{timeLabel} 更新</span>
           </button>
@@ -1046,7 +1047,7 @@ export default function App() {
           </div>
 
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
-          {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={fetchLiveData} />}
+          {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab dateLabel={dispatchDateLabel} shipments={dispatchShipments} week={dispatchWeek} />}
         </div>
 

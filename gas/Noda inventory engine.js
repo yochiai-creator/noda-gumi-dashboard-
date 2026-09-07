@@ -35,7 +35,18 @@ var INV_SIZE_LABEL_MAP = {
 // 表示順（受注タブの「サイズ別受注本数」と同じ順序に揃える）
 var INV_SIZE_ORDER = ['2K', '5K', '8K', '10K', '20K_三部軽量', '20K_直付', '30K', '50K_軽量型', '50K_S'];
 
-function getInventoryDashboardData() {
+// ===== 公開関数：キャッシュ経由でダッシュボード用データを返す =====
+// ★ 以前は画面を開くたび（フロントは5分ごとに自動更新）に毎回集計し直しており、
+//   表示のもたつきの原因になっていた。集計結果を CacheService に持たせて、
+//   有効期限内は再集計しないようにする。
+//   在庫照会CSVは日次更新なので15分。
+// force に true を渡すとキャッシュを無視して取り直す（画面の更新ボタン用）。
+function getInventoryDashboardData(force) {
+  return nc_cached_('inventory', force, 900, getInventoryDashboardData_uncached_);
+}
+
+// ===== 実際の集計（キャッシュ無し。元の getInventoryDashboardData の中身そのまま） =====
+function getInventoryDashboardData_uncached_() {
   var today = new Date();
   var data = {
     updated: Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),

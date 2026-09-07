@@ -927,7 +927,7 @@ function getYardBlockDetailWithPdf(sizeKey, pos) {
         var no = nos[i];
         if (seen[no]) continue;
         seen[no] = true;
-        result.orders.push({ no: no, url: yard_findOrderPdfUrl_(no, result.rangeStart, result.rangeEnd) });
+        result.orders.push({ no: no, url: yard_findOrderPdfUrl_(no) });
       }
     }
   } catch (err) {
@@ -976,7 +976,7 @@ function getYardMapUpdatesBothWithOrderText(queries50k, queries20k) {
             if (seen[no]) continue;
             seen[no] = true;
             if (!(no in pdfCache)) {
-              pdfCache[no] = yard_findOrderPdfUrl_(no, result.rangeStart, result.rangeEnd);
+              pdfCache[no] = yard_findOrderPdfUrl_(no);
             }
             result.orders.push({ no: no, url: pdfCache[no] });
           }
@@ -1003,7 +1003,7 @@ function getYardMapUpdatesBothWithOrderText(queries50k, queries20k) {
 // ラグの主因になっていた。→ CacheService で検索結果をキャッシュし、同じ依頼No なら
 // 次回以降は検索せずキャッシュから即座に返すようにする（依頼Noと実際のPDFの対応は
 // 基本的に変わらないため、6時間キャッシュしても実用上問題ない）。
-function yard_findOrderPdfUrl_(orderNo, expectedStart, expectedEnd) {
+function yard_findOrderPdfUrl_(orderNo) {
   var cache = CacheService.getScriptCache();
   var cacheKey = 'yardPdfUrl_' + orderNo;
   var cached = cache.get(cacheKey);
@@ -1011,7 +1011,7 @@ function yard_findOrderPdfUrl_(orderNo, expectedStart, expectedEnd) {
     return cached === '__NONE__' ? null : cached;
   }
 
-  var url = yard_findOrderPdfUrl_uncached_(orderNo, expectedStart, expectedEnd);
+  var url = yard_findOrderPdfUrl_uncached_(orderNo);
   try {
     cache.put(cacheKey, url === null ? '__NONE__' : url, 21600); // 6時間（秒）
   } catch (cacheErr) {
@@ -1068,7 +1068,7 @@ function yard_getCurrentMonthPdfFolderId_() {
 // （念のため取りこぼしを防ぐため）。
 // ★ 複数候補が残った場合はOCR確認ではなく「最終更新日時が一番新しいファイル」を選ぶ
 //   （メタデータだけを見るので高速。再発行された指図書は通常、最新のものが正しい版）。
-function yard_findOrderPdfUrl_uncached_(orderNo, expectedStart, expectedEnd) {
+function yard_findOrderPdfUrl_uncached_(orderNo) {
   try {
     var monthFolderId = yard_getCurrentMonthPdfFolderId_();
     var candidates = [];
@@ -1131,29 +1131,7 @@ function yard_clearPdfUrlCache() {
   Logger.log('PDFリンクのキャッシュは6時間で自動的に切れます。今すぐ更新したい場合は、対象の依頼Noが分かれば CacheService.getScriptCache().remove("yardPdfUrl_" + 依頼No) を個別に実行してください。');
 }
 
-// ===== 内部：PDFの中身をOCRで読み、「容器No: XXXXX ～ YYYYY」の部分を抜き出す =====
-// 一時的にGoogleドキュメント形式に変換して文字を読み取り、読み終わったら削除する。
-function yard_extractPdfContainerRange_(fileId) {
-  var tempDocId = null;
-  try {
-    var blob = DriveApp.getFileById(fileId).getBlob();
-    var resource = { title: 'yard_temp_ocr_' + fileId, mimeType: MimeType.GOOGLE_DOCS };
-    var tempFile = Drive.Files.insert(resource, blob, { ocr: true, ocrLanguage: 'ja' });
-    tempDocId = tempFile.id;
-    var text = DocumentApp.openById(tempDocId).getBody().getText();
 
-    var m = text.match(/容器\s*No\.?\s*[:：]?\s*[A-Za-z]*\s*(\d{3,6})\s*[~〜～]\s*[A-Za-z]*\s*(\d{3,6})/);
-    if (!m) return null;
-    return { start: Number(m[1]), end: Number(m[2]) };
-  } catch (err) {
-    Logger.log('PDF内容読み取りエラー(fileId=' + fileId + '): ' + String(err));
-    return null;
-  } finally {
-    if (tempDocId) {
-      try { Drive.Files.remove(tempDocId); } catch (cleanupErr) { /* 削除失敗は無視 */ }
-    }
-  }
-}
 
 // ===== 動作確認 =====
 function testGetYardBlockDetailWithPdf() {

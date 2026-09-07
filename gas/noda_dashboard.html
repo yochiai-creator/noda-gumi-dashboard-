@@ -2922,7 +2922,8 @@ function App() {
     id: "dispatch",
     label: "配車・当日出荷"
   }];
-  const fetchLiveData = () => {
+  // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
+  const fetchLiveData = force => {
     setNow(new Date());
     // GAS環境(google.script.run が使える)でだけ実データを取りに行く。
     // それ以外（このプレビューなど）ではダミー/前回確認済みの値のままにする。
@@ -2953,7 +2954,7 @@ function App() {
         loading: false
       }));
       markLoaded();
-    }).getInventoryDashboardData();
+    }).getInventoryDashboardData(force === true);
     google.script.run.withSuccessHandler(sh => {
       setLive(prev => ({
         ...prev,
@@ -2966,7 +2967,7 @@ function App() {
         error: String(err)
       }));
       markLoaded();
-    }).getShippingDashboardData();
+    }).getShippingDashboardData(force === true);
     google.script.run.withSuccessHandler(op => {
       setLive(prev => ({
         ...prev,
@@ -2979,7 +2980,7 @@ function App() {
         error: String(err)
       }));
       markLoaded();
-    }).getOrderPlanDashboardData();
+    }).getOrderPlanDashboardData(force === true);
     google.script.run.withSuccessHandler(d => {
       setLive(prev => ({
         ...prev,
@@ -2992,7 +2993,7 @@ function App() {
         error: String(err)
       }));
       markLoaded();
-    }).getDispatchTodayData();
+    }).getDispatchTodayData(force === true);
 
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map(b => ({
@@ -3023,7 +3024,7 @@ function App() {
   };
   React.useEffect(() => {
     fetchLiveData();
-    const timer = setInterval(fetchLiveData, 5 * 60 * 1000); // 5分ごとに自動更新
+    const timer = setInterval(() => fetchLiveData(false), 5 * 60 * 1000); // 5分ごとに自動更新（キャッシュ利用）
     return () => clearInterval(timer);
   }, []);
   const dateLabel = now.toLocaleDateString("ja-JP", {
@@ -3247,7 +3248,7 @@ function App() {
   }), "稼働中")), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-300 mt-0.5"
   }, currentHeader.subtitle)), /*#__PURE__*/React.createElement("button", {
-    onClick: fetchLiveData,
+    onClick: () => fetchLiveData(true),
     className: "flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white transition-colors"
   }, /*#__PURE__*/React.createElement(RefreshCw, {
     size: 13,
@@ -3303,7 +3304,7 @@ function App() {
     byYear: invByYear,
     oldest: invOldest,
     yardLive: yardLive,
-    onRefresh: fetchLiveData
+    onRefresh: () => fetchLiveData(true)
   }), tab === "dispatch" && /*#__PURE__*/React.createElement(DispatchTab, {
     dateLabel: dispatchDateLabel,
     shipments: dispatchShipments,

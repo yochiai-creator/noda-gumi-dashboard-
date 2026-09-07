@@ -61,7 +61,18 @@ var DISPATCH_CONFIG = {
 };
 
 // ===== 公開関数：ダッシュボード用データを組み立てる（本日＋週間7日分） =====
-function getDispatchTodayData() {
+// ===== 公開関数：キャッシュ経由でダッシュボード用データを返す =====
+// ★ 以前は画面を開くたび（フロントは5分ごとに自動更新）に毎回集計し直しており、
+//   表示のもたつきの原因になっていた。集計結果を CacheService に持たせて、
+//   有効期限内は再集計しないようにする。
+//   運行スケジュールは日次更新なので15分。
+// force に true を渡すとキャッシュを無視して取り直す（画面の更新ボタン用）。
+function getDispatchTodayData(force) {
+  return nc_cached_('dispatch', force, 900, getDispatchTodayData_uncached_);
+}
+
+// ===== 実際の集計（キャッシュ無し。元の getDispatchTodayData の中身そのまま） =====
+function getDispatchTodayData_uncached_() {
   var data = {
     updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
     file: null,
