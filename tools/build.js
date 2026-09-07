@@ -89,6 +89,7 @@ function main() {
 
   if (next === before) {
     console.log('差分なし（gas/noda_dashboard.html は .jsx と同期しています）');
+    warnUndefinedClasses(next, fs.readFileSync(JSX_PATH, 'utf8'));
     return 0;
   }
   if (checkOnly) {
@@ -98,7 +99,76 @@ function main() {
   }
   fs.writeFileSync(HTML_PATH, next);
   console.log('gas/noda_dashboard.html を更新しました（' + before.length + ' → ' + next.length + ' 文字）');
+  warnUndefinedClasses(next, fs.readFileSync(JSX_PATH, 'utf8'));
   return 0;
+}
+
+// 未定義クラスがあれば名指しで警告する（ビルドは止めない）
+function warnUndefinedClasses(html, jsx) {
+  const missing = findUndefinedClasses(html, jsx);
+  if (missing.length === 0) return;
+  console.log('');
+  console.log('⚠ CSSに定義が無いクラスが ' + missing.length + ' 件あります（指定しても効きません）:');
+  missing.slice(0, 20).forEach(function (m) {
+    console.log('   ' + m.cls + '  ' + m.lines.length + '箇所  行 ' + m.lines.slice(0, 5).join(','));
+  });
+  if (missing.length > 20) console.log('   ...ほか ' + (missing.length - 20) + ' 件');
+  console.log('  → gas/noda_dashboard.html の <style> 末尾に定義を足してください。');
+}
+
+
+/**
+ * JSXで使っているCSSクラスが、HTMLのstyleに定義されているかを調べる。
+ *
+ * ★ なぜ要るのか（実際にハマった）
+ *   このページのCSSは、あるバージョンのJSXを走査して作られたTailwindの
+ *   ビルド結果を貼り付けたもの。ビルドし直す仕組みが無いので、あとから
+ *   JSXに書いたクラスはCSSに存在せず、黙って効かない。
+ *   text-right が18箇所で使われていたのに未定義で、ダッシュボード中の
+ *   数字が右揃えになっていなかった。見た目が少し崩れるだけなので
+ *   気づきにくく、実機を見るまで分からなかった。
+ *   → ビルドのたびに照合して、未定義のクラスを名指しで警告する。
+ */
+// ハイフンを含まないユーティリティ（これ以外の単独語は式の断片とみなす）
+const BARE_CLASSES = new Set([
+  'flex', 'block', 'inline', 'grid', 'hidden', 'italic', 'underline', 'truncate',
+  'relative', 'absolute', 'fixed', 'sticky', 'static', 'border', 'rounded',
+  'container', 'uppercase', 'lowercase', 'capitalize', 'invisible', 'visible',
+]);
+
+function findUndefinedClasses(html, jsx) {
+  const styles = html.match(/<style[^>]*>([\s\S]*?)<\/style>/g) || [];
+  const css = styles.join('\n');
+  const defined = new Set();
+  const re = /\.((?:\\.|[A-Za-z0-9_\[\]%#-])+)/g;
+  let m;
+  while ((m = re.exec(css)) !== null) defined.add(m[1].replace(/\\/g, ''));
+
+  const used = new Map();
+  // className="..." と className={`...`} の両方を拾う
+  const cre = /className=(?:"([^"]*)"|\{`([^`]*)`\})/g;
+  while ((m = cre.exec(jsx)) !== null) {
+    const txt = m[1] || m[2] || '';
+    const line = jsx.slice(0, m.index).split('\n').length;
+    txt.split(/\s+/).forEach((c) => {
+      const t = c.trim();
+      // テンプレート式の断片（${...} の中身や演算子・変数名）は対象外
+      if (!t || /[${}"'`?&|=()]/.test(t) || /^\d/.test(t)) return;
+      // ユーティリティらしい形だけを見る。ハイフン・コロン・角括弧が無く、
+      // 単独語でもないもの（sel.pos や s のような式の断片）は捨てる。
+      // 先頭・末尾がハイフンやコロンだけのもの（三項演算子の断片）も捨てる
+      if (!/^[a-z]/.test(t)) return;
+      const looksLikeClass = /[-:[]/.test(t) || BARE_CLASSES.has(t);
+      if (!looksLikeClass) return;
+      if (!used.has(t)) used.set(t, []);
+      used.get(t).push(line);
+    });
+  }
+
+  const missing = [];
+  used.forEach((lines, c) => { if (!defined.has(c)) missing.push({ cls: c, lines: lines }); });
+  missing.sort((a, b) => b.lines.length - a.lines.length);
+  return missing;
 }
 
 if (require.main === module) {
@@ -110,4 +180,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { build, compileJsx };
+module.exports = { build, compileJsx, findUndefinedClasses };

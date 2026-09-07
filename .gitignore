@@ -1,5 +1,5 @@
-# ビルド用の依存パッケージ（npm install で再取得できる）
-node_modules
 
 # clasp のローカル設定（scriptIdは .clasp.json に入れて共有している）
+# ビルド用の依存パッケージ（npm install で再取得できる）
 .clasprc.json
+node_modules

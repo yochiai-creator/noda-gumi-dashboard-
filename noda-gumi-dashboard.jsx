@@ -1466,11 +1466,12 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
     <div>
       {/* ---- 在庫・出荷・受注をまとめて（月次） ---- */}
       <Card title="在庫・出荷・受注"
-        note={(mc && mc.startMonth ? vizYearMonth(mc.startMonth).replace("-", "年") + "月以降（年度）。" : "") +
-          "月ごと。単位はどれも本数なので同じ縦軸に載せています"}
+        note={mc && mc.startMonth
+          ? vizDateParts(mc.startMonth).y + "年" + vizMonthLabel(mc.startMonth) + "〜（年度）"
+          : "月ごと"}
         extra={mc && mc.sheetUrl && (
           <a href={mc.sheetUrl} target="_blank" rel="noreferrer"
-            className="text-[10px] underline" style={{ color: NAVY }}>元データ</a>
+            className="text-[11px] underline whitespace-nowrap shrink-0" style={{ color: NAVY }}>元データ</a>
         )}>
         {!mc ? (
           <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
@@ -1487,10 +1488,11 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
 
             {/* グラフだけに数字を閉じ込めない。表でも読めるようにする */}
             <div className="mt-3 rounded-md border border-slate-200 overflow-hidden">
-              <div className="flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5">
-                <span className="w-12">月</span>
+              {/* ★ 列は4つまでにする。iPhoneの幅で5列にすると数字が窮屈になるので、
+                     「予定」は独立した列にせず、出荷の下に小さく添える。 */}
+              <div className="flex text-[11px] font-semibold text-slate-500 bg-slate-50 px-2.5 py-2">
+                <span className="w-16">月</span>
                 <span className="flex-1 text-right">出荷</span>
-                {mc.hasPlan && <span className="w-14 text-right">予定</span>}
                 {mc.hasOrders && <span className="flex-1 text-right">受注</span>}
                 <span className="flex-1 text-right">月末在庫</span>
               </div>
@@ -1503,18 +1505,18 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
                   ? vizMonthLabel(mcMonths[0].年月) + "〜" + vizMonthLabel(mcMonths[mcMonths.length - 1].年月)
                   : vizMonthLabel(mcMonths[0].年月);
                 return (
-                  <div className="flex text-[11px] px-2 py-1.5 border-t-2 border-slate-300 bg-slate-50 font-bold">
-                    <span className="w-12 text-slate-600">{range}</span>
+                  <div className="flex items-start text-[15px] px-2.5 py-2.5 border-t-2 border-slate-300 bg-slate-50 font-bold">
+                    <span className="w-16 text-[13px] text-slate-600 pt-0.5">{range}</span>
                     <span className="flex-1 text-right tabular-nums" style={{ color: NAVY }}>
                       {vizComma(sum("出荷"))}
+                      {mc.hasPlan && sum("出荷予定") > 0 && (
+                        <span className="block text-[11px] font-semibold text-slate-400">
+                          予定 +{vizComma(sum("出荷予定"))}
+                        </span>
+                      )}
                     </span>
-                    {mc.hasPlan && (
-                      <span className="w-14 text-right tabular-nums text-slate-400">
-                        {sum("出荷予定") ? "+" + vizComma(sum("出荷予定")) : ""}
-                      </span>
-                    )}
                     {mc.hasOrders && (
-                      <span className="flex-1 text-right tabular-nums text-slate-600">
+                      <span className="flex-1 text-right tabular-nums text-slate-700">
                         {vizComma(sum("受注"))}
                       </span>
                     )}
@@ -1525,22 +1527,22 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
               })()}
 
               {mcMonths.slice().reverse().map((m) => (
-                <div key={m.年月} className="flex text-[11px] px-2 py-1.5 border-t border-slate-100">
-                  <span className="w-12 text-slate-600">{vizMonthLabel(m.年月)}</span>
+                <div key={m.年月} className="flex items-start text-[15px] px-2.5 py-2.5 border-t border-slate-100">
+                  <span className="w-16 text-[13px] text-slate-600 pt-0.5">{vizMonthLabel(m.年月)}</span>
                   <span className="flex-1 text-right tabular-nums font-semibold" style={{ color: NAVY }}>
                     {m.出荷 == null ? "—" : vizComma(m.出荷)}
+                    {m.出荷予定 > 0 && (
+                      <span className="block text-[11px] font-semibold text-slate-400">
+                        予定 +{vizComma(m.出荷予定)}
+                      </span>
+                    )}
                   </span>
-                  {mc.hasPlan && (
-                    <span className="w-14 text-right tabular-nums text-slate-400">
-                      {m.出荷予定 ? "+" + vizComma(m.出荷予定) : ""}
-                    </span>
-                  )}
                   {mc.hasOrders && (
-                    <span className="flex-1 text-right tabular-nums text-slate-600">
+                    <span className="flex-1 text-right tabular-nums text-slate-700">
                       {m.受注 == null ? "—" : vizComma(m.受注)}
                     </span>
                   )}
-                  <span className="flex-1 text-right tabular-nums text-slate-600">
+                  <span className="flex-1 text-right tabular-nums text-slate-700">
                     {m.在庫 == null ? "—" : vizComma(m.在庫)}
                   </span>
                 </div>
@@ -1872,6 +1874,32 @@ export default function App() {
       { label: "20k 在庫", value: inv20.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
       { label: "在庫合計", value: invTotal.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
     ],
+    // 実績・推移タブ。ほかのタブと同じ大きな数字のタイルを出す。
+    // ★ 在庫は残高なので累計を出さない（4月〜9月の月末在庫を足しても意味が無い）。
+    //   代わりに「最新の残高」と「年度はじめから何本増えたか」を出す。
+    actuals: (() => {
+      const mc = live.monthly;
+      const ms = mc && mc.months ? mc.months : [];
+      const cur = ms.length > 0 ? ms[ms.length - 1] : null;
+      const sum = (k) => ms.reduce((a, m) => a + (m[k] || 0), 0);
+      const invMonths = ms.filter((m) => m.在庫 != null);
+      const invNow = invMonths.length > 0 ? invMonths[invMonths.length - 1].在庫 : null;
+      const invFirst = invMonths.length > 1 ? invMonths[0].在庫 : null;
+      const invDiff = invNow != null && invFirst != null ? invNow - invFirst : null;
+      const range = ms.length > 0 ? vizMonthLabel(ms[0].年月) + "〜" + vizMonthLabel(ms[ms.length - 1].年月) : "";
+      return [
+        { label: "出荷 累計" + (range ? "（" + range + "）" : ""),
+          value: ms.length ? vizComma(sum("出荷")) : "—",
+          unit: "本", icon: Boxes, tone: "ok" },
+        { label: cur ? vizMonthLabel(cur.年月) + " 出荷" : "今月 出荷",
+          value: cur && cur.出荷 != null ? vizComma(cur.出荷) : "—", unit: "本",
+          icon: Package, tone: "ok",
+          sub: cur && cur.出荷予定 > 0 ? "予定 +" + vizComma(cur.出荷予定) + " 本" : undefined },
+        { label: "LP容器 在庫", value: invNow != null ? vizComma(invNow) : "—",
+          unit: "本", icon: Boxes, tone: "neutral",
+          sub: invDiff != null ? (invDiff > 0 ? "+" : "") + vizComma(invDiff) + " 本（年度はじめ比）" : undefined },
+      ];
+    })(),
     dispatch: [
       { label: "週の合計トラック台数", value: String(dispatchWeekTruckTotal), unit: "台", icon: Truck, tone: "ok" },
       { label: "週の出荷合計 20k", value: dispatchWeekQty20k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },

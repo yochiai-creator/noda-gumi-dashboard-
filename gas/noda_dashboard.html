@@ -23,6 +23,64 @@
 .forklift-bob { animation: forklift-bob 0.3s ease-in-out infinite; }
 body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; }
 body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino Kaku Gothic ProN", sans-serif; }
+
+/* ------------------------------------------------------------------
+   後から足したユーティリティ
+   ★ このページのCSSは、あるバージョンのJSXを走査して作られたTailwindの
+     ビルド結果を貼り付けたもの。そのため、あとからJSXに書いたクラスは
+     CSSに存在せず、黙って効かない状態になっていた。
+     実際 text-right が18箇所で使われていたのに未定義で、数字が
+     右揃えになっていなかった（表が読みにくい原因はこれ）。
+     ビルドし直せないので、足りないぶんをここに追記する。
+     tools/build.js が未定義クラスを検出して警告するので、
+     新しいクラスを使ったらここに足すこと。
+   ------------------------------------------------------------------ */
+.block{display:block}
+.text-right{text-align:right}
+.text-left{text-align:left}
+.text-center{text-align:center}
+.items-start{align-items:flex-start}
+.items-end{align-items:flex-end}
+.justify-center{justify-content:center}
+.flex-col{flex-direction:column}
+.flex-row{flex-direction:row}
+.gap-4{gap:1rem}
+.w-12{width:3rem}
+.w-14{width:3.5rem}
+.w-16{width:4rem}
+.w-20{width:5rem}
+.p-6{padding:1.5rem}
+.px-2{padding-left:.5rem;padding-right:.5rem}
+.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}
+.pt-0\.5{padding-top:.125rem}
+.pb-1{padding-bottom:.25rem}
+.mt-2{margin-top:.5rem}
+.mt-1\.5{margin-top:.375rem}
+.mb-0\.5{margin-bottom:.125rem}
+.rounded{border-radius:.25rem}
+.border-t-2{border-top-width:2px}
+.underline{text-decoration-line:underline}
+.leading-relaxed{line-height:1.625}
+.text-lg{font-size:1.125rem;line-height:1.75rem}
+.text-xl{font-size:1.25rem;line-height:1.75rem}
+.text-\[9px\]{font-size:9px}
+.text-\[12px\]{font-size:12px}
+.text-\[13px\]{font-size:13px}
+.text-\[14px\]{font-size:14px}
+.text-\[15px\]{font-size:15px}
+.text-\[16px\]{font-size:16px}
+.text-\[17px\]{font-size:17px}
+.text-blue-600{color:#2563eb}
+.text-emerald-600{color:#059669}
+.text-red-500{color:#ef4444}
+.bg-amber-50{background-color:#fffbeb}
+.space-y-2>:not([hidden])~:not([hidden]){margin-top:.5rem}
+.first\:border-t-0:first-child{border-top-width:0}
+.hover\:bg-slate-50:hover{background-color:#f8fafc}
+.active\:bg-slate-50:active{background-color:#f8fafc}
+.disabled\:opacity-50:disabled{opacity:.5}
+.ring-2{box-shadow:0 0 0 2px var(--nd-ring,#fecaca)}
+.ring-red-200{--nd-ring:#fecaca}
 </style>
 <script>
 /**
@@ -849,8 +907,8 @@ function DispatchTab({
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "トラック運行スケジュール・共有ドライブ日次取得"
-  }, "週間の配車予定"), /*#__PURE__*/React.createElement("div", {
+    note: "\u30C8\u30E9\u30C3\u30AF\u904B\u884C\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB\u30FB\u5171\u6709\u30C9\u30E9\u30A4\u30D6\u65E5\u6B21\u53D6\u5F97"
+  }, "\u9031\u9593\u306E\u914D\u8ECA\u4E88\u5B9A"), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-1 mb-3 overflow-x-auto -mx-1 px-1"
   }, days.map((d, i) => {
     const active = i === selectedIdx;
@@ -863,7 +921,7 @@ function DispatchTab({
       } : undefined
     }, /*#__PURE__*/React.createElement("span", null, i === 0 ? "本日" : d.dateLabel), /*#__PURE__*/React.createElement("span", {
       className: `text-[10px] mt-0.5 ${active ? "text-slate-300" : "text-slate-400"}`
-    }, d.shipments.length, "台"));
+    }, d.shipments.length, "\u53F0"));
   })), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3"
   }, /*#__PURE__*/React.createElement(Card, {
@@ -873,45 +931,45 @@ function DispatchTab({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-300 mb-1"
-  }, selected.dateLabel, " の出荷台数"), /*#__PURE__*/React.createElement("div", {
+  }, selected.dateLabel, " \u306E\u51FA\u8377\u53F0\u6570"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-2xl font-bold tabular-nums text-white"
   }, selected.shipments.length), /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-400"
-  }, "台"))), /*#__PURE__*/React.createElement(Card, {
+  }, "\u53F0"))), /*#__PURE__*/React.createElement(Card, {
     className: "p-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 mb-1"
-  }, "本日出荷 20k"), /*#__PURE__*/React.createElement("div", {
+  }, "\u672C\u65E5\u51FA\u8377 20k"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xl font-bold tabular-nums text-slate-900"
   }, selected.qty20k != null ? selected.qty20k : "—"), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "本")), selected.koguchi20k != null && selected.koguchi20k > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "\u672C")), selected.koguchi20k != null && selected.koguchi20k > 0 && /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 mt-0.5"
-  }, "うち小口 ", selected.koguchi20k, "本"), selected.kontena20k != null && selected.kontena20k > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "\u3046\u3061\u5C0F\u53E3 ", selected.koguchi20k, "\u672C"), selected.kontena20k != null && selected.kontena20k > 0 && /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 mt-0.5"
-  }, "うちコンテナ ", selected.kontena20k, "本")), /*#__PURE__*/React.createElement(Card, {
+  }, "\u3046\u3061\u30B3\u30F3\u30C6\u30CA ", selected.kontena20k, "\u672C")), /*#__PURE__*/React.createElement(Card, {
     className: "p-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 mb-1"
-  }, "本日出荷 50k"), /*#__PURE__*/React.createElement("div", {
+  }, "\u672C\u65E5\u51FA\u8377 50k"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xl font-bold tabular-nums text-slate-900"
   }, selected.qty50k != null ? selected.qty50k : "—"), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "本")), selected.koguchi50k != null && selected.koguchi50k > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "\u672C")), selected.koguchi50k != null && selected.koguchi50k > 0 && /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 mt-0.5"
-  }, "うち小口 ", selected.koguchi50k, "本"), selected.kontena50k != null && selected.kontena50k > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "\u3046\u3061\u5C0F\u53E3 ", selected.koguchi50k, "\u672C"), selected.kontena50k != null && selected.kontena50k > 0 && /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 mt-0.5"
-  }, "うちコンテナ ", selected.kontena50k, "本"))), selected.shipments.length === 0 ? /*#__PURE__*/React.createElement(Card, {
+  }, "\u3046\u3061\u30B3\u30F3\u30C6\u30CA ", selected.kontena50k, "\u672C"))), selected.shipments.length === 0 ? /*#__PURE__*/React.createElement(Card, {
     className: "p-6 text-center"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-sm text-slate-400"
-  }, "この日に出発する記録はありませんでした。")) : /*#__PURE__*/React.createElement(Card, {
+  }, "\u3053\u306E\u65E5\u306B\u51FA\u767A\u3059\u308B\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002")) : /*#__PURE__*/React.createElement(Card, {
     className: "overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "divide-y divide-slate-100"
@@ -927,9 +985,9 @@ function DispatchTab({
     className: "text-sm font-medium text-slate-800 truncate"
   }, s.company), /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 truncate"
-  }, s.vehicle, " ・ ", s.destination, s.orderNo ? ` ・ 依頼No ${s.orderNo}` : ""))))))), /*#__PURE__*/React.createElement("p", {
+  }, s.vehicle, " \u30FB ", s.destination, s.orderNo ? ` ・ 依頼No ${s.orderNo}` : ""))))))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400"
-  }, "※ 地名が入っている行き先のみを出荷として表示しています。依頼No（容器番号）は分かる場合のみ表示されます。"));
+  }, "\u203B \u5730\u540D\u304C\u5165\u3063\u3066\u3044\u308B\u884C\u304D\u5148\u306E\u307F\u3092\u51FA\u8377\u3068\u3057\u3066\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002\u4F9D\u983CNo\uFF08\u5BB9\u5668\u756A\u53F7\uFF09\u306F\u5206\u304B\u308B\u5834\u5408\u306E\u307F\u8868\u793A\u3055\u308C\u307E\u3059\u3002"));
 }
 function OrdersTab({
   orders,
@@ -943,23 +1001,23 @@ function OrdersTab({
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "共有ドライブ・日次自動取得"
-  }, "受注出荷計画表 概要"), /*#__PURE__*/React.createElement(Card, {
+    note: "\u5171\u6709\u30C9\u30E9\u30A4\u30D6\u30FB\u65E5\u6B21\u81EA\u52D5\u53D6\u5F97"
+  }, "\u53D7\u6CE8\u51FA\u8377\u8A08\u753B\u8868 \u6982\u8981"), /*#__PURE__*/React.createElement(Card, {
     className: "p-4 mb-3",
     style: {
       background: NAVY
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-300 mb-1"
-  }, "LP容器 合計本数"), /*#__PURE__*/React.createElement("div", {
+  }, "LP\u5BB9\u5668 \u5408\u8A08\u672C\u6570"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-2xl font-bold tabular-nums text-white"
   }, planLpTotal.toLocaleString()), /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-400"
-  }, "本"))), /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "LP容器・サイズ別未出荷数"
-  }, "サイズ別受注本数"), /*#__PURE__*/React.createElement("div", {
+  }, "\u672C"))), /*#__PURE__*/React.createElement(SectionTitle, {
+    note: "LP\u5BB9\u5668\u30FB\u30B5\u30A4\u30BA\u5225\u672A\u51FA\u8377\u6570"
+  }, "\u30B5\u30A4\u30BA\u5225\u53D7\u6CE8\u672C\u6570"), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-3 sm:grid-cols-4 gap-2 mb-3"
   }, planBySize.map((s, i) => /*#__PURE__*/React.createElement(Card, {
     key: i,
@@ -972,7 +1030,7 @@ function OrdersTab({
     className: "text-lg font-bold tabular-nums text-slate-900"
   }, s.count.toLocaleString()), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "本"))))), /*#__PURE__*/React.createElement(Card, {
+  }, "\u672C"))))), /*#__PURE__*/React.createElement(Card, {
     className: "overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "divide-y divide-slate-100"
@@ -987,11 +1045,11 @@ function OrdersTab({
     className: "text-sm font-medium text-slate-800 truncate"
   }, o.name), /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 truncate"
-  }, "依頼No. ", o.orderNo, " ・ ", o.dest)), /*#__PURE__*/React.createElement("span", {
+  }, "\u4F9D\u983CNo. ", o.orderNo, " \u30FB ", o.dest)), /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-bold tabular-nums text-slate-700 shrink-0"
   }, o.qty)))))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
     note: `${monthLabel}分フォルダ・GAS実データ`
-  }, "出荷作業指図書 最新"), /*#__PURE__*/React.createElement(Card, {
+  }, "\u51FA\u8377\u4F5C\u696D\u6307\u56F3\u66F8 \u6700\u65B0"), /*#__PURE__*/React.createElement(Card, {
     className: "overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "divide-y divide-slate-100"
@@ -1007,7 +1065,7 @@ function OrdersTab({
     className: "min-w-0 flex-1"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-sm font-medium text-slate-800 truncate"
-  }, "依頼No. ", o.orderNo), /*#__PURE__*/React.createElement("div", {
+  }, "\u4F9D\u983CNo. ", o.orderNo), /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 truncate"
   }, o.fileName)), /*#__PURE__*/React.createElement(FileText, {
     size: 16,
@@ -2396,7 +2454,7 @@ function YardBlock({
     textAnchor: "middle",
     fontSize: "6.5",
     fill: "#b6c0cc"
-  }, "空き") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("text", {
+  }, "\u7A7A\u304D") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("text", {
     x: b.x + b.w / 2,
     y: midY,
     textAnchor: "middle",
@@ -2761,7 +2819,7 @@ function YardMap({
     style: size === s ? {
       background: NAVY
     } : undefined
-  }, s, " 入込場"))), /*#__PURE__*/React.createElement("div", {
+  }, s, " \u5165\u8FBC\u5834"))), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-1 ml-auto"
   }, [["map", "マップ"], ["list", "一覧"]].map(([v, label]) => /*#__PURE__*/React.createElement("button", {
     key: v,
@@ -2782,7 +2840,7 @@ function YardMap({
     inputMode: "search",
     value: query,
     onChange: e => setQuery(e.target.value),
-    placeholder: "依頼No / 容器番号 / GNo / 位置",
+    placeholder: "\u4F9D\u983CNo / \u5BB9\u5668\u756A\u53F7 / GNo / \u4F4D\u7F6E",
     style: {
       flex: 1,
       minWidth: 0,
@@ -2802,7 +2860,7 @@ function YardMap({
       border: "none",
       padding: "4px 2px"
     }
-  }, "クリア")), q !== "" && /*#__PURE__*/React.createElement("div", {
+  }, "\u30AF\u30EA\u30A2")), q !== "" && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 11,
       marginBottom: 8,
@@ -2889,7 +2947,7 @@ function YardMap({
       lineHeight: 1,
       color: curScale <= 1 ? "#cbd5e1" : "#334155"
     }
-  }, "−"), /*#__PURE__*/React.createElement("button", {
+  }, "\u2212"), /*#__PURE__*/React.createElement("button", {
     onClick: () => zoomBy(1.6),
     disabled: curScale >= 5,
     style: {
@@ -2902,7 +2960,7 @@ function YardMap({
       lineHeight: 1,
       color: curScale >= 5 ? "#cbd5e1" : "#334155"
     }
-  }, "＋"), /*#__PURE__*/React.createElement("span", {
+  }, "\uFF0B"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
       color: "#64748b",
@@ -2919,7 +2977,7 @@ function YardMap({
       border: "none",
       padding: "4px 2px"
     }
-  }, "全体に戻す"), /*#__PURE__*/React.createElement("span", {
+  }, "\u5168\u4F53\u306B\u623B\u3059"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
       color: "#94a3b8",
@@ -2952,7 +3010,7 @@ function YardMap({
     className: "flex items-center justify-between mb-1.5"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-bold text-slate-800"
-  }, "位置 <", sel.pos, ">", sel.grp ? ` ・ GNo ${sel.grp}` : ""), /*#__PURE__*/React.createElement("div", {
+  }, "\u4F4D\u7F6E <", sel.pos, ">", sel.grp ? ` ・ GNo ${sel.grp}` : ""), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
   }, !editing && /*#__PURE__*/React.createElement("button", {
     onClick: startEdit,
@@ -2960,19 +3018,19 @@ function YardMap({
     style: {
       color: NAVY
     }
-  }, "編集"), /*#__PURE__*/React.createElement("button", {
+  }, "\u7DE8\u96C6"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setSel(null);
       setEditing(false);
     },
     className: "text-xs text-slate-400"
-  }, "閉じる"))), editing ? /*#__PURE__*/React.createElement("div", {
+  }, "\u9589\u3058\u308B"))), editing ? /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
   }, /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 gap-2"
   }, /*#__PURE__*/React.createElement("label", {
     className: "text-[11px] text-slate-500"
-  }, "群番号", /*#__PURE__*/React.createElement("input", {
+  }, "\u7FA4\u756A\u53F7", /*#__PURE__*/React.createElement("input", {
     type: "text",
     value: editForm.grpNo,
     onChange: e => {
@@ -3010,7 +3068,7 @@ function YardMap({
     className: "mt-0.5 w-full text-sm px-2 py-1 rounded border border-slate-300"
   })), /*#__PURE__*/React.createElement("label", {
     className: "text-[11px] text-slate-500"
-  }, "本数", /*#__PURE__*/React.createElement("input", {
+  }, "\u672C\u6570", /*#__PURE__*/React.createElement("input", {
     type: "number",
     value: editForm.qty,
     onChange: e => setEditForm({
@@ -3020,7 +3078,7 @@ function YardMap({
     className: "mt-0.5 w-full text-sm px-2 py-1 rounded border border-slate-300"
   })), /*#__PURE__*/React.createElement("label", {
     className: "text-[11px] text-slate-500"
-  }, "容器番号（開始）", /*#__PURE__*/React.createElement("input", {
+  }, "\u5BB9\u5668\u756A\u53F7\uFF08\u958B\u59CB\uFF09", /*#__PURE__*/React.createElement("input", {
     type: "number",
     value: editForm.rangeStart,
     readOnly: true,
@@ -3031,7 +3089,7 @@ function YardMap({
     className: `mt-0.5 w-full text-sm px-2 py-1 rounded border border-slate-300 bg-slate-100 text-slate-500`
   })), /*#__PURE__*/React.createElement("label", {
     className: "text-[11px] text-slate-500"
-  }, "容器番号（終了）", /*#__PURE__*/React.createElement("input", {
+  }, "\u5BB9\u5668\u756A\u53F7\uFF08\u7D42\u4E86\uFF09", /*#__PURE__*/React.createElement("input", {
     type: "number",
     value: editForm.rangeEnd,
     readOnly: true,
@@ -3054,39 +3112,39 @@ function YardMap({
   }, saveStatus === "saving" ? "保存中…" : "保存"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setEditing(false),
     className: "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-500 bg-slate-100"
-  }, "キャンセル"), saveStatus === "error" && /*#__PURE__*/React.createElement("span", {
+  }, "\u30AD\u30E3\u30F3\u30BB\u30EB"), saveStatus === "error" && /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] text-red-600"
-  }, "保存に失敗しました（GAS環境でのみ保存できます）"))) : /*#__PURE__*/React.createElement(React.Fragment, null, sel.shipDate && /*#__PURE__*/React.createElement("div", {
+  }, "\u4FDD\u5B58\u306B\u5931\u6557\u3057\u307E\u3057\u305F\uFF08GAS\u74B0\u5883\u3067\u306E\u307F\u4FDD\u5B58\u3067\u304D\u307E\u3059\uFF09"))) : /*#__PURE__*/React.createElement(React.Fragment, null, sel.shipDate && /*#__PURE__*/React.createElement("div", {
     className: "text-center mb-2"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400"
-  }, "出荷希望日"), /*#__PURE__*/React.createElement("div", {
+  }, "\u51FA\u8377\u5E0C\u671B\u65E5"), /*#__PURE__*/React.createElement("div", {
     className: "text-xl font-bold text-slate-900"
   }, yard_formatShipDateDisplay(sel.shipDate))), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-3 gap-2 text-center"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400"
-  }, "容器番号"), /*#__PURE__*/React.createElement("div", {
+  }, "\u5BB9\u5668\u756A\u53F7"), /*#__PURE__*/React.createElement("div", {
     className: "text-xs font-medium text-slate-700 tabular-nums"
   }, sel.rng && sel.rng !== "-99〜0" ? sel.rng : "—")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400"
-  }, "本数"), /*#__PURE__*/React.createElement("div", {
+  }, "\u672C\u6570"), /*#__PURE__*/React.createElement("div", {
     className: "text-base font-bold text-slate-900 tabular-nums"
   }, sel.cnt != null ? sel.cnt + " 本" : "—")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400"
-  }, "状態"), /*#__PURE__*/React.createElement("div", {
+  }, "\u72B6\u614B"), /*#__PURE__*/React.createElement("div", {
     className: "text-xs font-medium"
   }, sel.orders && sel.orders.length > 0 ? "引当済" : sel.kind === "empty" ? "空き・予定" : "在庫"))), saveStatus === "done" && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-emerald-600 mt-1.5"
-  }, "保存しました（スプレッドシートに反映済み）")), !editing && orderLookupStatus === "loading" && (!sel.orders || sel.orders.length === 0) && /*#__PURE__*/React.createElement("p", {
+  }, "\u4FDD\u5B58\u3057\u307E\u3057\u305F\uFF08\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8\u306B\u53CD\u6620\u6E08\u307F\uFF09")), !editing && orderLookupStatus === "loading" && (!sel.orders || sel.orders.length === 0) && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 mt-2"
-  }, "指図書PDFを検索中…"), !editing && orderLookupStatus && orderLookupStatus.indexOf("error") === 0 && /*#__PURE__*/React.createElement("p", {
+  }, "\u6307\u56F3\u66F8PDF\u3092\u691C\u7D22\u4E2D\u2026"), !editing && orderLookupStatus && orderLookupStatus.indexOf("error") === 0 && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-red-500 mt-2"
-  }, "検索エラー: ", orderLookupStatus), !editing && sel.orders && sel.orders.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "\u691C\u7D22\u30A8\u30E9\u30FC: ", orderLookupStatus), !editing && sel.orders && sel.orders.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "mt-2.5 pt-2.5 border-t border-slate-200"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 mb-1.5"
-  }, "出荷作業指図書"), /*#__PURE__*/React.createElement("div", {
+  }, "\u51FA\u8377\u4F5C\u696D\u6307\u56F3\u66F8"), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-1.5"
   }, sel.orders.map((o, i) => o.url ? /*#__PURE__*/React.createElement("a", {
     key: i,
@@ -3099,10 +3157,10 @@ function YardMap({
     }
   }, /*#__PURE__*/React.createElement(FileText, {
     size: 12
-  }), "26-", o.no, " を開く") : /*#__PURE__*/React.createElement("span", {
+  }), "26-", o.no, " \u3092\u958B\u304F") : /*#__PURE__*/React.createElement("span", {
     key: i,
     className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-400 bg-slate-100"
-  }, "26-", o.no, "（PDF未検出）"))))), /*#__PURE__*/React.createElement("div", {
+  }, "26-", o.no, "\uFF08PDF\u672A\u691C\u51FA\uFF09"))))), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-x-3 gap-y-1.5 mt-3 text-[11px] text-slate-500"
   }, /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1.5"
@@ -3112,7 +3170,7 @@ function YardMap({
       background: "#dbe6f2",
       border: "1px solid #173a5e"
     }
-  }), "50k 在庫"), /*#__PURE__*/React.createElement("span", {
+  }), "50k \u5728\u5EAB"), /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1.5"
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-3 h-3 rounded-sm",
@@ -3120,14 +3178,14 @@ function YardMap({
       background: "#d9ebe6",
       border: "1px solid #2f7d6b"
     }
-  }), "20k 在庫"), /*#__PURE__*/React.createElement("span", {
+  }), "20k \u5728\u5EAB"), /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1.5"
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-3 h-3 rounded-sm border border-slate-300",
     style: {
       background: "#f8fafc"
     }
-  }), "空き・予定"), /*#__PURE__*/React.createElement("span", {
+  }), "\u7A7A\u304D\u30FB\u4E88\u5B9A"), /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1.5"
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-3 h-3 rounded-sm",
@@ -3135,9 +3193,9 @@ function YardMap({
       background: "#ffe4c7",
       border: "1px solid #ea7a17"
     }
-  }), "引当済"), /*#__PURE__*/React.createElement("span", {
+  }), "\u5F15\u5F53\u6E08"), /*#__PURE__*/React.createElement("span", {
     className: "text-slate-400"
-  }, "ブロックをタップで明細")));
+  }, "\u30D6\u30ED\u30C3\u30AF\u3092\u30BF\u30C3\u30D7\u3067\u660E\u7D30")));
 }
 function YardTab({
   inventory,
@@ -3151,13 +3209,13 @@ function YardTab({
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "入込場マップ（実配置）"
-  }, "構内レイアウト"), /*#__PURE__*/React.createElement(YardMap, {
+    note: "\u5165\u8FBC\u5834\u30DE\u30C3\u30D7\uFF08\u5B9F\u914D\u7F6E\uFF09"
+  }, "\u69CB\u5185\u30EC\u30A4\u30A2\u30A6\u30C8"), /*#__PURE__*/React.createElement(YardMap, {
     yardLive: yardLive,
     onRefresh: onRefresh
   })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "在庫照会 8/6 時点"
-  }, "サイズ別 在庫本数"), /*#__PURE__*/React.createElement("div", {
+    note: "\u5728\u5EAB\u7167\u4F1A 8/6 \u6642\u70B9"
+  }, "\u30B5\u30A4\u30BA\u5225 \u5728\u5EAB\u672C\u6570"), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-3 sm:grid-cols-4 gap-2"
   }, inventory.map(s => /*#__PURE__*/React.createElement(Card, {
     key: s.size,
@@ -3170,24 +3228,24 @@ function YardTab({
     className: "text-lg font-bold tabular-nums text-slate-900"
   }, s.total.toLocaleString()), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "本", s.approx ? "※" : "")))), /*#__PURE__*/React.createElement(Card, {
+  }, "\u672C", s.approx ? "※" : "")))), /*#__PURE__*/React.createElement(Card, {
     className: "p-3",
     style: {
       background: NAVY
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] text-slate-300 mb-0.5"
-  }, "合計"), /*#__PURE__*/React.createElement("div", {
+  }, "\u5408\u8A08"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-lg font-bold tabular-nums text-white"
   }, invTotal.toLocaleString()), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
-  }, "本"))))), /*#__PURE__*/React.createElement("div", {
+  }, "\u672C"))))), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-1 sm:grid-cols-2 gap-6"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "全在庫 実データ"
-  }, "製造年の内訳"), /*#__PURE__*/React.createElement(Card, {
+    note: "\u5168\u5728\u5EAB \u5B9F\u30C7\u30FC\u30BF"
+  }, "\u88FD\u9020\u5E74\u306E\u5185\u8A33"), /*#__PURE__*/React.createElement(Card, {
     className: "p-4 space-y-3"
   }, byYear.map((y, i) => /*#__PURE__*/React.createElement("div", {
     key: i
@@ -3197,7 +3255,7 @@ function YardTab({
     className: "text-sm text-slate-700"
   }, y.year), /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-bold tabular-nums text-slate-900"
-  }, y.count.toLocaleString(), " 本")), /*#__PURE__*/React.createElement("div", {
+  }, y.count.toLocaleString(), " \u672C")), /*#__PURE__*/React.createElement("div", {
     className: "h-2 rounded-full bg-slate-100 overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "h-full rounded-full",
@@ -3207,9 +3265,9 @@ function YardTab({
     }
   })))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400 pt-1"
-  }, "最古の刻印月：", oldest, "（古いロットの滞留チェック用）")))), /*#__PURE__*/React.createElement("p", {
+  }, "\u6700\u53E4\u306E\u523B\u5370\u6708\uFF1A", oldest, "\uFF08\u53E4\u3044\u30ED\u30C3\u30C8\u306E\u6EDE\u7559\u30C1\u30A7\u30C3\u30AF\u7528\uFF09")))), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-400"
-  }, "※ GAS環境で開くと在庫照会の最新データに自動更新されます（5分ごと）。"));
+  }, "\u203B GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u5728\u5EAB\u7167\u4F1A\u306E\u6700\u65B0\u30C7\u30FC\u30BF\u306B\u81EA\u52D5\u66F4\u65B0\u3055\u308C\u307E\u3059\uFF085\u5206\u3054\u3068\uFF09\u3002"));
 }
 
 /* ---------- ルート ---------- */
@@ -3572,7 +3630,7 @@ function InventoryTrendChart({
       color: VIZ.muted,
       marginTop: 2
     }
-  }, "※ 縦の線は月の区切り。日々の変動が読めるように、縦軸は0から始めていません"));
+  }, "\u203B \u7E26\u306E\u7DDA\u306F\u6708\u306E\u533A\u5207\u308A\u3002\u65E5\u3005\u306E\u5909\u52D5\u304C\u8AAD\u3081\u308B\u3088\u3046\u306B\u3001\u7E26\u8EF8\u306F0\u304B\u3089\u59CB\u3081\u3066\u3044\u307E\u305B\u3093"));
 }
 
 /* ---------- 月次出荷実績：棒グラフ（1系列なので凡例は不要） ---------- */
@@ -3714,7 +3772,7 @@ function MonthlyCombinedChart({
       background: VIZ.s2,
       display: "inline-block"
     }
-  }), "出荷"), hasPlan && /*#__PURE__*/React.createElement("span", {
+  }), "\u51FA\u8377"), hasPlan && /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3725,7 +3783,7 @@ function MonthlyCombinedChart({
       opacity: 0.35,
       display: "inline-block"
     }
-  }), "出荷予定"), hasOrders && /*#__PURE__*/React.createElement("span", {
+  }), "\u51FA\u8377\u4E88\u5B9A"), hasOrders && /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3735,7 +3793,7 @@ function MonthlyCombinedChart({
       background: VIZ.s3,
       display: "inline-block"
     }
-  }), "受注"), /*#__PURE__*/React.createElement("span", {
+  }), "\u53D7\u6CE8"), /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3744,7 +3802,7 @@ function MonthlyCombinedChart({
       background: VIZ.s1,
       display: "inline-block"
     }
-  }), "月末在庫")), /*#__PURE__*/React.createElement("div", {
+  }), "\u6708\u672B\u5728\u5EAB")), /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] mb-1 text-right",
     style: {
       color: VIZ.muted
@@ -3854,7 +3912,7 @@ function MonthlyCombinedChart({
     textAnchor: "middle",
     fontSize: "7",
     fill: VIZ.muted
-  }, "集計中")));
+  }, "\u96C6\u8A08\u4E2D")));
 }
 
 /* ---------- 実績・推移タブ本体 ---------- */
@@ -3887,24 +3945,24 @@ function ActualsTab({
   }, note)), extra), children);
   const mcMonths = mc && mc.months ? mc.months : null;
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
-    title: "在庫・出荷・受注",
-    note: (mc && mc.startMonth ? vizYearMonth(mc.startMonth).replace("-", "年") + "月以降（年度）。" : "") + "月ごと。単位はどれも本数なので同じ縦軸に載せています",
+    title: "\u5728\u5EAB\u30FB\u51FA\u8377\u30FB\u53D7\u6CE8",
+    note: mc && mc.startMonth ? vizDateParts(mc.startMonth).y + "年" + vizMonthLabel(mc.startMonth) + "〜（年度）" : "月ごと",
     extra: mc && mc.sheetUrl && /*#__PURE__*/React.createElement("a", {
       href: mc.sheetUrl,
       target: "_blank",
       rel: "noreferrer",
-      className: "text-[10px] underline",
+      className: "text-[11px] underline whitespace-nowrap shrink-0",
       style: {
         color: NAVY
       }
-    }, "元データ")
+    }, "\u5143\u30C7\u30FC\u30BF")
   }, !mc ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-400 py-4 text-center"
-  }, "読み込み中…") : mc.error ? /*#__PURE__*/React.createElement("div", {
+  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : mc.error ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-amber-700 py-2"
-  }, "取得エラー：", mc.error) : !mcMonths || mcMonths.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "\u53D6\u5F97\u30A8\u30E9\u30FC\uFF1A", mc.error) : !mcMonths || mcMonths.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 py-2"
-  }, "まだデータが貯まっていません。1時間ごとに取り込んで集計します。") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyCombinedChart, {
+  }, "\u307E\u3060\u30C7\u30FC\u30BF\u304C\u8CAF\u307E\u3063\u3066\u3044\u307E\u305B\u3093\u30021\u6642\u9593\u3054\u3068\u306B\u53D6\u308A\u8FBC\u3093\u3067\u96C6\u8A08\u3057\u307E\u3059\u3002") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyCombinedChart, {
     months: mcMonths,
     hasOrders: mc.hasOrders,
     hasPlan: mc.hasPlan,
@@ -3912,66 +3970,64 @@ function ActualsTab({
   }), /*#__PURE__*/React.createElement("div", {
     className: "mt-3 rounded-md border border-slate-200 overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5"
+    className: "flex text-[11px] font-semibold text-slate-500 bg-slate-50 px-2.5 py-2"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "w-12"
-  }, "月"), /*#__PURE__*/React.createElement("span", {
+    className: "w-16"
+  }, "\u6708"), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
-  }, "出荷"), mc.hasPlan && /*#__PURE__*/React.createElement("span", {
-    className: "w-14 text-right"
-  }, "予定"), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
+  }, "\u51FA\u8377"), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
-  }, "受注"), /*#__PURE__*/React.createElement("span", {
+  }, "\u53D7\u6CE8"), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
-  }, "月末在庫")), (() => {
+  }, "\u6708\u672B\u5728\u5EAB")), (() => {
     const sum = k => mcMonths.reduce((a, m) => a + (m[k] || 0), 0);
     const range = mcMonths.length > 1 ? vizMonthLabel(mcMonths[0].年月) + "〜" + vizMonthLabel(mcMonths[mcMonths.length - 1].年月) : vizMonthLabel(mcMonths[0].年月);
     return /*#__PURE__*/React.createElement("div", {
-      className: "flex text-[11px] px-2 py-1.5 border-t-2 border-slate-300 bg-slate-50 font-bold"
+      className: "flex items-start text-[15px] px-2.5 py-2.5 border-t-2 border-slate-300 bg-slate-50 font-bold"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "w-12 text-slate-600"
+      className: "w-16 text-[13px] text-slate-600 pt-0.5"
     }, range), /*#__PURE__*/React.createElement("span", {
       className: "flex-1 text-right tabular-nums",
       style: {
         color: NAVY
       }
-    }, vizComma(sum("出荷"))), mc.hasPlan && /*#__PURE__*/React.createElement("span", {
-      className: "w-14 text-right tabular-nums text-slate-400"
-    }, sum("出荷予定") ? "+" + vizComma(sum("出荷予定")) : ""), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
-      className: "flex-1 text-right tabular-nums text-slate-600"
+    }, vizComma(sum("出荷")), mc.hasPlan && sum("出荷予定") > 0 && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] font-semibold text-slate-400"
+    }, "\u4E88\u5B9A +", vizComma(sum("出荷予定")))), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
+      className: "flex-1 text-right tabular-nums text-slate-700"
     }, vizComma(sum("受注"))), /*#__PURE__*/React.createElement("span", {
       className: "flex-1 text-right text-slate-300"
-    }, "—"));
+    }, "\u2014"));
   })(), mcMonths.slice().reverse().map(m => /*#__PURE__*/React.createElement("div", {
     key: m.年月,
-    className: "flex text-[11px] px-2 py-1.5 border-t border-slate-100"
+    className: "flex items-start text-[15px] px-2.5 py-2.5 border-t border-slate-100"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "w-12 text-slate-600"
+    className: "w-16 text-[13px] text-slate-600 pt-0.5"
   }, vizMonthLabel(m.年月)), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right tabular-nums font-semibold",
     style: {
       color: NAVY
     }
-  }, m.出荷 == null ? "—" : vizComma(m.出荷)), mc.hasPlan && /*#__PURE__*/React.createElement("span", {
-    className: "w-14 text-right tabular-nums text-slate-400"
-  }, m.出荷予定 ? "+" + vizComma(m.出荷予定) : ""), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
-    className: "flex-1 text-right tabular-nums text-slate-600"
+  }, m.出荷 == null ? "—" : vizComma(m.出荷), m.出荷予定 > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "block text-[11px] font-semibold text-slate-400"
+  }, "\u4E88\u5B9A +", vizComma(m.出荷予定))), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-right tabular-nums text-slate-700"
   }, m.受注 == null ? "—" : vizComma(m.受注)), /*#__PURE__*/React.createElement("span", {
-    className: "flex-1 text-right tabular-nums text-slate-600"
+    className: "flex-1 text-right tabular-nums text-slate-700"
   }, m.在庫 == null ? "—" : vizComma(m.在庫))))))), /*#__PURE__*/React.createElement(Card, {
-    title: "在庫推移",
+    title: "\u5728\u5EAB\u63A8\u79FB",
     note: inv && inv.days && inv.days.length > 0 ? inv.days.length + "日分（" + inv.days[0].日付 + " 〜 " + inv.days[inv.days.length - 1].日付 + "）" : null
   }, !inv ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-400 py-4 text-center"
-  }, "読み込み中…") : inv.error ? /*#__PURE__*/React.createElement("div", {
+  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : inv.error ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-amber-700 py-2"
-  }, "取得エラー：", inv.error) : !inv.days || inv.days.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "\u53D6\u5F97\u30A8\u30E9\u30FC\uFF1A", inv.error) : !inv.days || inv.days.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 py-2"
-  }, "まだ在庫の履歴が貯まっていません。1時間ごとの自動収集で溜まっていきます。") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, "\u307E\u3060\u5728\u5EAB\u306E\u5C65\u6B74\u304C\u8CAF\u307E\u3063\u3066\u3044\u307E\u305B\u3093\u30021\u6642\u9593\u3054\u3068\u306E\u81EA\u52D5\u53CE\u96C6\u3067\u6E9C\u307E\u3063\u3066\u3044\u304D\u307E\u3059\u3002") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "flex items-end gap-4 mb-3"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-500"
-  }, "総本数（", inv.latest.日付, "）"), /*#__PURE__*/React.createElement("div", {
+  }, "\u7DCF\u672C\u6570\uFF08", inv.latest.日付, "\uFF09"), /*#__PURE__*/React.createElement("div", {
     className: "text-2xl font-bold",
     style: {
       color: NAVY
@@ -3980,7 +4036,7 @@ function ActualsTab({
     className: "pb-1"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-500"
-  }, "前回（", inv.change.前回日付, "）比"), /*#__PURE__*/React.createElement("div", {
+  }, "\u524D\u56DE\uFF08", inv.change.前回日付, "\uFF09\u6BD4"), /*#__PURE__*/React.createElement("div", {
     className: "text-sm font-semibold",
     style: {
       color: VIZ.ink2
@@ -3989,8 +4045,8 @@ function ActualsTab({
     days: inv.days
   }) : /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 py-2"
-  }, "推移グラフは2日分以上貯まると出ます。"))), /*#__PURE__*/React.createElement(Card, {
-    title: "月次出荷実績",
+  }, "\u63A8\u79FB\u30B0\u30E9\u30D5\u306F2\u65E5\u5206\u4EE5\u4E0A\u8CAF\u307E\u308B\u3068\u51FA\u307E\u3059\u3002"))), /*#__PURE__*/React.createElement(Card, {
+    title: "\u6708\u6B21\u51FA\u8377\u5B9F\u7E3E",
     note: act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null,
     extra: act && act.sheetUrl && /*#__PURE__*/React.createElement("a", {
       href: act.sheetUrl,
@@ -4000,14 +4056,14 @@ function ActualsTab({
       style: {
         color: NAVY
       }
-    }, "元データ")
+    }, "\u5143\u30C7\u30FC\u30BF")
   }, !act ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-400 py-4 text-center"
-  }, "読み込み中…") : act.error ? /*#__PURE__*/React.createElement("div", {
+  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : act.error ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-amber-700 py-2"
-  }, "取得エラー：", act.error) : !act.months || act.months.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "\u53D6\u5F97\u30A8\u30E9\u30FC\uFF1A", act.error) : !act.months || act.months.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 py-2"
-  }, "まだ出荷実績が貯まっていません。指図書PDFを1時間ごとに読み込んで集計します （初回は全期間ぶんあるので数日かかります）。") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyShipChart, {
+  }, "\u307E\u3060\u51FA\u8377\u5B9F\u7E3E\u304C\u8CAF\u307E\u3063\u3066\u3044\u307E\u305B\u3093\u3002\u6307\u56F3\u66F8PDF\u30921\u6642\u9593\u3054\u3068\u306B\u8AAD\u307F\u8FBC\u3093\u3067\u96C6\u8A08\u3057\u307E\u3059 \uFF08\u521D\u56DE\u306F\u5168\u671F\u9593\u3076\u3093\u3042\u308B\u306E\u3067\u6570\u65E5\u304B\u304B\u308A\u307E\u3059\uFF09\u3002") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyShipChart, {
     months: act.months
   }), /*#__PURE__*/React.createElement("div", {
     className: "mt-3 rounded-md border border-slate-200 overflow-hidden"
@@ -4015,13 +4071,13 @@ function ActualsTab({
     className: "flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5"
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-14"
-  }, "月"), /*#__PURE__*/React.createElement("span", {
+  }, "\u6708"), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
-  }, "本数"), /*#__PURE__*/React.createElement("span", {
+  }, "\u672C\u6570"), /*#__PURE__*/React.createElement("span", {
     className: "w-12 text-right"
-  }, "件数"), /*#__PURE__*/React.createElement("span", {
+  }, "\u4EF6\u6570"), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
-  }, "内訳")), act.months.map(m => /*#__PURE__*/React.createElement("div", {
+  }, "\u5185\u8A33")), act.months.map(m => /*#__PURE__*/React.createElement("div", {
     key: m.年月,
     className: "flex text-[11px] px-2 py-1.5 border-t border-slate-100"
   }, /*#__PURE__*/React.createElement("span", {
@@ -4059,15 +4115,15 @@ function ActualsTab({
     }
   }, vizComma(dst.本数)), /*#__PURE__*/React.createElement("span", {
     className: "text-right text-slate-400 tabular-nums w-10"
-  }, dst.件数, "件"))))), (act.mismatchCount > 0 || act.needsCheckCount > 0 || act.nonCylinderCount > 0) && /*#__PURE__*/React.createElement("div", {
+  }, dst.件数, "\u4EF6"))))), (act.mismatchCount > 0 || act.needsCheckCount > 0 || act.nonCylinderCount > 0) && /*#__PURE__*/React.createElement("div", {
     className: "mt-3 text-[10px] text-slate-500 leading-relaxed"
-  }, act.mismatchCount > 0 && /*#__PURE__*/React.createElement("div", null, "数量と容器番号レンジが食い違う指図書：", act.mismatchCount, "件"), act.needsCheckCount > 0 && /*#__PURE__*/React.createElement("div", null, "PDFの文字が読めず要確認：", act.needsCheckCount, "件"), act.nonCylinderCount > 0 && /*#__PURE__*/React.createElement("div", null, "容器以外（バルク貯槽など）で本数集計から除外：", act.nonCylinderCount, "件")))), /*#__PURE__*/React.createElement("button", {
+  }, act.mismatchCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u6570\u91CF\u3068\u5BB9\u5668\u756A\u53F7\u30EC\u30F3\u30B8\u304C\u98DF\u3044\u9055\u3046\u6307\u56F3\u66F8\uFF1A", act.mismatchCount, "\u4EF6"), act.needsCheckCount > 0 && /*#__PURE__*/React.createElement("div", null, "PDF\u306E\u6587\u5B57\u304C\u8AAD\u3081\u305A\u8981\u78BA\u8A8D\uFF1A", act.needsCheckCount, "\u4EF6"), act.nonCylinderCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u5BB9\u5668\u4EE5\u5916\uFF08\u30D0\u30EB\u30AF\u8CAF\u69FD\u306A\u3069\uFF09\u3067\u672C\u6570\u96C6\u8A08\u304B\u3089\u9664\u5916\uFF1A", act.nonCylinderCount, "\u4EF6")))), /*#__PURE__*/React.createElement("button", {
     onClick: onRefresh,
     className: "w-full py-2 rounded-lg text-xs font-semibold text-white",
     style: {
       background: NAVY
     }
-  }, "最新に更新"));
+  }, "\u6700\u65B0\u306B\u66F4\u65B0"));
 }
 function App() {
   const [tab, setTab] = useState("orders");
@@ -4415,6 +4471,41 @@ function App() {
       icon: Boxes,
       tone: "neutral"
     }],
+    // 実績・推移タブ。ほかのタブと同じ大きな数字のタイルを出す。
+    // ★ 在庫は残高なので累計を出さない（4月〜9月の月末在庫を足しても意味が無い）。
+    //   代わりに「最新の残高」と「年度はじめから何本増えたか」を出す。
+    actuals: (() => {
+      const mc = live.monthly;
+      const ms = mc && mc.months ? mc.months : [];
+      const cur = ms.length > 0 ? ms[ms.length - 1] : null;
+      const sum = k => ms.reduce((a, m) => a + (m[k] || 0), 0);
+      const invMonths = ms.filter(m => m.在庫 != null);
+      const invNow = invMonths.length > 0 ? invMonths[invMonths.length - 1].在庫 : null;
+      const invFirst = invMonths.length > 1 ? invMonths[0].在庫 : null;
+      const invDiff = invNow != null && invFirst != null ? invNow - invFirst : null;
+      const range = ms.length > 0 ? vizMonthLabel(ms[0].年月) + "〜" + vizMonthLabel(ms[ms.length - 1].年月) : "";
+      return [{
+        label: "出荷 累計" + (range ? "（" + range + "）" : ""),
+        value: ms.length ? vizComma(sum("出荷")) : "—",
+        unit: "本",
+        icon: Boxes,
+        tone: "ok"
+      }, {
+        label: cur ? vizMonthLabel(cur.年月) + " 出荷" : "今月 出荷",
+        value: cur && cur.出荷 != null ? vizComma(cur.出荷) : "—",
+        unit: "本",
+        icon: Package,
+        tone: "ok",
+        sub: cur && cur.出荷予定 > 0 ? "予定 +" + vizComma(cur.出荷予定) + " 本" : undefined
+      }, {
+        label: "LP容器 在庫",
+        value: invNow != null ? vizComma(invNow) : "—",
+        unit: "本",
+        icon: Boxes,
+        tone: "neutral",
+        sub: invDiff != null ? (invDiff > 0 ? "+" : "") + vizComma(invDiff) + " 本（年度はじめ比）" : undefined
+      }];
+    })(),
     dispatch: [{
       label: "週の合計トラック台数",
       value: String(dispatchWeekTruckTotal),
@@ -4456,7 +4547,7 @@ function App() {
       className: "flex flex-row items-center gap-3"
     }, /*#__PURE__*/React.createElement("p", {
       className: "text-sm text-slate-500"
-    }, "データを読み込んでいます…"), /*#__PURE__*/React.createElement(ForkliftLoader, null)));
+    }, "\u30C7\u30FC\u30BF\u3092\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059\u2026"), /*#__PURE__*/React.createElement(ForkliftLoader, null)));
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen bg-slate-100 text-slate-900",
@@ -4485,7 +4576,7 @@ function App() {
     className: "hidden sm:inline-flex items-center gap-1 text-[11px] text-emerald-300"
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-1.5 h-1.5 rounded-full bg-emerald-400"
-  }), "稼働中")), /*#__PURE__*/React.createElement("p", {
+  }), "\u7A3C\u50CD\u4E2D")), /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-slate-300 mt-0.5"
   }, currentHeader.subtitle)), /*#__PURE__*/React.createElement("button", {
     onClick: () => fetchLiveData(true),
@@ -4495,7 +4586,7 @@ function App() {
     className: live.loading ? "animate-spin" : ""
   }), /*#__PURE__*/React.createElement("span", {
     className: "tabular-nums"
-  }, timeLabel, " 更新")))), /*#__PURE__*/React.createElement("main", {
+  }, timeLabel, " \u66F4\u65B0")))), /*#__PURE__*/React.createElement("main", {
     className: "max-w-4xl mx-auto px-4 py-5 space-y-6"
   }, /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-2 sm:grid-cols-4 gap-3"
@@ -4556,7 +4647,7 @@ function App() {
     week: dispatchWeek
   })), /*#__PURE__*/React.createElement("p", {
     className: "text-center text-[10px] text-slate-400 pt-2"
-  }, "※ GAS環境で開くと各タブの実データは最新に自動更新されます（5分ごと）。ヘッダー・KPIもタブごとに切り替わります。")));
+  }, "\u203B GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u5404\u30BF\u30D6\u306E\u5B9F\u30C7\u30FC\u30BF\u306F\u6700\u65B0\u306B\u81EA\u52D5\u66F4\u65B0\u3055\u308C\u307E\u3059\uFF085\u5206\u3054\u3068\uFF09\u3002\u30D8\u30C3\u30C0\u30FC\u30FBKPI\u3082\u30BF\u30D6\u3054\u3068\u306B\u5207\u308A\u66FF\u308F\u308A\u307E\u3059\u3002")));
 }
 ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
