@@ -443,7 +443,132 @@ function YardMap({ yardLive, onRefresh }) {
       };
     }),
   };
-  const switchSize = (s) => { setSize(s); setSel(null); setEditing(false); };
+  /* ---------- マップのピンチズーム／パン ---------- */
+  // viewBoxを書き換える方式にしている（CSSのtransformだとタップ位置と
+  // 図形のずれが出るため）。zoom が null のときは等倍・全体表示。
+  const [zoom, setZoom] = useState(null);   // null | { x, y, scale }
+  const svgRef = React.useRef(null);
+  // ジェスチャ中の一時的な値。再描画に関係ないのでrefに置く
+  const gest = React.useRef({ mode: null, moved: 0, px: 0, py: 0, startZoom: null, startDist: 0, suppressClick: false });
+
+  const vbNums = data.viewBox.split(" ").map(Number);   // [x, y, w, h]
+  const baseX = vbNums[0], baseY = vbNums[1], baseW = vbNums[2], baseH = vbNums[3];
+  const MIN_SCALE = 1, MAX_SCALE = 5;
+  const curScale = zoom ? zoom.scale : 1;
+  const curViewBox = zoom
+    ? zoom.x + " " + zoom.y + " " + (baseW / zoom.scale) + " " + (baseH / zoom.scale)
+    : data.viewBox;
+
+  // 表示範囲がマップの外に出ないように収める
+  const clampZoom = (x, y, scale) => {
+    const s = Math.min(Math.max(scale, MIN_SCALE), MAX_SCALE);
+    const w = baseW / s, h = baseH / s;
+    return {
+      x: Math.min(Math.max(x, baseX), baseX + baseW - w),
+      y: Math.min(Math.max(y, baseY), baseY + baseH - h),
+      scale: s,
+    };
+  };
+  // 画面上の1pxが viewBox 何単位に相当するか
+  const unitPerPx = () => {
+    const el = svgRef.current;
+    const rect = el ? el.getBoundingClientRect() : null;
+    if (!rect || !rect.width) return baseW / 360;
+    return (baseW / curScale) / rect.width;
+  };
+  const midOf = (t1, t2) => ({ x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 });
+  const distOf = (t1, t2) => {
+    const dx = t1.clientX - t2.clientX, dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+  // 画面座標 → viewBox座標
+  const toVb = (clientX, clientY, z) => {
+    const el = svgRef.current;
+    const rect = el ? el.getBoundingClientRect() : null;
+    if (!rect || !rect.width) return { x: baseX, y: baseY };
+    const w = baseW / z.scale, h = baseH / z.scale;
+    return {
+      x: z.x + (clientX - rect.left) * (w / rect.width),
+      y: z.y + (clientY - rect.top) * (h / rect.height),
+    };
+  };
+
+  const onTouchStart = (e) => {
+    const t = e.touches;
+    const z = zoom || { x: baseX, y: baseY, scale: 1 };
+    gest.current.moved = 0;
+    gest.current.startZoom = z;
+    if (t.length === 2) {
+      gest.current.mode = "pinch";
+      gest.current.startDist = distOf(t[0], t[1]);
+      const m = midOf(t[0], t[1]);
+      gest.current.anchorVb = toVb(m.x, m.y, z);
+    } else if (t.length === 1) {
+      gest.current.mode = "pan";
+      gest.current.px = t[0].clientX;
+      gest.current.py = t[0].clientY;
+    }
+  };
+
+  const onTouchMove = (e) => {
+    const t = e.touches;
+    const g = gest.current;
+    if (g.mode === "pinch" && t.length === 2 && g.startDist > 0) {
+      const ratio = distOf(t[0], t[1]) / g.startDist;
+      const nextScale = Math.min(Math.max(g.startZoom.scale * ratio, MIN_SCALE), MAX_SCALE);
+      const m = midOf(t[0], t[1]);
+      const el = svgRef.current;
+      const rect = el ? el.getBoundingClientRect() : null;
+      g.moved = 999;   // ピンチはタップ扱いにしない
+      if (rect && rect.width) {
+        const w = baseW / nextScale, h = baseH / nextScale;
+        // つまんだ点がずれないように、その点を基準に表示範囲を決める
+        const nx = g.anchorVb.x - (m.x - rect.left) * (w / rect.width);
+        const ny = g.anchorVb.y - (m.y - rect.top) * (h / rect.height);
+        setZoom(clampZoom(nx, ny, nextScale));
+      } else {
+        setZoom(clampZoom(g.startZoom.x, g.startZoom.y, nextScale));
+      }
+    } else if (g.mode === "pan" && t.length === 1) {
+      const dx = t[0].clientX - g.px;
+      const dy = t[0].clientY - g.py;
+      g.moved += Math.abs(dx) + Math.abs(dy);
+      g.px = t[0].clientX;
+      g.py = t[0].clientY;
+      if (zoom) {   // 等倍のときは動かさない（区画のタップを邪魔しないため）
+        const u = unitPerPx();
+        setZoom(clampZoom(zoom.x - dx * u, zoom.y - dy * u, zoom.scale));
+      }
+    }
+  };
+
+  const onTouchEnd = () => {
+    // 指を動かしていたらタップ扱いにしない（パン中に区画が選択されるのを防ぐ）
+    if (gest.current.moved > 8) gest.current.suppressClick = true;
+    gest.current.mode = null;
+  };
+
+  const onClickCapture = (e) => {
+    if (gest.current.suppressClick) {
+      gest.current.suppressClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  };
+
+  const zoomBy = (mul) => {
+    const z = zoom || { x: baseX, y: baseY, scale: 1 };
+    const nextScale = Math.min(Math.max(z.scale * mul, MIN_SCALE), MAX_SCALE);
+    if (nextScale === 1) { setZoom(null); return; }
+    // 表示中の中心を保ったまま拡大縮小する
+    const w = baseW / z.scale, h = baseH / z.scale;
+    const cx = z.x + w / 2, cy = z.y + h / 2;
+    const nw = baseW / nextScale, nh = baseH / nextScale;
+    setZoom(clampZoom(cx - nw / 2, cy - nh / 2, nextScale));
+  };
+  const resetZoom = () => setZoom(null);
+
+  const switchSize = (s) => { setSize(s); setSel(null); setEditing(false); setZoom(null); };
 
   const [orderLookupStatus, setOrderLookupStatus] = useState(null); // null | "loading" | "done" | "error"
 
@@ -555,8 +680,16 @@ function YardMap({ yardLive, onRefresh }) {
       </div>
 
       {view === "map" && (
-        <div className="w-full overflow-x-auto">
-          <svg viewBox={data.viewBox} className="w-full h-auto" style={{ width: "100%", minWidth: 600, maxHeight: 560 }}>
+        <div>
+          <div
+            style={{ width: "100%", overflow: "hidden", touchAction: "none", borderRadius: 8 }}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            onTouchCancel={onTouchEnd}
+            onClickCapture={onClickCapture}
+          >
+          <svg ref={svgRef} viewBox={curViewBox} className="w-full h-auto" style={{ width: "100%", maxHeight: 560, display: "block" }}>
           <rect x="6" y="6" width={data.viewBox.split(" ")[2] - 12} height={data.viewBox.split(" ")[3] - 12} rx="8" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1.5" />
           {data.landmarks.map((l, i) => (
             <g key={"lm" + i}>
@@ -570,7 +703,27 @@ function YardMap({ yardLive, onRefresh }) {
             <YardBlock key={i} b={b} size={size} selected={sel && sel.pos === b.pos && sel.x === b.x} onSelect={selectBlock} />
           ))}
         </svg>
-          <p className="text-[10px] text-slate-400 mt-1">横スクロールで全体を確認できます</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+            <button onClick={() => zoomBy(1 / 1.6)} disabled={curScale <= 1}
+              style={{ width: 30, height: 30, borderRadius: 6, border: "1px solid #cbd5e1",
+                       background: "#fff", fontSize: 16, lineHeight: 1, color: curScale <= 1 ? "#cbd5e1" : "#334155" }}>−</button>
+            <button onClick={() => zoomBy(1.6)} disabled={curScale >= 5}
+              style={{ width: 30, height: 30, borderRadius: 6, border: "1px solid #cbd5e1",
+                       background: "#fff", fontSize: 16, lineHeight: 1, color: curScale >= 5 ? "#cbd5e1" : "#334155" }}>＋</button>
+            <span style={{ fontSize: 11, color: "#64748b", fontVariantNumeric: "tabular-nums", minWidth: 38 }}>
+              {Math.round(curScale * 100) + "%"}
+            </span>
+            {zoom && (
+              <button onClick={resetZoom}
+                style={{ fontSize: 11, fontWeight: 600, color: NAVY, background: "none", border: "none", padding: "4px 2px" }}>
+                全体に戻す
+              </button>
+            )}
+            <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto", textAlign: "right" }}>
+              {zoom ? "1本指で移動・2本指でズーム" : "2本指でズームできます"}
+            </span>
+          </div>
         </div>
       )}
 

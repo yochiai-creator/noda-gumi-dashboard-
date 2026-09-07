@@ -1,0 +1,14 @@
+{
+  "name": "noda-gumi-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "野田組 業務ダッシュボード（GAS + React）のフロントエンドビルド",
+  "scripts": {
+    "build": "node tools/build.js",
+    "check": "node tools/build.js --check"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.5",
+    "@babel/preset-react": "^7.28.5"
+  }
+}
