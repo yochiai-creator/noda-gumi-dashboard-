@@ -719,8 +719,8 @@ function diagnoseShippingMonth(ym) {
   Object.keys(byCheck).sort().forEach(function (k) { Logger.log('  ' + (k || '(空)') + ': ' + byCheck[k] + '件'); });
   if (needFix > 0) {
     Logger.log('');
-    Logger.log('★ 桁違いのレンジを数量にしている行が ' + needFix + ' 件あります。');
-    Logger.log('  repairImplausibleQuantities を実行すると直ります。');
+    Logger.log('★ 本数がおかしい行が ' + needFix + ' 件あります（本文の数量・容器レンジの');
+    Logger.log('  どちらかが桁違い）。repairImplausibleQuantities を実行すると直ります。');
   }
   Logger.log('');
   Logger.log('■ 本数の多い順トップ15（桁違いの行があれば先頭に出ます）');
