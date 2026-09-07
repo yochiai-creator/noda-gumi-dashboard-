@@ -2324,6 +2324,8 @@ function YardBlock({
   b,
   size,
   selected,
+  matched,
+  dimmed,
   onSelect
 }) {
   const st = YARD_STYLE[size];
@@ -2347,9 +2349,19 @@ function YardBlock({
   return /*#__PURE__*/React.createElement("g", {
     onClick: () => onSelect(b),
     style: {
-      cursor: "pointer"
+      cursor: "pointer",
+      opacity: dimmed ? 0.25 : 1
     }
-  }, /*#__PURE__*/React.createElement("rect", {
+  }, matched && /*#__PURE__*/React.createElement("rect", {
+    x: b.x - 3,
+    y: b.y - 3,
+    width: b.w + 6,
+    height: b.h + 6,
+    rx: "5",
+    fill: "none",
+    stroke: "#2563eb",
+    strokeWidth: "2.5"
+  }), /*#__PURE__*/React.createElement("rect", {
     x: b.x,
     y: b.y,
     width: b.w,
@@ -2445,6 +2457,56 @@ function YardMap({
       };
     })
   };
+  /* ---------- 区画検索 ---------- */
+  // 依頼No / 容器番号 / GNo / 位置ラベル で該当区画を探す。
+  // 検索に必要な値はすべてこの時点の data.blocks に揃っているので、
+  // GASへの問い合わせは不要（＝入力するたびに即座に絞り込める）。
+  const [query, setQuery] = useState("");
+
+  // "76151〜76200" のような表記から数値の範囲を取り出す
+  const parseRange = rng => {
+    if (!rng) return null;
+    const m = String(rng).match(/(\d+)\s*[〜~～-]\s*(\d+)/);
+    if (!m) return null;
+    const a = Number(m[1]),
+      b = Number(m[2]);
+    if (!a || !b || a > b) return null; // "-99〜0"（未入力）は範囲として扱わない
+    return {
+      start: a,
+      end: b
+    };
+  };
+  const matchBlock = (b, q) => {
+    const hit = [];
+    // 位置ラベル（完全一致のみ。部分一致だと1と10などが混ざる）
+    if (String(b.pos) === q) hit.push("位置");
+    // GNo（完全一致）
+    if (b.grp != null && String(b.grp) === q) hit.push("GNo");
+    // 依頼No（部分一致。「30462」でも「26-30462」でも引っかかるように）
+    if (b.orders && b.orders.some(o => o && o.no && String(o.no).indexOf(q) !== -1)) hit.push("依頼No");
+    // 容器番号（数字ならレンジに含まれるかを見る）
+    const n = Number(q);
+    if (q !== "" && !isNaN(n)) {
+      const r = parseRange(b.rng);
+      if (r && n >= r.start && n <= r.end) hit.push("容器番号");
+    }
+    return hit;
+  };
+  const q = query.trim();
+  // ヒットした区画の位置ラベル→ヒット理由
+  const searchHits = {};
+  let hitCount = 0;
+  if (q) {
+    data.blocks.forEach(b => {
+      const why = matchBlock(b, q);
+      if (why.length > 0) {
+        searchHits[String(b.pos)] = why;
+        hitCount++;
+      }
+    });
+  }
+  const isHit = b => q !== "" && !!searchHits[String(b.pos)];
+
   /* ---------- マップのピンチズーム／パン ---------- */
   // viewBoxを書き換える方式にしている（CSSのtransformだとタップ位置と
   // 図形のずれが出るため）。zoom が null のときは等倍・全体表示。
@@ -2708,7 +2770,45 @@ function YardMap({
     style: view === v ? {
       background: NAVY
     } : undefined
-  }, label)))), view === "map" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, label)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "search",
+    inputMode: "search",
+    value: query,
+    onChange: e => setQuery(e.target.value),
+    placeholder: "依頼No / 容器番号 / GNo / 位置",
+    style: {
+      flex: 1,
+      minWidth: 0,
+      padding: "7px 10px",
+      fontSize: 13,
+      borderRadius: 6,
+      border: "1px solid #cbd5e1",
+      background: "#fff",
+      color: "#0f172a"
+    }
+  }), q !== "" && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setQuery(""),
+    style: {
+      fontSize: 11,
+      color: "#64748b",
+      background: "none",
+      border: "none",
+      padding: "4px 2px"
+    }
+  }, "クリア")), q !== "" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      marginBottom: 8,
+      color: hitCount > 0 ? "#1d4ed8" : "#b45309"
+    }
+  }, hitCount > 0 ? hitCount + "件ヒット（" + Object.keys(searchHits).map(p => "<" + p + ">").join(" ") + "）" : "該当する区画がありません"), view === "map" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       width: "100%",
       overflow: "hidden",
@@ -2766,6 +2866,8 @@ function YardMap({
     b: b,
     size: size,
     selected: sel && sel.pos === b.pos && sel.x === b.x,
+    matched: isHit(b),
+    dimmed: q !== "" && hitCount > 0 && !isHit(b),
     onSelect: selectBlock
   })))), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2826,12 +2928,16 @@ function YardMap({
     }
   }, zoom ? "1本指で移動・2本指でズーム" : "2本指でズームできます"))), view === "list" && /*#__PURE__*/React.createElement("div", {
     className: "rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-96 overflow-y-auto"
-  }, blocksSorted.map((b, i) => /*#__PURE__*/React.createElement("button", {
+  }, (q !== "" && hitCount > 0 ? blocksSorted.filter(isHit) : blocksSorted).map((b, i) => /*#__PURE__*/React.createElement("button", {
     key: i,
     onClick: () => selectBlock(b),
     className: `w-full flex items-center gap-2.5 px-3 py-2.5 text-left ${sel && sel.pos === b.pos && sel.x === b.x ? "bg-amber-50" : "active:bg-slate-50"}`
   }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs font-mono text-slate-400 w-9 shrink-0"
+    className: "text-xs font-mono w-9 shrink-0",
+    style: {
+      color: isHit(b) ? "#1d4ed8" : "#94a3b8",
+      fontWeight: isHit(b) ? 700 : 400
+    }
   }, "<" + b.pos + ">"), /*#__PURE__*/React.createElement("div", {
     className: "flex-1 min-w-0"
   }, /*#__PURE__*/React.createElement("div", {

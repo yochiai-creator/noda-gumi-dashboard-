@@ -220,31 +220,68 @@ function getShippingActualsSummary_uncached_() {
   return data;
 }
 
-// ===== 公開関数：取込を自動で回すトリガーを用意する（無ければ作る） =====
-// ★ 初回バックフィル（12か月ぶん1200〜2400件）は実時間で1〜3時間かかるため、
-//   1時間ごとに実行して少しずつ進める。追いついた後は、その月の新しいPDFだけを
-//   見るので数秒で終わる（完了した月は丸ごと飛ばす）。
-function ensureShippingActualsTrigger() {
-  var handler = 'harvestShippingActuals';
-  var existing = ScriptApp.getProjectTriggers().filter(function (t) {
-    return t.getHandlerFunction() === handler;
-  });
-  if (existing.length > 0) {
-    return { ok: true, created: false, message: '既にトリガーが設定されています' };
+// ===== 公開関数：トリガーから呼ばれる「日次データ収集」の入口 =====
+// 在庫推移と出荷実績の両方を1回で進める。
+// 在庫推移を先にやるのは、こちらが軽い（初回15件・以降1日1件）ため。
+// 出荷実績は重いので、残り時間で進むところまで進める。
+function harvestDailyData() {
+  var out = { inventory: null, shipping: null };
+  try {
+    out.inventory = harvestInventoryHistory();
+  } catch (err) {
+    out.inventory = { error: String(err) };
+    Logger.log('在庫推移の取込で例外: ' + String(err));
   }
+  try {
+    out.shipping = harvestShippingActuals();
+  } catch (err) {
+    out.shipping = { error: String(err) };
+    Logger.log('出荷実績の取込で例外: ' + String(err));
+  }
+  return out;
+}
+
+// ===== 公開関数：取込を自動で回すトリガーを用意する（無ければ作る） =====
+// ★ 初回バックフィルは実時間で1〜3時間かかるため、1時間ごとに実行して
+//   少しずつ進める。追いついた後は、その月の新しいPDFだけを見るので
+//   数秒で終わる（完了した月は丸ごと飛ばす）。
+// ★ 以前は handler が harvestShippingActuals だった。在庫推移も一緒に
+//   回すようにしたので、古いトリガーが残っていたら自動で貼り替える
+//   （落合さんの手作業を増やさないため）。
+function ensureShippingActualsTrigger() {
+  var handler = 'harvestDailyData';
+  var oldHandler = 'harvestShippingActuals';
+  var migrated = 0, already = false;
+
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    var fn = t.getHandlerFunction();
+    if (fn === oldHandler) { ScriptApp.deleteTrigger(t); migrated++; }
+    else if (fn === handler) { already = true; }
+  });
+
+  if (already) {
+    var msg1 = '既にトリガーが設定されています' +
+               (migrated > 0 ? '（古いトリガー' + migrated + '件を削除しました）' : '');
+    Logger.log(msg1);
+    return { ok: true, created: false, migrated: migrated, message: msg1 };
+  }
+
   ScriptApp.newTrigger(handler).timeBased().everyHours(1).create();
-  Logger.log('出荷実績の取込トリガー（1時間ごと）を作成しました');
-  return { ok: true, created: true, message: '1時間ごとの取込トリガーを作成しました' };
+  var msg2 = '1時間ごとの取込トリガーを作成しました（在庫推移＋出荷実績）' +
+             (migrated > 0 ? '。古いトリガー' + migrated + '件は貼り替えました' : '');
+  Logger.log(msg2);
+  return { ok: true, created: true, migrated: migrated, message: msg2 };
 }
 
 function removeShippingActualsTrigger() {
   var removed = 0;
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'harvestShippingActuals') {
+    var fn = t.getHandlerFunction();
+    if (fn === 'harvestDailyData' || fn === 'harvestShippingActuals') {
       ScriptApp.deleteTrigger(t); removed++;
     }
   });
-  Logger.log('出荷実績の取込トリガーを' + removed + '件削除しました');
+  Logger.log('取込トリガーを' + removed + '件削除しました');
   return { ok: true, removed: removed };
 }
 

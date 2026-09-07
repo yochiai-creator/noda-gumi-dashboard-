@@ -366,7 +366,7 @@ const YARD_STYLE = {
   "20k": { fill: "#d9ebe6", stroke: "#2f7d6b", text: "#134a3d" },
 };
 
-function YardBlock({ b, size, selected, onSelect }) {
+function YardBlock({ b, size, selected, matched, dimmed, onSelect }) {
   const st = YARD_STYLE[size];
   let fill = st.fill, stroke = st.stroke, tcol = st.text;
   if (b.kind === "empty") { fill = "#f8fafc"; stroke = "#cbd5e1"; tcol = "#94a3b8"; }
@@ -378,7 +378,12 @@ function YardBlock({ b, size, selected, onSelect }) {
   const midY = b.y + b.h / 2 + (narrow ? 2 : 3);
 
   return (
-    <g onClick={() => onSelect(b)} style={{ cursor: "pointer" }}>
+    <g onClick={() => onSelect(b)} style={{ cursor: "pointer", opacity: dimmed ? 0.25 : 1 }}>
+      {/* 検索ヒットは外側に太い枠を出す（塗りは変えないので状態の色が読める） */}
+      {matched && (
+        <rect x={b.x - 3} y={b.y - 3} width={b.w + 6} height={b.h + 6} rx="5"
+          fill="none" stroke="#2563eb" strokeWidth="2.5" />
+      )}
       <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="3" fill={fill}
         stroke={selected ? SAFETY : stroke} strokeWidth={selected ? 3 : 1.2}
         strokeDasharray={b.kind === "empty" ? "4 3" : undefined} />
@@ -443,6 +448,51 @@ function YardMap({ yardLive, onRefresh }) {
       };
     }),
   };
+  /* ---------- 区画検索 ---------- */
+  // 依頼No / 容器番号 / GNo / 位置ラベル で該当区画を探す。
+  // 検索に必要な値はすべてこの時点の data.blocks に揃っているので、
+  // GASへの問い合わせは不要（＝入力するたびに即座に絞り込める）。
+  const [query, setQuery] = useState("");
+
+  // "76151〜76200" のような表記から数値の範囲を取り出す
+  const parseRange = (rng) => {
+    if (!rng) return null;
+    const m = String(rng).match(/(\d+)\s*[〜~～-]\s*(\d+)/);
+    if (!m) return null;
+    const a = Number(m[1]), b = Number(m[2]);
+    if (!a || !b || a > b) return null;   // "-99〜0"（未入力）は範囲として扱わない
+    return { start: a, end: b };
+  };
+
+  const matchBlock = (b, q) => {
+    const hit = [];
+    // 位置ラベル（完全一致のみ。部分一致だと1と10などが混ざる）
+    if (String(b.pos) === q) hit.push("位置");
+    // GNo（完全一致）
+    if (b.grp != null && String(b.grp) === q) hit.push("GNo");
+    // 依頼No（部分一致。「30462」でも「26-30462」でも引っかかるように）
+    if (b.orders && b.orders.some((o) => o && o.no && String(o.no).indexOf(q) !== -1)) hit.push("依頼No");
+    // 容器番号（数字ならレンジに含まれるかを見る）
+    const n = Number(q);
+    if (q !== "" && !isNaN(n)) {
+      const r = parseRange(b.rng);
+      if (r && n >= r.start && n <= r.end) hit.push("容器番号");
+    }
+    return hit;
+  };
+
+  const q = query.trim();
+  // ヒットした区画の位置ラベル→ヒット理由
+  const searchHits = {};
+  let hitCount = 0;
+  if (q) {
+    data.blocks.forEach((b) => {
+      const why = matchBlock(b, q);
+      if (why.length > 0) { searchHits[String(b.pos)] = why; hitCount++; }
+    });
+  }
+  const isHit = (b) => q !== "" && !!searchHits[String(b.pos)];
+
   /* ---------- マップのピンチズーム／パン ---------- */
   // viewBoxを書き換える方式にしている（CSSのtransformだとタップ位置と
   // 図形のずれが出るため）。zoom が null のときは等倍・全体表示。
@@ -679,6 +729,32 @@ function YardMap({ yardLive, onRefresh }) {
         </div>
       </div>
 
+      {/* 検索欄。依頼No・容器番号・GNo・位置ラベルのどれでも引ける */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <input
+          type="search"
+          inputMode="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="依頼No / 容器番号 / GNo / 位置"
+          style={{ flex: 1, minWidth: 0, padding: "7px 10px", fontSize: 13, borderRadius: 6,
+                   border: "1px solid #cbd5e1", background: "#fff", color: "#0f172a" }}
+        />
+        {q !== "" && (
+          <button onClick={() => setQuery("")}
+            style={{ fontSize: 11, color: "#64748b", background: "none", border: "none", padding: "4px 2px" }}>
+            クリア
+          </button>
+        )}
+      </div>
+      {q !== "" && (
+        <div style={{ fontSize: 11, marginBottom: 8, color: hitCount > 0 ? "#1d4ed8" : "#b45309" }}>
+          {hitCount > 0
+            ? hitCount + "件ヒット（" + Object.keys(searchHits).map((p) => "<" + p + ">").join(" ") + "）"
+            : "該当する区画がありません"}
+        </div>
+      )}
+
       {view === "map" && (
         <div>
           <div
@@ -700,7 +776,8 @@ function YardMap({ yardLive, onRefresh }) {
             </g>
           ))}
           {data.blocks.map((b, i) => (
-            <YardBlock key={i} b={b} size={size} selected={sel && sel.pos === b.pos && sel.x === b.x} onSelect={selectBlock} />
+            <YardBlock key={i} b={b} size={size} selected={sel && sel.pos === b.pos && sel.x === b.x}
+              matched={isHit(b)} dimmed={q !== "" && hitCount > 0 && !isHit(b)} onSelect={selectBlock} />
           ))}
         </svg>
           </div>
@@ -729,10 +806,11 @@ function YardMap({ yardLive, onRefresh }) {
 
       {view === "list" && (
         <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-96 overflow-y-auto">
-          {blocksSorted.map((b, i) => (
+          {(q !== "" && hitCount > 0 ? blocksSorted.filter(isHit) : blocksSorted).map((b, i) => (
             <button key={i} onClick={() => selectBlock(b)}
               className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left ${sel && sel.pos === b.pos && sel.x === b.x ? "bg-amber-50" : "active:bg-slate-50"}`}>
-              <span className="text-xs font-mono text-slate-400 w-9 shrink-0">{"<" + b.pos + ">"}</span>
+              <span className="text-xs font-mono w-9 shrink-0"
+                style={{ color: isHit(b) ? "#1d4ed8" : "#94a3b8", fontWeight: isHit(b) ? 700 : 400 }}>{"<" + b.pos + ">"}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-slate-800">{b.grp ? "GNo " + b.grp : "（空き・予定）"}</div>
                 <div className="text-[11px] text-slate-500 tabular-nums">{b.rng && b.rng !== "-99〜0" ? b.rng : "—"}{b.cnt != null ? " ・ " + b.cnt + "本" : ""}</div>
