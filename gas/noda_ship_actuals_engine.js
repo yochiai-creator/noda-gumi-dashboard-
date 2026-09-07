@@ -141,8 +141,10 @@ function getShippingActualsSummary_uncached_() {
     months: [],        // [{ 年月, 本数, 件数, サイズ別:{...} }] 新しい順
     bySize: {},        // サイズ → 総本数
     topDests: [],      // [{ 名, 本数, 件数 }] 上位
-    mismatchCount: 0,  // 数量と容器レンジ本数が食い違った件数
-    pending: null,     // 未取込があるかどうか（分かる場合）
+    mismatchCount: 0,     // 数量と容器レンジ本数が食い違った件数
+    needsCheckCount: 0,   // どちらも取れずテキストが読めていない件数
+    nonCylinderCount: 0,  // LPガス容器以外（バルク貯槽など）の件数
+    pending: null,        // 取込済みの月
     error: null
   };
 
@@ -169,13 +171,18 @@ function getShippingActualsSummary_uncached_() {
     var monthMap = {}, destMap = {};
     Object.keys(best).forEach(function (k) {
       var r = best[k].row;
-      var size = r[H['サイズ']] ? String(r[H['サイズ']]) : '不明';
+      var size = r[H['サイズ']] ? String(r[H['サイズ']]) : '';
       var qty = Number(r[H['数量']]) || 0;
       var ym = r[H['年月']] ? String(r[H['年月']]) : '不明';
-      var dest = r[H['出荷先名']] ? String(r[H['出荷先名']]) : '不明';
+      var chk = String(r[H['検算']] || '');
 
       data.shipmentCount++;
-      if (String(r[H['検算']]) === '不一致') data.mismatchCount++;
+      if (chk === '不一致') data.mismatchCount++;
+      if (chk === '要確認') data.needsCheckCount++;
+
+      // サイズが取れない行はLPガス容器以外（バルク貯槽・付属品など）。
+      // 本数の集計には入れず、件数だけ別に数える。
+      if (!size) { data.nonCylinderCount++; return; }
 
       if (!monthMap[ym]) monthMap[ym] = { 年月: ym, 本数: 0, 件数: 0, サイズ別: {} };
       monthMap[ym].本数 += qty;
@@ -184,14 +191,26 @@ function getShippingActualsSummary_uncached_() {
 
       data.bySize[size] = (data.bySize[size] || 0) + qty;
 
-      if (!destMap[dest]) destMap[dest] = { 名: dest, 本数: 0, 件数: 0 };
-      destMap[dest].本数 += qty;
-      destMap[dest].件数 += 1;
+      // ★ 出荷先名はPDFのテキスト化で文字化けすることが多いので
+      //   （「(株)ㄌㄨㄏㄚ北関東」のようになる）、集計キーは数字の出荷先コードにする。
+      //   表示名はそのコードで最も多く現れた表記を採用する。
+      var code = r[H['出荷先コード']] ? String(r[H['出荷先コード']]) : '不明';
+      var nm = r[H['出荷先名']] ? String(r[H['出荷先名']]) : '';
+      if (!destMap[code]) destMap[code] = { コード: code, 名: '', 本数: 0, 件数: 0, __names: {} };
+      destMap[code].本数 += qty;
+      destMap[code].件数 += 1;
+      if (nm) destMap[code].__names[nm] = (destMap[code].__names[nm] || 0) + 1;
     });
 
     data.months = Object.keys(monthMap).sort().reverse().map(function (k) { return monthMap[k]; });
-    data.topDests = Object.keys(destMap).map(function (k) { return destMap[k]; })
-      .sort(function (a, b) { return b.本数 - a.本数; }).slice(0, 10);
+    data.topDests = Object.keys(destMap).map(function (code) {
+      var d = destMap[code];
+      var bestName = '', bestN = -1;
+      Object.keys(d.__names).forEach(function (n) {
+        if (d.__names[n] > bestN) { bestN = d.__names[n]; bestName = n; }
+      });
+      return { コード: d.コード, 名: bestName || ('コード' + d.コード), 本数: d.本数, 件数: d.件数 };
+    }).sort(function (a, b) { return b.本数 - a.本数; }).slice(0, 10);
 
     var doneMonths = shipact_readDoneMonths_(PropertiesService.getScriptProperties());
     data.pending = { 取込済みの月: doneMonths.slice().sort() };
@@ -336,11 +355,24 @@ function shipact_buildRow_(file, nameMatch) {
     var basis = f.shipDate || procDate;
     var ym = basis.substring(0, 7);
 
+    // 数量の決め方（実データを見て決めた）
+    //   両方取れた → 一致/不一致を記録（不一致は目視確認したい）
+    //   本文の「NNN 本」が取れない → 容器Noレンジの本数を数量として採用
+    //   容器Noが無い → バルク貯槽など容器以外。数量はそのまま採用
+    //   どちらも無い → テキストが読めていない。要確認として残す
     var qty = f.qty;
     var rangeQty = f.rangeQty;
-    var check = (qty != null && rangeQty != null)
-      ? (qty === rangeQty ? '一致' : '不一致')
-      : '不明';
+    var check;
+    if (qty != null && rangeQty != null) {
+      check = (qty === rangeQty) ? '一致' : '不一致';
+    } else if (qty == null && rangeQty != null) {
+      qty = rangeQty;
+      check = 'レンジ採用';
+    } else if (qty != null && rangeQty == null) {
+      check = 'レンジ無し';
+    } else {
+      check = '要確認';
+    }
 
     return [
       file.getId(), fileName, f.procDate || procDate, orderNo, branch, version,
@@ -432,10 +464,16 @@ function shipact_parseText_(text) {
   });
   out.qty = bestQty;
 
-  // 容器番号：接頭辞+数字のトークンを全部拾い、最も多い接頭辞の最小・最大を採る
-  var prefCounts = {}, nums = {}, cm, cre = /\b([A-Z]{2,4})(\d{4,6})\b/g;
+  // 容器番号：接頭辞+5桁の数字を拾い、最も多い接頭辞の最小・最大を採る
+  // ★ 桁数を5桁に固定し、直後に数字が続くものは捨てるのが要点。
+  //   PDFのテキスト化では「HEP39020|」の縦棒が「1」と誤読されて
+  //   「THEP390201」のような壊れたトークンになることがあり、これを
+  //   容器番号として拾うと最大値が壊れて本数が異常値になる（実データで発生）。
+  // ★ 接頭辞は直前の記号が文字と誤読されて「THEP」のように増えることがあるため、
+  //   末尾3文字だけを採る（実データの接頭辞は HXP/HEP/HXU/HRH/HCZ/HHZ と3文字）。
+  var prefCounts = {}, nums = {}, cm, cre = /([A-Z]{2,5})(\d{5})(?!\d)/g;
   while ((cm = cre.exec(text)) !== null) {
-    var p = cm[1];
+    var p = cm[1].length > 3 ? cm[1].substring(cm[1].length - 3) : cm[1];
     prefCounts[p] = (prefCounts[p] || 0) + 1;
     if (!nums[p]) nums[p] = [];
     nums[p].push(Number(cm[2]));
@@ -453,6 +491,25 @@ function shipact_parseText_(text) {
   }
 
   return out;
+}
+
+// ===== 公開関数：蓄積を空にして最初から取り直す =====
+// ★ パーサを直したときに使う。スプレッドシート自体は作り直さず、
+//   データ行と「完了した月」の記録だけ消すので、次回の取込が1月から走り直す。
+//   （壊れた値で取り込んでしまった行を捨てるための機能）
+function resetShippingActuals() {
+  var sheet = shipact_getSheet_();
+  var last = sheet.getLastRow();
+  var cleared = 0;
+  if (last > 1) {
+    cleared = last - 1;
+    sheet.getRange(2, 1, cleared, SHIP_ACT_CONFIG.HEADERS.length).clearContent();
+  }
+  PropertiesService.getScriptProperties().deleteProperty(SHIP_ACT_CONFIG.PROP_DONE_MONTHS);
+  try { CacheService.getScriptCache().remove('nodaDash_shipActuals'); } catch (err) {}
+  Logger.log('出荷実績の蓄積をリセットしました（' + cleared + '行を削除）。' +
+             '次回の取込で最初から読み直します。');
+  return { ok: true, clearedRows: cleared };
 }
 
 // ===== 動作確認：実行するとログに結果が出る =====
