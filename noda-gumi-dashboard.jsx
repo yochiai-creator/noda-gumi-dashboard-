@@ -1926,10 +1926,15 @@ export default function App() {
       const ms = mc && mc.months ? mc.months : [];
       const cur = ms.length > 0 ? ms[ms.length - 1] : null;
       const sum = (k) => ms.reduce((a, m) => a + (m[k] || 0), 0);
+      // ★ 在庫の履歴は2026年8月17日から貯め始めたので、年度はじめ（4月）の
+      //   在庫は存在しない。比較相手は「在庫データがある最初の月」であって
+      //   年度はじめではない。ラベルにその月名を出して、何と比べているかを
+      //   はっきりさせる（「年度はじめ比」と書くと嘘になる）。
       const invMonths = ms.filter((m) => m.在庫 != null);
       const invNow = invMonths.length > 0 ? invMonths[invMonths.length - 1].在庫 : null;
       const invFirst = invMonths.length > 1 ? invMonths[0].在庫 : null;
       const invDiff = invNow != null && invFirst != null ? invNow - invFirst : null;
+      const invBase = invMonths.length > 1 ? vizMonthLabel(invMonths[0].年月) + "末比" : "";
       const range = ms.length > 0 ? vizMonthLabel(ms[0].年月) + "〜" + vizMonthLabel(ms[ms.length - 1].年月) : "";
       return [
         { label: "出荷 累計" + (range ? "（" + range + "）" : ""),
@@ -1941,7 +1946,7 @@ export default function App() {
           sub: cur && cur.出荷予定 > 0 ? "予定 +" + vizComma(cur.出荷予定) + " 本" : undefined },
         { label: "LP容器 在庫", value: invNow != null ? vizComma(invNow) : "—",
           unit: "本", icon: Boxes, tone: "neutral",
-          sub: invDiff != null ? (invDiff > 0 ? "+" : "") + vizComma(invDiff) + " 本（年度はじめ比）" : undefined },
+          sub: invDiff != null ? (invDiff > 0 ? "+" : "") + vizComma(invDiff) + " 本（" + invBase + "）" : undefined },
       ];
     })(),
     dispatch: [

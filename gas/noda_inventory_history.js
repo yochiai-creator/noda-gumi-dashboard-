@@ -35,7 +35,9 @@ function harvestInventoryHistory() {
   var started = Date.now();
   var result = {
     started: Utilities.formatDate(new Date(started), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
-    added: 0, skipped: 0, failed: 0, timeUp: false, errors: [], error: null
+    added: 0, skipped: 0, failed: 0, timeUp: false, errors: [],
+    unknownLabels: [],   // 分類表に無かったラベル（あれば分類表に足すこと）
+    error: null
   };
 
   try {
@@ -64,6 +66,11 @@ function harvestInventoryHistory() {
       var file = targets[i];
       if (known[file.getId()]) { result.skipped++; continue; }
       var row = invhist_buildRow_(file);
+      if (row && row.__unknown && Object.keys(row.__unknown).length > 0) {
+        Object.keys(row.__unknown).forEach(function (k) {
+          if (result.unknownLabels.indexOf(k) < 0) result.unknownLabels.push(k);
+        });
+      }
       if (row) {
         buffer.push(row);
         known[file.getId()] = true;
@@ -178,6 +185,7 @@ function invhist_buildRow_(file) {
 
     var out = [dateStr, file.getId(), file.getName(),
                s.total, s.weight['50k'], s.weight['20k'], s.weight['other']];
+    out.__unknown = s.unknown;   // 収集結果に持ち帰るための印（シートには書かない）
     ['2K', '5K', '8K', '10K', '20K_三部軽量', '20K_直付', '30K', '50K_軽量型', '50K_S']
       .forEach(function (k) { out.push(s.bySize[k] || 0); });
     out.push(Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'));
@@ -195,6 +203,10 @@ function invhist_summarize_(rows) {
   var weight = { '50k': 0, '20k': 0, 'other': 0 };
   var bySize = {};
   var total = 0;
+  // ★ 分類表(INV_SIZE_LABEL_MAP)に無いラベルは「その他」に落ちる。
+  //   新しい容器の種類が増えたときや、CSVの表記が変わったときに、
+  //   50kg・20kgの本数が黙って減ることになる。気づけるよう拾っておく。
+  var unknown = {};
 
   for (var i = 1; i < rows.length; i++) {
     var r = rows[i];
@@ -211,9 +223,15 @@ function invhist_summarize_(rows) {
       weight[mapped.weightClass] = (weight[mapped.weightClass] || 0) + qty;
     } else {
       weight['other'] += qty;
+      if (cl) unknown[cl] = (unknown[cl] || 0) + qty;
     }
   }
-  return { total: total, weight: weight, bySize: bySize };
+  var unknownLabels = Object.keys(unknown);
+  if (unknownLabels.length > 0) {
+    Logger.log('★ 分類表に無いラベルがありました（その他に入れています）: ' +
+               unknownLabels.map(function (k) { return k + ' ' + unknown[k] + '本'; }).join(' / '));
+  }
+  return { total: total, weight: weight, bySize: bySize, unknown: unknown };
 }
 
 // ===== 内部：シートを用意する（出荷実績と同じスプレッドシート内の別シート） =====
