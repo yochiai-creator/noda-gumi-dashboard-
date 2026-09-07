@@ -553,7 +553,7 @@ function resetShippingActuals() {
     sheet.getRange(2, 1, cleared, SHIP_ACT_CONFIG.HEADERS.length).clearContent();
   }
   PropertiesService.getScriptProperties().deleteProperty(SHIP_ACT_CONFIG.PROP_DONE_MONTHS);
-  try { CacheService.getScriptCache().remove('nodaDash_shipActuals'); } catch (err) {}
+  nc_forget_('shipActuals');
   Logger.log('出荷実績の蓄積をリセットしました（' + cleared + '行を削除）。' +
              '次回の取込で最初から読み直します。');
   return { ok: true, clearedRows: cleared };

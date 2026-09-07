@@ -22,10 +22,48 @@
 
 var NC_CACHE_CONFIG = {
   PREFIX: 'nodaDash_',
+
+  /**
+   * ★ キャッシュの世代番号。返すデータの形（項目の増減・意味の変更）を変えたら
+   *   必ず1つ増やすこと。
+   *
+   *   実際に起きた不具合：月次グラフを年度（4月始まり）に絞る変更を公開した直後、
+   *   画面には古い形のデータが出続けた。キーが同じなので、公開前に入った
+   *   キャッシュがそのまま返っていたため。最大15分、直したはずの画面が
+   *   直らないという状態になり、原因の切り分けも紛らわしい。
+   *   キーに世代番号を混ぜておけば、公開した瞬間から新しい形が返る。
+   *
+   *   有効期限を短くするのは解にならない（毎回読み直すと重くなる）。
+   *   世代番号なら、形を変えたときだけ作り直せる。
+   */
+  VERSION: 2,
+
   // CacheService の1キーあたりの上限は約100KB。超えると put が例外を投げるため、
   // 余裕をみてこのサイズを超えるものはキャッシュせず素通しにする。
   MAX_BYTES: 90000
 };
+
+/**
+ * キャッシュのキーを組み立てる（世代番号込み）。
+ * ★ キーを作る場所はここ1か所だけにすること。
+ *   以前は 'nodaDash_shipActuals' のように直接書いた箇所が2つあり、
+ *   世代番号を入れたときに消し忘れの原因になりかけた。
+ */
+function nc_cacheKey_(name) {
+  return NC_CACHE_CONFIG.PREFIX + 'v' + NC_CACHE_CONFIG.VERSION + '_' + name;
+}
+
+/**
+ * 特定のキャッシュを1つ捨てる（データを書き換えた直後に使う）。
+ * 世代番号を意識しなくて済むよう、この関数を通すこと。
+ */
+function nc_forget_(name) {
+  try {
+    CacheService.getScriptCache().remove(nc_cacheKey_(name));
+  } catch (err) {
+    Logger.log('キャッシュ削除に失敗(' + name + '): ' + String(err));
+  }
+}
 
 /**
  * producer() の結果をキャッシュ経由で返す。
@@ -35,7 +73,7 @@ var NC_CACHE_CONFIG = {
  * @param {function} producer 実際の集計を行う関数
  */
 function nc_cached_(name, force, ttlSec, producer) {
-  var key = NC_CACHE_CONFIG.PREFIX + name;
+  var key = nc_cacheKey_(name);
   var cache = null;
   try {
     cache = CacheService.getScriptCache();
@@ -87,8 +125,15 @@ function nc_cached_(name, force, ttlSec, producer) {
  */
 function clearDashboardCache() {
   var names = ['inventory', 'shipping', 'orderPlan', 'dispatch',
-               'shipActuals', 'inventoryTrend'];
-  var keys = names.map(function (n) { return NC_CACHE_CONFIG.PREFIX + n; });
+               'shipActuals', 'inventoryTrend', 'monthlyCombined', 'dispatchMonthly'];
+  // 今の世代ぶんに加えて、古い世代のキーも消しておく（消し漏れが残らないように）
+  var keys = [];
+  names.forEach(function (n) {
+    for (var v = 1; v <= NC_CACHE_CONFIG.VERSION; v++) {
+      keys.push(NC_CACHE_CONFIG.PREFIX + 'v' + v + '_' + n);
+    }
+    keys.push(NC_CACHE_CONFIG.PREFIX + n);   // 世代番号を入れる前のキー
+  });
   try {
     CacheService.getScriptCache().removeAll(keys);
     Logger.log('ダッシュボードのキャッシュを削除しました: ' + names.join(', '));

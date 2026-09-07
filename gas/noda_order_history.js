@@ -185,7 +185,7 @@ function resetOrderHistory() {
     cleared = last - 1;
     sheet.getRange(2, 1, cleared, ORD_HIST_CONFIG.HEADERS.length).clearContent();
   }
-  try { CacheService.getScriptCache().remove('nodaDash_monthlyCombined'); } catch (err) {}
+  nc_forget_('monthlyCombined');
   Logger.log('受注推移の蓄積をリセットしました（' + cleared + '行を削除）。');
   return { ok: true, clearedRows: cleared };
 }
