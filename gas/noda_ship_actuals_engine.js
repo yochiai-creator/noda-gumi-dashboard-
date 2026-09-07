@@ -753,3 +753,94 @@ function diagnoseShippingMonth(ym) {
   return { 対象: ym || '全期間', 月別: byMonth, 検算の内訳: byCheck,
            要修復件数: needFix, 本数の多い順トップ15: list.slice(0, 15) };
 }
+
+// ===== 公開関数：出荷本数を直して、結果をその場で表示する =====
+// ★ 関数名を日本語にしてある。GASエディタの関数選択欄には英語名が数十個
+//   並ぶので、iPhoneの画面では目当てのものを見つけにくい。
+//   「実行」を押すだけで、直す → 直った結果を出す、まで一度に終わる。
+function 出荷本数を直す() {
+  Logger.log('■ 直す前');
+  var before = shipact_monthTotals_();
+  shipact_logMonthTotals_(before);
+
+  var r = repairImplausibleQuantities();
+
+  Logger.log('');
+  Logger.log('■ 直した行: ' + r.fixed + '件');
+  if (r.fixed === 0) {
+    Logger.log('  直すところはありませんでした。');
+  }
+
+  Logger.log('');
+  Logger.log('■ 直した後');
+  var after = shipact_monthTotals_();
+  shipact_logMonthTotals_(after);
+
+  // 変わった月だけを並べて出す
+  var moved = [];
+  Object.keys(after).forEach(function (m) {
+    var b = before[m] ? before[m].合計 : 0;
+    if (after[m].合計 !== b) moved.push('  ' + m + '  ' + b + '本 → ' + after[m].合計 + '本');
+  });
+  if (moved.length > 0) {
+    Logger.log('');
+    Logger.log('■ 変わった月');
+    moved.forEach(function (l) { Logger.log(l); });
+  }
+
+  // トリガーが正しい関数を呼んでいるかも見ておく
+  Logger.log('');
+  Logger.log('■ 自動取込のトリガー');
+  try {
+    var ts = ScriptApp.getProjectTriggers().filter(function (t) {
+      return t.getEventType() === ScriptApp.EventType.CLOCK;
+    });
+    if (ts.length === 0) {
+      Logger.log('  ★ ありません。ensureShippingActualsTrigger を実行してください。');
+    } else {
+      ts.forEach(function (t) { Logger.log('  ' + t.getHandlerFunction() + ' を定期実行'); });
+    }
+  } catch (err) {
+    Logger.log('  確認できませんでした: ' + String(err));
+  }
+  return { 直した行: r.fixed, 直す前: before, 直した後: after };
+}
+
+// ===== 内部：月ごとの合計とサイズ別（集計と同じ重複排除をする） =====
+function shipact_monthTotals_() {
+  var sheet = shipact_getSheet_();
+  var last = sheet.getLastRow();
+  var H = {};
+  SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+  var values = last < 2 ? [] : sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+
+  var best = {};
+  values.forEach(function (r) {
+    var m = nc_dateText_(r[H['年月']], 'yyyy-MM');
+    if (!m) return;
+    var key = String(r[H['依頼No']]) + '_' + String(r[H['枝番']]);
+    var ver = Number(r[H['バージョン']]) || 0;
+    if (!best[key] || ver > best[key].__ver) best[key] = { row: r, __ver: ver, ym: m };
+  });
+
+  var byMonth = {};
+  Object.keys(best).forEach(function (k) {
+    var r = best[k].row, m = best[k].ym;
+    if (!byMonth[m]) byMonth[m] = { 件数: 0, 合計: 0, サイズ別: {} };
+    byMonth[m].件数++;
+    var size = r[H['サイズ']] ? String(r[H['サイズ']]) : '';
+    if (!size) return;
+    var qty = Number(r[H['数量']]) || 0;
+    byMonth[m].合計 += qty;
+    byMonth[m].サイズ別[size] = (byMonth[m].サイズ別[size] || 0) + qty;
+  });
+  return byMonth;
+}
+
+function shipact_logMonthTotals_(byMonth) {
+  Object.keys(byMonth).sort().forEach(function (m) {
+    var b = byMonth[m];
+    var sizes = Object.keys(b.サイズ別).sort().map(function (k) { return k + ' ' + b.サイズ別[k]; }).join(' / ');
+    Logger.log('  ' + m + '  合計' + b.合計 + '本 (' + b.件数 + '件)   ' + sizes);
+  });
+}
