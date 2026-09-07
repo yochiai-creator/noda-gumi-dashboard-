@@ -40,15 +40,18 @@ var SHIP_ACT_CONFIG = {
   // 1回の実行で使う時間の上限。GASの実行上限は6分なので余裕をみて4分で打ち切る。
   TIME_BUDGET_MS: 4 * 60 * 1000,
 
-  // ★ 容器Noレンジから数えた本数の上限。
-  //   1件の指図書はトラック1台ぶんなので、多くても数百本。実データの最大は200本。
-  //   ところがテキスト化の失敗で「HXP 60901 〜 70060」のような桁違いのレンジが
-  //   取れることがあり、そのまま数えると9,160本になる。
-  //   本文から数量が取れなかったときはレンジの本数を採用する作りなので、
-  //   こういう行が1件混ざるだけで月合計が跳ね上がる。
-  //   （実際2026年7月の20kgが10,485本と出た。配車表では6,152本。）
-  //   上限を超えるレンジは「読めなかった」ものとして扱い、数量には使わない。
-  MAX_PLAUSIBLE_RANGE: 1000,
+  // ★ 1件の指図書としてありうる本数の上限。
+  //   指図書1件はトラック1台ぶんなので、多くても数百本（実データの最大は200本）。
+  //   本数の出どころは2つあり、どちらもテキスト化の失敗で壊れることがある。
+  //     ・本文の「NNN 本」   → 実例 8,662本（容器レンジは9本だった / 26-60395）
+  //     ・容器Noレンジの本数 → 実例 9,160本（本文の数量は160本だった / 26-30266）
+  //   壊れるのが毎回どちらとも限らないので、両方に同じ上限を当てて、
+  //   超えたほうを「読めなかった」ものとして捨て、もう一方を使う。
+  //   1件混ざるだけで月合計が跳ね上がる（7月の20kgが10,827本と出た。
+  //   配車表では6,152本）。
+  //   ★ 2つが一致しているときは、独立した出どころが同じ値を示しているので
+  //     上限を超えていても信じる（本当に大口の場合に備えて）。
+  MAX_PLAUSIBLE_QTY: 1000,
 
   // 出荷作業指図書_YY.MM.DD_依頼No-枝番(バージョン).pdf
   NAME_PATTERN: /^出荷作業指図書_(\d{2})\.(\d{2})\.(\d{2})_(\d+-\d+)-(\d+)(?:\((\d+)\))?\.pdf$/i,
@@ -417,26 +420,10 @@ function shipact_buildRow_(file, nameMatch) {
     //   本文の「NNN 本」が取れない → 容器Noレンジの本数を数量として採用
     //   容器Noが無い → バルク貯槽など容器以外。数量はそのまま採用
     //   どちらも無い → テキストが読めていない。要確認として残す
-    var qty = f.qty;
+    var picked = shipact_pickQuantity_(f.qty, f.rangeQty);
+    var qty = picked.qty;
     var rangeQty = f.rangeQty;
-    // ★ 桁違いのレンジは読み取り失敗とみなす。数量の代わりには使わない。
-    var rangeUsable = (rangeQty != null && rangeQty <= SHIP_ACT_CONFIG.MAX_PLAUSIBLE_RANGE);
-    var check;
-    if (qty != null && rangeQty != null) {
-      check = rangeUsable ? ((qty === rangeQty) ? '一致' : '不一致') : 'レンジ異常';
-    } else if (qty == null && rangeQty != null) {
-      if (rangeUsable) {
-        qty = rangeQty;
-        check = 'レンジ採用';
-      } else {
-        // 数量も取れず、レンジも桁違い。0本と混同しないよう空欄で残す。
-        check = 'レンジ異常';
-      }
-    } else if (qty != null && rangeQty == null) {
-      check = 'レンジ無し';
-    } else {
-      check = '要確認';
-    }
+    var check = picked.check;
 
     return [
       file.getId(), fileName, f.procDate || procDate, orderNo, branch, version,
@@ -451,6 +438,35 @@ function shipact_buildRow_(file, nameMatch) {
     Logger.log('指図書の取込に失敗(' + fileName + '): ' + String(err));
     return null;
   }
+}
+
+/**
+ * 本数をどちらの出どころから採るかを決める（純関数）。
+ * @param {number|null} qty      本文の「NNN 本」から取れた本数
+ * @param {number|null} rangeQty 容器Noレンジから数えた本数
+ * @return {{qty: (number|null), check: string}}
+ * ★ 集計とグラフに直接効くところなので、判定だけを取り出してテストできる形にしてある。
+ */
+function shipact_pickQuantity_(qty, rangeQty) {
+  var MAX = SHIP_ACT_CONFIG.MAX_PLAUSIBLE_QTY;
+
+  // 2つが一致しているなら、上限を超えていても信じる
+  if (qty != null && rangeQty != null && qty === rangeQty) {
+    return { qty: qty, check: '一致' };
+  }
+
+  var qtyOk = (qty != null && qty > 0 && qty <= MAX);
+  var rangeOk = (rangeQty != null && rangeQty > 0 && rangeQty <= MAX);
+
+  // どちらもありうる値だが食い違う → 本文を採り、目視確認に回す
+  if (qtyOk && rangeOk) return { qty: qty, check: '不一致' };
+  // レンジが壊れているか、そもそも無い
+  if (qtyOk) return { qty: qty, check: rangeQty == null ? 'レンジ無し' : 'レンジ異常' };
+  // 本文の数量が壊れているか、そもそも無い
+  if (rangeOk) return { qty: rangeQty, check: qty == null ? 'レンジ採用' : '数量異常' };
+  // どちらも使えない。0本と混同しないよう空欄で残す。
+  if (qty == null && rangeQty == null) return { qty: null, check: '要確認' };
+  return { qty: null, check: '両方異常' };
 }
 
 // ===== 内部：PDFをGoogleドキュメントに変換して本文テキストを取り出す =====
@@ -585,10 +601,10 @@ function testShippingActualsSummary() {
   Logger.log(JSON.stringify(getShippingActualsSummary(true), null, 2));
 }
 
-// ===== 公開関数：既に貯めた行のうち、桁違いのレンジを数量にしてしまった行を直す =====
-// ★ 取込をやり直すと数時間かかるので、該当行だけを直す。
-//   「レンジ採用」なのにレンジ本数が上限を超えている行が対象。
-//   数量を空欄に戻し、検算を「レンジ異常」にする（0本と混同させないため）。
+// ===== 公開関数：既に貯めた行の本数を、今の判定でやり直す =====
+// ★ 取込をやり直すと数時間かかるので、シートに残っている「本文の数量」と
+//   「レンジ本数」から、判定だけをやり直す。PDFは読み直さない。
+//   直すのは本数が変わる行だけ。何をどう変えたかはログに出す。
 function repairImplausibleQuantities() {
   var sheet = shipact_getSheet_();
   var last = sheet.getLastRow();
@@ -601,18 +617,28 @@ function repairImplausibleQuantities() {
   var fixed = [], changed = false;
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
-    var rangeQty = Number(r[H['レンジ本数']]);
-    if (isNaN(rangeQty) || rangeQty <= SHIP_ACT_CONFIG.MAX_PLAUSIBLE_RANGE) continue;
-    var chk = String(r[H['検算']] || '');
-    // 数量がレンジ由来になっている行だけを直す。
-    // 本文から数量が取れている行（一致・不一致）は数量を信じてよいので触らない。
-    if (chk !== 'レンジ採用') continue;
+    var cur = r[H['数量']] === '' || r[H['数量']] == null ? null : Number(r[H['数量']]);
+    var rangeQty = r[H['レンジ本数']] === '' || r[H['レンジ本数']] == null ? null : Number(r[H['レンジ本数']]);
+    if (cur != null && isNaN(cur)) cur = null;
+    if (rangeQty != null && isNaN(rangeQty)) rangeQty = null;
+
+    // ★ シートに残っているのは「採用後の数量」なので、元の本文の数量は分からない。
+    //   採用後の数量がレンジと違うなら、それは本文由来の値。
+    //   （レンジ採用の行は数量＝レンジなので、この判定で区別できる）
+    var textQty = (cur != null && cur === rangeQty) ? cur : cur;
+    var picked = shipact_pickQuantity_(textQty, rangeQty);
+    var newQty = picked.qty === null ? '' : picked.qty;
+    var oldQty = r[H['数量']] === '' || r[H['数量']] == null ? '' : Number(r[H['数量']]);
+    if (String(newQty) === String(oldQty) && r[H['検算']] === picked.check) continue;
+
     fixed.push({
       行: i + 2, 年月: nc_dateText_(r[H['年月']], 'yyyy-MM'), サイズ: r[H['サイズ']],
-      もとの数量: r[H['数量']], レンジ本数: rangeQty, ファイル名: r[H['ファイル名']]
+      依頼No: r[H['依頼No']],
+      もとの数量: oldQty, 新しい数量: newQty, レンジ本数: rangeQty,
+      もとの検算: r[H['検算']], 新しい検算: picked.check
     });
-    r[H['数量']] = '';
-    r[H['検算']] = 'レンジ異常';
+    r[H['数量']] = newQty;
+    r[H['検算']] = picked.check;
     changed = true;
   }
 
@@ -621,11 +647,13 @@ function repairImplausibleQuantities() {
     nc_forget_('shipActuals');
     nc_forget_('monthlyCombined');
   }
-  Logger.log('桁違いのレンジを数量にしていた行を ' + fixed.length + ' 件直しました。');
-  fixed.forEach(function (f) {
-    Logger.log('  ' + f.年月 + ' ' + f.サイズ + ' ' + f.もとの数量 + '本 → 空欄  (レンジ' +
-               f.レンジ本数 + ') ' + f.ファイル名);
-  });
+  Logger.log('本数の判定をやり直しました。変わった行: ' + fixed.length + '件');
+  fixed.filter(function (f) { return String(f.もとの数量) !== String(f.新しい数量); })
+    .forEach(function (f) {
+      Logger.log('  ' + f.年月 + ' ' + f.サイズ + ' ' + f.依頼No + '  ' +
+                 f.もとの数量 + '本 → ' + (f.新しい数量 === '' ? '空欄' : f.新しい数量 + '本') +
+                 '  (レンジ' + (f.レンジ本数 == null ? '-' : f.レンジ本数) + ')  ' + f.新しい検算);
+    });
   return { ok: true, fixed: fixed.length, rows: fixed };
 }
 
@@ -660,7 +688,11 @@ function diagnoseShippingMonth(ym) {
     var chk = String(r[H['検算']] || '');
     var rangeQty = Number(r[H['レンジ本数']]);
     byCheck[chk] = (byCheck[chk] || 0) + 1;
-    if (chk === 'レンジ採用' && !isNaN(rangeQty) && rangeQty > SHIP_ACT_CONFIG.MAX_PLAUSIBLE_RANGE) needFix++;
+    // 今の判定でやり直したら本数が変わる行 ＝ 直すべき行
+    var curQty = r[H['数量']] === '' || r[H['数量']] == null ? null : Number(r[H['数量']]);
+    var rq = isNaN(rangeQty) ? null : rangeQty;
+    var re = shipact_pickQuantity_(curQty, rq);
+    if (String(re.qty === null ? '' : re.qty) !== String(curQty === null ? '' : curQty)) needFix++;
 
     if (!byMonth[m]) byMonth[m] = { 件数: 0, 合計: 0, サイズ別: {} };
     byMonth[m].件数++;
