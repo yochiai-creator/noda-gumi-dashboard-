@@ -629,10 +629,12 @@ function repairImplausibleQuantities() {
   return { ok: true, fixed: fixed.length, rows: fixed };
 }
 
-// ===== 公開関数：ある月の内訳を調べる（数字が合わないときの確認用） =====
-// 本数の多い順に並べて出す。1件だけ桁違いの行が混ざっていれば先頭に出てくる。
+// ===== 公開関数：内訳を調べる（数字が合わないときの確認用） =====
+// ★ 引数なしで実行できるようにしてある（iPhoneのGASエディタでは関数を選んで
+//   「実行」を押すだけなので、引数を渡すのが難しいため）。
+//   引数なし … シート全体。月ごとの合計と、本数の多い順トップ15を出す。
+//   引数あり … その月だけを詳しく見る。例 diagnoseShippingMonth('2026-07')
 function diagnoseShippingMonth(ym) {
-  var target = ym || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
   var sheet = shipact_getSheet_();
   var last = sheet.getLastRow();
   var H = {};
@@ -642,33 +644,60 @@ function diagnoseShippingMonth(ym) {
   // 集計と同じ重複排除（依頼No＋枝番でバージョン最大のみ）
   var best = {};
   values.forEach(function (r) {
-    if (nc_dateText_(r[H['年月']], 'yyyy-MM') !== target) return;
+    var m = nc_dateText_(r[H['年月']], 'yyyy-MM');
+    if (!m) return;
+    if (ym && m !== ym) return;
     var key = String(r[H['依頼No']]) + '_' + String(r[H['枝番']]);
     var ver = Number(r[H['バージョン']]) || 0;
-    if (!best[key] || ver > best[key].__ver) best[key] = { row: r, __ver: ver };
+    if (!best[key] || ver > best[key].__ver) best[key] = { row: r, __ver: ver, ym: m };
   });
 
-  var bySize = {}, list = [], byCheck = {};
+  var byMonth = {}, byCheck = {}, list = [], needFix = 0;
   Object.keys(best).forEach(function (k) {
-    var r = best[k].row;
-    var size = r[H['サイズ']] ? String(r[H['サイズ']]) : '(サイズ無し)';
+    var r = best[k].row, m = best[k].ym;
+    var size = r[H['サイズ']] ? String(r[H['サイズ']]) : '';
     var qty = Number(r[H['数量']]) || 0;
     var chk = String(r[H['検算']] || '');
+    var rangeQty = Number(r[H['レンジ本数']]);
     byCheck[chk] = (byCheck[chk] || 0) + 1;
-    if (r[H['サイズ']]) bySize[size] = (bySize[size] || 0) + qty;
-    list.push({ 依頼No: r[H['依頼No']], サイズ: size, 数量: qty,
+    if (chk === 'レンジ採用' && !isNaN(rangeQty) && rangeQty > SHIP_ACT_CONFIG.MAX_PLAUSIBLE_RANGE) needFix++;
+
+    if (!byMonth[m]) byMonth[m] = { 件数: 0, 合計: 0, サイズ別: {} };
+    byMonth[m].件数++;
+    if (size) {
+      byMonth[m].合計 += qty;
+      byMonth[m].サイズ別[size] = (byMonth[m].サイズ別[size] || 0) + qty;
+    }
+    list.push({ 年月: m, 依頼No: r[H['依頼No']], サイズ: size || '(なし)', 数量: qty,
                 レンジ本数: r[H['レンジ本数']], 検算: chk, ファイル名: r[H['ファイル名']] });
   });
   list.sort(function (a, b) { return b.数量 - a.数量; });
 
-  var out = {
-    年月: target,
-    件数: Object.keys(best).length,
-    サイズ別: bySize,
-    合計: Object.keys(bySize).reduce(function (a, k) { return a + bySize[k]; }, 0),
-    検算の内訳: byCheck,
-    本数の多い順トップ15: list.slice(0, 15)
-  };
-  Logger.log(JSON.stringify(out, null, 2));
-  return out;
+  // iPhoneでも読めるよう、JSONではなく行で出す
+  Logger.log('■ ' + (ym ? ym + ' の内訳' : '全期間の内訳') + '（重複排除ずみ）');
+  Object.keys(byMonth).sort().forEach(function (m) {
+    var b = byMonth[m];
+    var sizes = Object.keys(b.サイズ別).sort().map(function (k) {
+      return k + ' ' + b.サイズ別[k];
+    }).join(' / ');
+    Logger.log('  ' + m + '  合計' + b.合計 + '本 (' + b.件数 + '件)   ' + sizes);
+  });
+  Logger.log('');
+  Logger.log('■ 検算の内訳');
+  Object.keys(byCheck).sort().forEach(function (k) { Logger.log('  ' + (k || '(空)') + ': ' + byCheck[k] + '件'); });
+  if (needFix > 0) {
+    Logger.log('');
+    Logger.log('★ 桁違いのレンジを数量にしている行が ' + needFix + ' 件あります。');
+    Logger.log('  repairImplausibleQuantities を実行すると直ります。');
+  }
+  Logger.log('');
+  Logger.log('■ 本数の多い順トップ15（桁違いの行があれば先頭に出ます）');
+  list.slice(0, 15).forEach(function (x, i) {
+    Logger.log('  ' + (i + 1) + '. ' + x.年月 + ' ' + x.サイズ + ' ' + x.数量 + '本' +
+               '  レンジ' + (x.レンジ本数 === '' ? '-' : x.レンジ本数) + '  ' + x.検算 +
+               '  ' + x.依頼No);
+  });
+
+  return { 対象: ym || '全期間', 月別: byMonth, 検算の内訳: byCheck,
+           要修復件数: needFix, 本数の多い順トップ15: list.slice(0, 15) };
 }
