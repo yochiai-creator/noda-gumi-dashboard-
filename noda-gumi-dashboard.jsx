@@ -1042,6 +1042,30 @@ function vizNiceTicks(maxValue, wantCount) {
 
 const vizComma = (n) => (n == null ? "—" : Number(n).toLocaleString("ja-JP"));
 
+/* 日付・年月の表示。
+   ★ サーバ側で 'yyyy-MM-dd' / 'yyyy-MM' の文字列に整えて渡しているが、
+     スプレッドシートが日付として保存してしまう性質があるので、万一
+     "Sun Aug 17 2026 00:00:00 GMT+0900 (日本標準時)" のような値が来ても
+     画面にそのまま出さないよう、ここでも受け止める。 */
+const VIZ_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function vizDateParts(v) {
+  const s = String(v == null ? "" : v);
+  const m = s.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/);
+  if (m) return { y: Number(m[1]), m: Number(m[2]), d: m[3] ? Number(m[3]) : null };
+  // "Mon Aug 17 2026 00:00:00 GMT+0900 (日本標準時)" 形式。
+  // ★ ここで new Date() を通さないこと。文字列は日本時間の0時なので、
+  //   端末のタイムゾーンがずれていると前日になってしまう。文字から直接読む。
+  const m2 = s.match(/^\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/);
+  if (m2) {
+    const mi = VIZ_MON.indexOf(m2[1]);
+    if (mi >= 0) return { y: Number(m2[3]), m: mi + 1, d: Number(m2[2]) };
+  }
+  return null;
+}
+const vizShortDate = (v) => { const p = vizDateParts(v); return p && p.d ? p.m + "/" + p.d : String(v == null ? "" : v); };
+const vizMonthLabel = (v) => { const p = vizDateParts(v); return p ? p.m + "月" : String(v == null ? "" : v); };
+const vizYearMonth = (v) => { const p = vizDateParts(v); return p ? p.y + "-" + (p.m < 10 ? "0" + p.m : p.m) : String(v == null ? "" : v); };
+
 // 上だけ角を丸めた棒（下端は台に接するので角張らせる）
 function vizTopRoundedPath(x, y, w, h, r) {
   const rr = Math.min(r, w / 2, h);
@@ -1078,7 +1102,6 @@ function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX 
 
   const xAt = (i) => padL + (days.length <= 1 ? plotW / 2 : (plotW * i) / (days.length - 1));
   const yAt = (v) => padT + plotH - (plotH * (v - yMin)) / (yMax - yMin);
-  const shortDate = (s) => { const p = String(s).split("-"); return p.length === 3 ? Number(p[1]) + "/" + Number(p[2]) : s; };
   const lastI = days.length - 1;
   const sel = pick != null && days[pick] ? days[pick] : null;
 
@@ -1114,10 +1137,10 @@ function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX 
 
       {showX && (
         <g>
-          <text x={padL} y={H - 4} fontSize="7.5" fill={VIZ.muted}>{shortDate(days[0].日付)}</text>
+          <text x={padL} y={H - 4} fontSize="7.5" fill={VIZ.muted}>{vizShortDate(days[0].日付)}</text>
           {days.length > 1 && (
             <text x={padL + plotW} y={H - 4} textAnchor="end" fontSize="7.5" fill={VIZ.muted}>
-              {shortDate(days[lastI].日付)}
+              {vizShortDate(days[lastI].日付)}
             </text>
           )}
         </g>
@@ -1129,12 +1152,11 @@ function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX 
 function InventoryTrendChart({ days }) {
   const [pick, setPick] = useState(null);
   const sel = pick != null && days[pick] ? days[pick] : null;
-  const shortDate = (s) => { const p = String(s).split("-"); return p.length === 3 ? Number(p[1]) + "/" + Number(p[2]) : s; };
   return (
     <div>
       <div style={{ fontSize: 10, color: VIZ.muted, marginBottom: 2, textAlign: "right" }}>
         {sel
-          ? shortDate(sel.日付) + "：50kg " + vizComma(sel["50kg"]) + " / 20kg " + vizComma(sel["20kg"])
+          ? vizShortDate(sel.日付) + "：50kg " + vizComma(sel["50kg"]) + " / 20kg " + vizComma(sel["20kg"])
           : "グラフをタップすると値が出ます"}
       </div>
       <InventoryTrendMini label="50kg" color={VIZ.s1} dataKey="50kg" days={days}
@@ -1159,7 +1181,6 @@ function MonthlyShipChart({ months }) {
   const band = plotW / asc.length;
   const barW = Math.min(24, band - 8);   // 24px上限。枠いっぱいにはしない
   const yAt = (v) => padT + plotH - (plotH * v) / max;
-  const monthLabel = (ym) => { const p = String(ym).split("-"); return p.length === 2 ? Number(p[1]) + "月" : ym; };
 
   return (
     <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: "auto", display: "block" }}>
@@ -1180,7 +1201,7 @@ function MonthlyShipChart({ months }) {
             {/* 月数が少ないので上端に値を出せる。入らない場合は表で読む */}
             <text x={cx} y={y - 4} textAnchor="middle" fontSize="8.5" fontWeight="700" fill={VIZ.ink2}
               style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(m.本数)}</text>
-            <text x={cx} y={H - 8} textAnchor="middle" fontSize="8.5" fill={VIZ.muted}>{monthLabel(m.年月)}</text>
+            <text x={cx} y={H - 8} textAnchor="middle" fontSize="8.5" fill={VIZ.muted}>{vizMonthLabel(m.年月)}</text>
           </g>
         );
       })}
@@ -1276,7 +1297,7 @@ function ActualsTab({ shipActuals, invTrend, onRefresh }) {
               </div>
               {act.months.map((m) => (
                 <div key={m.年月} className="flex text-[11px] px-2 py-1.5 border-t border-slate-100">
-                  <span className="w-14 text-slate-600">{m.年月}</span>
+                  <span className="w-14 text-slate-600">{vizYearMonth(m.年月)}</span>
                   <span className="flex-1 text-right font-semibold tabular-nums" style={{ color: NAVY }}>{vizComma(m.本数)}</span>
                   <span className="w-12 text-right text-slate-500 tabular-nums">{m.件数}</span>
                   <span className="flex-1 text-right text-slate-500 text-[10px]">

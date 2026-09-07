@@ -173,7 +173,9 @@ function getShippingActualsSummary_uncached_() {
       var r = best[k].row;
       var size = r[H['サイズ']] ? String(r[H['サイズ']]) : '';
       var qty = Number(r[H['数量']]) || 0;
-      var ym = r[H['年月']] ? String(r[H['年月']]) : '不明';
+      // ★ シートが '2026-07' を日付として保存してしまうため Date で返ってくる。
+      //   nc_dateText_ で 'yyyy-MM' の文字列に直す（詳細は noda_common_cache.js）。
+      var ym = nc_dateText_(r[H['年月']], 'yyyy-MM') || '不明';
       var chk = String(r[H['検算']] || '');
 
       data.shipmentCount++;

@@ -114,9 +114,13 @@ function getInventoryTrendData_uncached_() {
     // 同じ日付が複数行あった場合は後の行（取込が新しい方）を採用する
     var byDate = {};
     values.forEach(function (r) {
-      var dt = r[H['日付']];
+      // ★ シートが '2026-08-17' を日付として保存してしまうため Date で返ってくる。
+      //   String() すると "Sun Aug 17 2026 ..." になり、画面にそのまま出るうえ
+      //   sortが曜日名のアルファベット順になって日付順に並ばない。
+      //   nc_dateText_ で 'yyyy-MM-dd' に直してからキーにする。
+      var dt = nc_dateText_(r[H['日付']], 'yyyy-MM-dd');
       if (!dt) return;
-      byDate[String(dt)] = r;
+      byDate[dt] = r;
     });
 
     var dates = Object.keys(byDate).sort();

@@ -86,7 +86,8 @@ function nc_cached_(name, force, ttlSec, producer) {
  * フロントの更新ボタン（force指定）で取り直せば足りるが、手動で消したい場合用。
  */
 function clearDashboardCache() {
-  var names = ['inventory', 'shipping', 'orderPlan', 'dispatch'];
+  var names = ['inventory', 'shipping', 'orderPlan', 'dispatch',
+               'shipActuals', 'inventoryTrend'];
   var keys = names.map(function (n) { return NC_CACHE_CONFIG.PREFIX + n; });
   try {
     CacheService.getScriptCache().removeAll(keys);
@@ -96,4 +97,33 @@ function clearDashboardCache() {
     Logger.log('キャッシュ削除エラー: ' + String(err));
     return { ok: false, error: String(err) };
   }
+}
+
+/**
+ * シートのセルを「日付の文字列」に直す（内部共通）。
+ *
+ * ★ なぜ必要か（実際にハマった）
+ *   シートに '2026-07' や '2026-08-17' を文字列として書き込んでも、
+ *   Googleスプレッドシートが勝手に日付として解釈して保存する。
+ *   そのため getValues() で読み戻すと Date オブジェクトになっていて、
+ *   String() すると
+ *     "Mon Jun 01 2026 00:00:00 GMT+0900 (日本標準時)"
+ *   という長い文字列になる。これが画面にそのまま出てしまっていた。
+ *   さらに、この文字列でsortすると曜日名のアルファベット順に並ぶので、
+ *   日付順に並べたつもりが並んでいないという二重の不具合になる。
+ *
+ * Date型なら指定の書式に整え、そうでなければ文字列にして返す。
+ * @param {*} v セルの値
+ * @param {string} fmt 'yyyy-MM' や 'yyyy-MM-dd' など
+ * @return {string} 整えた文字列（空セルは ''）
+ */
+function nc_dateText_(v, fmt) {
+  if (v === null || v === undefined || v === '') return '';
+  // instanceof だけに頼らず、getTime を持つかでも判定する
+  if (v instanceof Date || (typeof v === 'object' && v && typeof v.getTime === 'function')) {
+    var t = v.getTime();
+    if (isNaN(t)) return '';
+    return Utilities.formatDate(v, 'Asia/Tokyo', fmt);
+  }
+  return String(v);
 }
