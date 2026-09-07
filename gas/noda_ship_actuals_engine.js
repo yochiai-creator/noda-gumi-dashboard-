@@ -66,6 +66,27 @@ var SHIP_ACT_CONFIG = {
 // 何度呼んでも安全（既に取り込んだfileIdは飛ばす）。トリガーからも画面からも呼べる。
 function harvestShippingActuals() {
   var started = Date.now();
+
+  // ★ 古いトリガーからの自動移行。
+  //   以前この関数を直接トリガーに登録していた時期があり、その状態のまま
+  //   だと在庫推移・受注推移・本数の自動修復がどれも走らない。
+  //   実際、落合さんの環境ではトリガーが harvestShippingActuals のままで、
+  //   気づくまで在庫推移も受注推移も貯まっていなかった。
+  //   「ensureShippingActualsTrigger を実行してください」と毎回お願いする
+  //   のは筋が悪いので、古いトリガーを見つけたらこの場で貼り替える。
+  //   （harvestDailyData 経由で呼ばれる通常時は古いトリガーが無いので何もしない）
+  try {
+    var stale = ScriptApp.getProjectTriggers().filter(function (t) {
+      return t.getHandlerFunction() === 'harvestShippingActuals';
+    });
+    if (stale.length > 0) {
+      Logger.log('古いトリガーを見つけたので harvestDailyData に貼り替えます。');
+      ensureShippingActualsTrigger();
+    }
+  } catch (err) {
+    Logger.log('トリガーの貼り替えに失敗: ' + String(err));
+  }
+
   var result = {
     started: Utilities.formatDate(new Date(started), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
     scannedMonths: [], added: 0, skipped: 0, failed: 0,
@@ -302,7 +323,7 @@ function ensureShippingActualsTrigger() {
   }
 
   ScriptApp.newTrigger(handler).timeBased().everyHours(1).create();
-  var msg2 = '1時間ごとの取込トリガーを作成しました（在庫推移＋出荷実績）' +
+  var msg2 = '1時間ごとの取込トリガーを作成しました（在庫推移＋受注推移＋出荷実績）' +
              (migrated > 0 ? '。古いトリガー' + migrated + '件は貼り替えました' : '');
   Logger.log(msg2);
   return { ok: true, created: true, migrated: migrated, message: msg2 };
@@ -843,4 +864,32 @@ function shipact_logMonthTotals_(byMonth) {
     var sizes = Object.keys(b.サイズ別).sort().map(function (k) { return k + ' ' + b.サイズ別[k]; }).join(' / ');
     Logger.log('  ' + m + '  合計' + b.合計 + '本 (' + b.件数 + '件)   ' + sizes);
   });
+}
+
+// ===== 公開関数：自動取込を直す（トリガーの貼り替え） =====
+// ★ 日本語名にしてある理由は「出荷本数を直す」と同じ。
+//   実行すると、今どの関数が定期実行されているかを直す前後で出す。
+function 自動取込を直す() {
+  Logger.log('■ 直す前のトリガー');
+  shipact_logTriggers_();
+
+  var r = ensureShippingActualsTrigger();
+
+  Logger.log('');
+  Logger.log('■ 直した後のトリガー');
+  shipact_logTriggers_();
+  Logger.log('');
+  Logger.log(r.message);
+  Logger.log('');
+  Logger.log('これで1時間ごとに、在庫推移・受注推移・出荷実績の取込と');
+  Logger.log('本数の自動修復がまとめて走ります。');
+  return r;
+}
+
+function shipact_logTriggers_() {
+  var ts = ScriptApp.getProjectTriggers().filter(function (t) {
+    return t.getEventType() === ScriptApp.EventType.CLOCK;
+  });
+  if (ts.length === 0) { Logger.log('  （定期実行はありません）'); return; }
+  ts.forEach(function (t) { Logger.log('  ' + t.getHandlerFunction() + ' を定期実行'); });
 }
