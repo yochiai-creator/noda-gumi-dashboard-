@@ -1516,15 +1516,6 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
                 </div>
               ))}
             </div>
-
-            <div className="text-[9px] mt-2 leading-relaxed" style={{ color: VIZ.muted }}>
-              ※ 出荷は配車表の合計行から。20kgと50kgのみで、5kg・8kg・10kg・30kgは含みません
-              （7月の実績で全体の約1.5%）。
-              {mc.hasPlan && "「予定」は配車表に入っている明日以降のぶんです。"}
-              出荷と受注はその月の合計、在庫はその月の最後に取れた日の残高です。
-              「—」はまだデータが無い月で、0本という意味ではありません。
-              {!mc.hasOrders && "受注は今日から貯め始めるので、明日以降に出てきます。"}
-            </div>
           </div>
         )}
       </Card>
