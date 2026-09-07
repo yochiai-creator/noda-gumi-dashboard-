@@ -240,7 +240,19 @@ function getShippingActualsSummary_uncached_() {
 // 在庫推移を先にやるのは、こちらが軽い（初回15件・以降1日1件）ため。
 // 出荷実績は重いので、残り時間で進むところまで進める。
 function harvestDailyData() {
-  var out = { inventory: null, orders: null, shipping: null };
+  var out = { inventory: null, orders: null, shipping: null, repair: null };
+
+  // ★ 古い判定で入った行を直す。シートを読んで判定し直すだけなので軽い
+  //   （PDFは読み直さない）。直す行が無ければ何もしない。
+  //   毎回「この関数を実行してください」とお願いするのは筋が悪いので、
+  //   取込のついでに自動で直るようにしてある。
+  try {
+    out.repair = repairImplausibleQuantities();
+  } catch (err) {
+    out.repair = { error: String(err) };
+    Logger.log('本数の修復で例外: ' + String(err));
+  }
+
   try {
     out.inventory = harvestInventoryHistory();
   } catch (err) {
@@ -622,14 +634,20 @@ function repairImplausibleQuantities() {
     if (cur != null && isNaN(cur)) cur = null;
     if (rangeQty != null && isNaN(rangeQty)) rangeQty = null;
 
-    // ★ シートに残っているのは「採用後の数量」なので、元の本文の数量は分からない。
-    //   採用後の数量がレンジと違うなら、それは本文由来の値。
-    //   （レンジ採用の行は数量＝レンジなので、この判定で区別できる）
-    var textQty = (cur != null && cur === rangeQty) ? cur : cur;
-    var picked = shipact_pickQuantity_(textQty, rangeQty);
+    // シートに残っているのは採用後の数量。これとレンジ本数から判定をやり直す。
+    var picked = shipact_pickQuantity_(cur, rangeQty);
     var newQty = picked.qty === null ? '' : picked.qty;
     var oldQty = r[H['数量']] === '' || r[H['数量']] == null ? '' : Number(r[H['数量']]);
-    if (String(newQty) === String(oldQty) && r[H['検算']] === picked.check) continue;
+    var qtyChanged = (String(newQty) !== String(oldQty));
+    var checkChanged = (r[H['検算']] !== picked.check);
+
+    // ★ 直した記録は上書きしない。
+    //   数量をレンジの値に直すと2つが同じ値になるので、次に判定し直すと
+    //   「一致」になってしまう。それで上書きすると、直した痕跡が消えるうえ
+    //   毎回書き換えが起きる。これらの印が付いている行はもう触らない。
+    var CORRECTED = { '数量異常': true, '両方異常': true };
+    if (!qtyChanged && CORRECTED[String(r[H['検算']])]) continue;
+    if (!qtyChanged && !checkChanged) continue;
 
     fixed.push({
       行: i + 2, 年月: nc_dateText_(r[H['年月']], 'yyyy-MM'), サイズ: r[H['サイズ']],
@@ -637,7 +655,7 @@ function repairImplausibleQuantities() {
       もとの数量: oldQty, 新しい数量: newQty, レンジ本数: rangeQty,
       もとの検算: r[H['検算']], 新しい検算: picked.check
     });
-    r[H['数量']] = newQty;
+    if (qtyChanged) r[H['数量']] = newQty;
     r[H['検算']] = picked.check;
     changed = true;
   }
@@ -647,7 +665,9 @@ function repairImplausibleQuantities() {
     nc_forget_('shipActuals');
     nc_forget_('monthlyCombined');
   }
-  Logger.log('本数の判定をやり直しました。変わった行: ' + fixed.length + '件');
+  if (fixed.length > 0) {
+    Logger.log('本数の判定をやり直しました。変わった行: ' + fixed.length + '件');
+  }
   fixed.filter(function (f) { return String(f.もとの数量) !== String(f.新しい数量); })
     .forEach(function (f) {
       Logger.log('  ' + f.年月 + ' ' + f.サイズ + ' ' + f.依頼No + '  ' +
