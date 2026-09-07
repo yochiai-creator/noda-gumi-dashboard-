@@ -1009,10 +1009,329 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh }) {
 }
 
 /* ---------- ルート ---------- */
+/* ------------------------------------------------------------------ */
+/*  実績・推移タブ                                                     */
+/*  グラフは外部ライブラリが使えない（GASは外部CDN不可）ので            */
+/*  インラインSVGを手書きしている。                                     */
+/*  配色は検証済みのカテゴリ配色スロット1・2（青・橙）。                */
+/*  CVD（色覚特性）分離 ΔE 24.7 で、色が見分けにくい人でも区別できる。  */
+/* ------------------------------------------------------------------ */
+
+const VIZ = {
+  s1: "#2a78d6",      // 系列1：50kg
+  s2: "#eb6834",      // 系列2：20kg
+  grid: "#e2e8f0",    // 目盛り線（面色から1段だけ違う色。実線のヘアライン）
+  ink: "#0f172a",     // 本文
+  ink2: "#475569",    // 補助
+  muted: "#94a3b8",   // 目盛りラベル
+  surface: "#ffffff", // 面色（マーカーのリングに使う）
+};
+
+// 目盛りを切りのいい数字にする（0 / 500 / 1,000 のように）
+function vizNiceTicks(maxValue, wantCount) {
+  if (!maxValue || maxValue <= 0) return { max: 1, ticks: [0, 1] };
+  const raw = maxValue / wantCount;
+  const mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+  const norm = raw / mag;
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  const max = Math.ceil(maxValue / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= max + step / 2; v += step) ticks.push(Math.round(v));
+  return { max, ticks };
+}
+
+const vizComma = (n) => (n == null ? "—" : Number(n).toLocaleString("ja-JP"));
+
+// 上だけ角を丸めた棒（下端は台に接するので角張らせる）
+function vizTopRoundedPath(x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h);
+  return "M" + x + "," + (y + h) +
+    " L" + x + "," + (y + rr) +
+    " Q" + x + "," + y + " " + (x + rr) + "," + y +
+    " L" + (x + w - rr) + "," + y +
+    " Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + rr) +
+    " L" + (x + w) + "," + (y + h) + " Z";
+}
+
+/* ---------- 在庫推移：小グラフを2段に並べる ---------- */
+/* ★ 最初は50kgと20kgを1つのグラフに重ねて、縦軸を0から描いていた。
+     しかし実データに近い値（50kg 約7,000・20kg 約4,000で日々の変動は±200程度）で
+     描いてみたら、線がほぼ平らになって「増えているのか減っているのか」が
+     まったく読めなかった。
+     水準が大きく違う2つの指標を1つの縦軸に載せると、どちらの変動も潰れる。
+     （第2軸を足すのは禁じ手。読み手が誤解する）
+     → サイズごとに小さなグラフを分け、それぞれの値の範囲に合わせて縦軸を取る。
+       縦軸が0から始まらないので、その旨を明記する。 */
+function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX }) {
+  const W = 340, H = 96;
+  const padL = 40, padR = 48, padT = 8, padB = showX ? 18 : 6;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const vals = days.map((d) => d[dataKey]);
+  const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  // 変動が読めるように、データの範囲に少し余白を足した範囲を使う
+  const span = Math.max(hi - lo, 1);
+  const pad = span * 0.35;
+  const yMin = Math.max(0, lo - pad), yMax = hi + pad;
+  const mid = Math.round((yMin + yMax) / 2);
+  const axisVals = [yMax, mid, yMin];
+
+  const xAt = (i) => padL + (days.length <= 1 ? plotW / 2 : (plotW * i) / (days.length - 1));
+  const yAt = (v) => padT + plotH - (plotH * (v - yMin)) / (yMax - yMin);
+  const shortDate = (s) => { const p = String(s).split("-"); return p.length === 3 ? Number(p[1]) + "/" + Number(p[2]) : s; };
+  const lastI = days.length - 1;
+  const sel = pick != null && days[pick] ? days[pick] : null;
+
+  return (
+    <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: "auto", display: "block" }}>
+      {axisVals.map((v, i) => (
+        <g key={"t" + i}>
+          <line x1={padL} y1={yAt(v)} x2={padL + plotW} y2={yAt(v)} stroke={VIZ.grid} strokeWidth="1" />
+          <text x={padL - 6} y={yAt(v) + 3} textAnchor="end" fontSize="7.5" fill={VIZ.muted}
+            style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(Math.round(v))}</text>
+        </g>
+      ))}
+      {/* サイズ名はグラフの中に置く。1系列なので凡例の箱は不要 */}
+      <text x={padL + 3} y={padT + 8} fontSize="9" fontWeight="700" fill={VIZ.ink2}>{label}</text>
+
+      {days.map((dd, i) => {
+        const half = days.length <= 1 ? plotW / 2 : plotW / (days.length - 1) / 2;
+        return (
+          <rect key={"hit" + i} x={xAt(i) - half} y={padT} width={half * 2} height={plotH}
+            fill="transparent" onClick={() => setPick(pick === i ? null : i)} style={{ cursor: "pointer" }} />
+        );
+      })}
+      {sel && <line x1={xAt(pick)} y1={padT} x2={xAt(pick)} y2={padT + plotH} stroke={VIZ.muted} strokeWidth="1" />}
+
+      <polyline points={days.map((dd, i) => xAt(i) + "," + yAt(dd[dataKey])).join(" ")}
+        fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={xAt(lastI)} cy={yAt(days[lastI][dataKey])} r="4"
+        fill={color} stroke={VIZ.surface} strokeWidth="2" />
+      <text x={xAt(lastI) + 8} y={yAt(days[lastI][dataKey]) + 3} fontSize="9" fontWeight="700"
+        fill={VIZ.ink2} style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(days[lastI][dataKey])}</text>
+      {sel && <circle cx={xAt(pick)} cy={yAt(sel[dataKey])} r="3.5"
+        fill={color} stroke={VIZ.surface} strokeWidth="2" />}
+
+      {showX && (
+        <g>
+          <text x={padL} y={H - 4} fontSize="7.5" fill={VIZ.muted}>{shortDate(days[0].日付)}</text>
+          {days.length > 1 && (
+            <text x={padL + plotW} y={H - 4} textAnchor="end" fontSize="7.5" fill={VIZ.muted}>
+              {shortDate(days[lastI].日付)}
+            </text>
+          )}
+        </g>
+      )}
+    </svg>
+  );
+}
+
+function InventoryTrendChart({ days }) {
+  const [pick, setPick] = useState(null);
+  const sel = pick != null && days[pick] ? days[pick] : null;
+  const shortDate = (s) => { const p = String(s).split("-"); return p.length === 3 ? Number(p[1]) + "/" + Number(p[2]) : s; };
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: VIZ.muted, marginBottom: 2, textAlign: "right" }}>
+        {sel
+          ? shortDate(sel.日付) + "：50kg " + vizComma(sel["50kg"]) + " / 20kg " + vizComma(sel["20kg"])
+          : "グラフをタップすると値が出ます"}
+      </div>
+      <InventoryTrendMini label="50kg" color={VIZ.s1} dataKey="50kg" days={days}
+        pick={pick} setPick={setPick} showX={false} />
+      <InventoryTrendMini label="20kg" color={VIZ.s2} dataKey="20kg" days={days}
+        pick={pick} setPick={setPick} showX={true} />
+      <div style={{ fontSize: 9, color: VIZ.muted, marginTop: 2 }}>
+        ※ 日々の変動が読めるように、縦軸は0から始めていません
+      </div>
+    </div>
+  );
+}
+
+/* ---------- 月次出荷実績：棒グラフ（1系列なので凡例は不要） ---------- */
+function MonthlyShipChart({ months }) {
+  const W = 340, H = 168;
+  const padL = 40, padR = 8, padT = 14, padB = 24;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const asc = [...months].reverse();     // 古い順に左から並べる
+  const maxVal = Math.max(1, ...asc.map((m) => m.本数));
+  const { max, ticks } = vizNiceTicks(maxVal, 4);
+  const band = plotW / asc.length;
+  const barW = Math.min(24, band - 8);   // 24px上限。枠いっぱいにはしない
+  const yAt = (v) => padT + plotH - (plotH * v) / max;
+  const monthLabel = (ym) => { const p = String(ym).split("-"); return p.length === 2 ? Number(p[1]) + "月" : ym; };
+
+  return (
+    <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: "auto", display: "block" }}>
+      {ticks.map((t, i) => (
+        <g key={"t" + i}>
+          <line x1={padL} y1={yAt(t)} x2={padL + plotW} y2={yAt(t)} stroke={VIZ.grid} strokeWidth="1" />
+          <text x={padL - 6} y={yAt(t) + 3} textAnchor="end" fontSize="8" fill={VIZ.muted}
+            style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(t)}</text>
+        </g>
+      ))}
+      {asc.map((m, i) => {
+        const cx = padL + band * i + band / 2;
+        const y = yAt(m.本数);
+        const h = padT + plotH - y;
+        return (
+          <g key={m.年月}>
+            <path d={vizTopRoundedPath(cx - barW / 2, y, barW, Math.max(h, 1), 4)} fill={VIZ.s1} />
+            {/* 月数が少ないので上端に値を出せる。入らない場合は表で読む */}
+            <text x={cx} y={y - 4} textAnchor="middle" fontSize="8.5" fontWeight="700" fill={VIZ.ink2}
+              style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(m.本数)}</text>
+            <text x={cx} y={H - 8} textAnchor="middle" fontSize="8.5" fill={VIZ.muted}>{monthLabel(m.年月)}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ---------- 実績・推移タブ本体 ---------- */
+function ActualsTab({ shipActuals, invTrend, onRefresh }) {
+  const [showTable, setShowTable] = useState(false);
+  const inv = invTrend, act = shipActuals;
+
+  const Card = ({ title, note, children, extra }) => (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 mb-3">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <div className="text-sm font-bold" style={{ color: NAVY }}>{title}</div>
+          {note && <div className="text-[10px] text-slate-400 mt-0.5">{note}</div>}
+        </div>
+        {extra}
+      </div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div>
+      {/* ---- 在庫推移 ---- */}
+      <Card title="在庫推移"
+        note={inv && inv.days && inv.days.length > 0
+          ? inv.days.length + "日分（" + inv.days[0].日付 + " 〜 " + inv.days[inv.days.length - 1].日付 + "）"
+          : null}>
+        {!inv ? (
+          <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
+        ) : inv.error ? (
+          <div className="text-xs text-amber-700 py-2">取得エラー：{inv.error}</div>
+        ) : !inv.days || inv.days.length === 0 ? (
+          <div className="text-xs text-slate-500 py-2">
+            まだ在庫の履歴が貯まっていません。1時間ごとの自動収集で溜まっていきます。
+          </div>
+        ) : (
+          <div>
+            {/* 見出しの数字。大きい数字に等幅は使わない（間延びして見える） */}
+            <div className="flex items-end gap-4 mb-3">
+              <div>
+                <div className="text-[10px] text-slate-500">総本数（{inv.latest.日付}）</div>
+                <div className="text-2xl font-bold" style={{ color: NAVY }}>{vizComma(inv.latest.総本数)}</div>
+              </div>
+              {inv.change && (
+                <div className="pb-1">
+                  <div className="text-[10px] text-slate-500">前回（{inv.change.前回日付}）比</div>
+                  <div className="text-sm font-semibold" style={{ color: VIZ.ink2 }}>
+                    {(inv.change.総本数 > 0 ? "▲ " : inv.change.総本数 < 0 ? "▼ " : "± ") +
+                      vizComma(Math.abs(inv.change.総本数))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {inv.days.length >= 2
+              ? <InventoryTrendChart days={inv.days} />
+              : <div className="text-xs text-slate-500 py-2">推移グラフは2日分以上貯まると出ます。</div>}
+          </div>
+        )}
+      </Card>
+
+      {/* ---- 月次出荷実績 ---- */}
+      <Card title="月次出荷実績"
+        note={act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null}
+        extra={act && act.sheetUrl && (
+          <a href={act.sheetUrl} target="_blank" rel="noopener noreferrer"
+            className="text-[10px] font-semibold" style={{ color: NAVY }}>元データ</a>
+        )}>
+        {!act ? (
+          <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
+        ) : act.error ? (
+          <div className="text-xs text-amber-700 py-2">取得エラー：{act.error}</div>
+        ) : !act.months || act.months.length === 0 ? (
+          <div className="text-xs text-slate-500 py-2">
+            まだ出荷実績が貯まっていません。指図書PDFを1時間ごとに読み込んで集計します
+            （初回は全期間ぶんあるので数日かかります）。
+          </div>
+        ) : (
+          <div>
+            <MonthlyShipChart months={act.months} />
+
+            {/* 表はグラフの代わりに読める形。グラフだけに値を閉じ込めない */}
+            <div className="mt-3 rounded-md border border-slate-200 overflow-hidden">
+              <div className="flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5">
+                <span className="w-14">月</span>
+                <span className="flex-1 text-right">本数</span>
+                <span className="w-12 text-right">件数</span>
+                <span className="flex-1 text-right">内訳</span>
+              </div>
+              {act.months.map((m) => (
+                <div key={m.年月} className="flex text-[11px] px-2 py-1.5 border-t border-slate-100">
+                  <span className="w-14 text-slate-600">{m.年月}</span>
+                  <span className="flex-1 text-right font-semibold tabular-nums" style={{ color: NAVY }}>{vizComma(m.本数)}</span>
+                  <span className="w-12 text-right text-slate-500 tabular-nums">{m.件数}</span>
+                  <span className="flex-1 text-right text-slate-500 text-[10px]">
+                    {Object.keys(m.サイズ別).sort().map((k) => k + " " + vizComma(m.サイズ別[k])).join(" / ")}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* 出荷先。名称はPDFのテキスト化で化けることがあるのでコードも出す */}
+            {act.topDests && act.topDests.length > 0 && (
+              <div className="mt-3">
+                <button onClick={() => setShowTable(!showTable)}
+                  className="text-[11px] font-semibold" style={{ color: NAVY }}>
+                  {showTable ? "出荷先を隠す" : "出荷先の上位を見る"}
+                </button>
+                {showTable && (
+                  <div className="mt-2 rounded-md border border-slate-200 overflow-hidden">
+                    {act.topDests.map((dst) => (
+                      <div key={dst.コード} className="flex items-center text-[11px] px-2 py-1.5 border-t border-slate-100 first:border-t-0">
+                        <span className="text-slate-400 tabular-nums w-10">{dst.コード}</span>
+                        <span className="flex-1 truncate text-slate-700">{dst.名}</span>
+                        <span className="text-right font-semibold tabular-nums w-14" style={{ color: NAVY }}>{vizComma(dst.本数)}</span>
+                        <span className="text-right text-slate-400 tabular-nums w-10">{dst.件数}件</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 取り込みの品質。おかしい件数を隠さず出しておく */}
+            {(act.mismatchCount > 0 || act.needsCheckCount > 0 || act.nonCylinderCount > 0) && (
+              <div className="mt-3 text-[10px] text-slate-500 leading-relaxed">
+                {act.mismatchCount > 0 && <div>数量と容器番号レンジが食い違う指図書：{act.mismatchCount}件</div>}
+                {act.needsCheckCount > 0 && <div>PDFの文字が読めず要確認：{act.needsCheckCount}件</div>}
+                {act.nonCylinderCount > 0 && <div>容器以外（バルク貯槽など）で本数集計から除外：{act.nonCylinderCount}件</div>}
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      <button onClick={onRefresh}
+        className="w-full py-2 rounded-lg text-xs font-semibold text-white" style={{ background: NAVY }}>
+        最新に更新
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
-  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, loading: true, error: null });
+  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, loading: true, error: null });
   const [yardLive, setYardLive] = useState({ "50k": {}, "20k": {} });
   const [loadedCount, setLoadedCount] = useState(0);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -1022,7 +1341,7 @@ export default function App() {
   const markLoaded = () => {
     setLoadedCount((prev) => {
       const next = prev + 1;
-      if (next >= 5) setInitialLoadDone(true);
+      if (next >= 7) setInitialLoadDone(true);   // 4集計 + ヤード + 出荷実績 + 在庫推移
       return next;
     });
   };
@@ -1031,6 +1350,7 @@ export default function App() {
     { id: "orders", label: "受注・指図書" },
     { id: "yard",   label: "ヤード・現場" },
     { id: "dispatch", label: "配車・当日出荷" },
+    { id: "actuals", label: "実績・推移" },
   ];
 
   // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
@@ -1064,6 +1384,18 @@ export default function App() {
       .withSuccessHandler((d) => { setLive((prev) => ({ ...prev, dispatch: d })); markLoaded(); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded(); })
       .getDispatchTodayData(force === true);
+
+    // 蓄積シートから月次出荷実績を取得（シートを読むだけなので軽い）
+    google.script.run
+      .withSuccessHandler((sa) => { setLive((prev) => ({ ...prev, shipActuals: sa })); markLoaded(); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, shipActuals: { error: String(err) } })); markLoaded(); })
+      .getShippingActualsSummary(force === true);
+
+    // 蓄積シートから在庫推移を取得
+    google.script.run
+      .withSuccessHandler((it) => { setLive((prev) => ({ ...prev, invTrend: it })); markLoaded(); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, invTrend: { error: String(err) } })); markLoaded(); })
+      .getInventoryTrendData(force === true);
 
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map((b) => ({ pos: String(b.pos) }));
@@ -1279,6 +1611,7 @@ export default function App() {
 
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} />}
+          {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab dateLabel={dispatchDateLabel} shipments={dispatchShipments} week={dispatchWeek} />}
         </div>
 

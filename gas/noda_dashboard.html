@@ -3213,6 +3213,452 @@ function YardTab({
 }
 
 /* ---------- ルート ---------- */
+/* ------------------------------------------------------------------ */
+/*  実績・推移タブ                                                     */
+/*  グラフは外部ライブラリが使えない（GASは外部CDN不可）ので            */
+/*  インラインSVGを手書きしている。                                     */
+/*  配色は検証済みのカテゴリ配色スロット1・2（青・橙）。                */
+/*  CVD（色覚特性）分離 ΔE 24.7 で、色が見分けにくい人でも区別できる。  */
+/* ------------------------------------------------------------------ */
+
+const VIZ = {
+  s1: "#2a78d6",
+  // 系列1：50kg
+  s2: "#eb6834",
+  // 系列2：20kg
+  grid: "#e2e8f0",
+  // 目盛り線（面色から1段だけ違う色。実線のヘアライン）
+  ink: "#0f172a",
+  // 本文
+  ink2: "#475569",
+  // 補助
+  muted: "#94a3b8",
+  // 目盛りラベル
+  surface: "#ffffff" // 面色（マーカーのリングに使う）
+};
+
+// 目盛りを切りのいい数字にする（0 / 500 / 1,000 のように）
+function vizNiceTicks(maxValue, wantCount) {
+  if (!maxValue || maxValue <= 0) return {
+    max: 1,
+    ticks: [0, 1]
+  };
+  const raw = maxValue / wantCount;
+  const mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+  const norm = raw / mag;
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  const max = Math.ceil(maxValue / step) * step;
+  const ticks = [];
+  for (let v = 0; v <= max + step / 2; v += step) ticks.push(Math.round(v));
+  return {
+    max,
+    ticks
+  };
+}
+const vizComma = n => n == null ? "—" : Number(n).toLocaleString("ja-JP");
+
+// 上だけ角を丸めた棒（下端は台に接するので角張らせる）
+function vizTopRoundedPath(x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h);
+  return "M" + x + "," + (y + h) + " L" + x + "," + (y + rr) + " Q" + x + "," + y + " " + (x + rr) + "," + y + " L" + (x + w - rr) + "," + y + " Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + rr) + " L" + (x + w) + "," + (y + h) + " Z";
+}
+
+/* ---------- 在庫推移：小グラフを2段に並べる ---------- */
+/* ★ 最初は50kgと20kgを1つのグラフに重ねて、縦軸を0から描いていた。
+     しかし実データに近い値（50kg 約7,000・20kg 約4,000で日々の変動は±200程度）で
+     描いてみたら、線がほぼ平らになって「増えているのか減っているのか」が
+     まったく読めなかった。
+     水準が大きく違う2つの指標を1つの縦軸に載せると、どちらの変動も潰れる。
+     （第2軸を足すのは禁じ手。読み手が誤解する）
+     → サイズごとに小さなグラフを分け、それぞれの値の範囲に合わせて縦軸を取る。
+       縦軸が0から始まらないので、その旨を明記する。 */
+function InventoryTrendMini({
+  label,
+  color,
+  dataKey,
+  days,
+  pick,
+  setPick,
+  showX
+}) {
+  const W = 340,
+    H = 96;
+  const padL = 40,
+    padR = 48,
+    padT = 8,
+    padB = showX ? 18 : 6;
+  const plotW = W - padL - padR,
+    plotH = H - padT - padB;
+  const vals = days.map(d => d[dataKey]);
+  const lo = Math.min.apply(null, vals),
+    hi = Math.max.apply(null, vals);
+  // 変動が読めるように、データの範囲に少し余白を足した範囲を使う
+  const span = Math.max(hi - lo, 1);
+  const pad = span * 0.35;
+  const yMin = Math.max(0, lo - pad),
+    yMax = hi + pad;
+  const mid = Math.round((yMin + yMax) / 2);
+  const axisVals = [yMax, mid, yMin];
+  const xAt = i => padL + (days.length <= 1 ? plotW / 2 : plotW * i / (days.length - 1));
+  const yAt = v => padT + plotH - plotH * (v - yMin) / (yMax - yMin);
+  const shortDate = s => {
+    const p = String(s).split("-");
+    return p.length === 3 ? Number(p[1]) + "/" + Number(p[2]) : s;
+  };
+  const lastI = days.length - 1;
+  const sel = pick != null && days[pick] ? days[pick] : null;
+  return /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 " + W + " " + H,
+    style: {
+      width: "100%",
+      height: "auto",
+      display: "block"
+    }
+  }, axisVals.map((v, i) => /*#__PURE__*/React.createElement("g", {
+    key: "t" + i
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: padL,
+    y1: yAt(v),
+    x2: padL + plotW,
+    y2: yAt(v),
+    stroke: VIZ.grid,
+    strokeWidth: "1"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: padL - 6,
+    y: yAt(v) + 3,
+    textAnchor: "end",
+    fontSize: "7.5",
+    fill: VIZ.muted,
+    style: {
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, vizComma(Math.round(v))))), /*#__PURE__*/React.createElement("text", {
+    x: padL + 3,
+    y: padT + 8,
+    fontSize: "9",
+    fontWeight: "700",
+    fill: VIZ.ink2
+  }, label), days.map((dd, i) => {
+    const half = days.length <= 1 ? plotW / 2 : plotW / (days.length - 1) / 2;
+    return /*#__PURE__*/React.createElement("rect", {
+      key: "hit" + i,
+      x: xAt(i) - half,
+      y: padT,
+      width: half * 2,
+      height: plotH,
+      fill: "transparent",
+      onClick: () => setPick(pick === i ? null : i),
+      style: {
+        cursor: "pointer"
+      }
+    });
+  }), sel && /*#__PURE__*/React.createElement("line", {
+    x1: xAt(pick),
+    y1: padT,
+    x2: xAt(pick),
+    y2: padT + plotH,
+    stroke: VIZ.muted,
+    strokeWidth: "1"
+  }), /*#__PURE__*/React.createElement("polyline", {
+    points: days.map((dd, i) => xAt(i) + "," + yAt(dd[dataKey])).join(" "),
+    fill: "none",
+    stroke: color,
+    strokeWidth: "2",
+    strokeLinejoin: "round",
+    strokeLinecap: "round"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: xAt(lastI),
+    cy: yAt(days[lastI][dataKey]),
+    r: "4",
+    fill: color,
+    stroke: VIZ.surface,
+    strokeWidth: "2"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: xAt(lastI) + 8,
+    y: yAt(days[lastI][dataKey]) + 3,
+    fontSize: "9",
+    fontWeight: "700",
+    fill: VIZ.ink2,
+    style: {
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, vizComma(days[lastI][dataKey])), sel && /*#__PURE__*/React.createElement("circle", {
+    cx: xAt(pick),
+    cy: yAt(sel[dataKey]),
+    r: "3.5",
+    fill: color,
+    stroke: VIZ.surface,
+    strokeWidth: "2"
+  }), showX && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("text", {
+    x: padL,
+    y: H - 4,
+    fontSize: "7.5",
+    fill: VIZ.muted
+  }, shortDate(days[0].日付)), days.length > 1 && /*#__PURE__*/React.createElement("text", {
+    x: padL + plotW,
+    y: H - 4,
+    textAnchor: "end",
+    fontSize: "7.5",
+    fill: VIZ.muted
+  }, shortDate(days[lastI].日付))));
+}
+function InventoryTrendChart({
+  days
+}) {
+  const [pick, setPick] = useState(null);
+  const sel = pick != null && days[pick] ? days[pick] : null;
+  const shortDate = s => {
+    const p = String(s).split("-");
+    return p.length === 3 ? Number(p[1]) + "/" + Number(p[2]) : s;
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: VIZ.muted,
+      marginBottom: 2,
+      textAlign: "right"
+    }
+  }, sel ? shortDate(sel.日付) + "：50kg " + vizComma(sel["50kg"]) + " / 20kg " + vizComma(sel["20kg"]) : "グラフをタップすると値が出ます"), /*#__PURE__*/React.createElement(InventoryTrendMini, {
+    label: "50kg",
+    color: VIZ.s1,
+    dataKey: "50kg",
+    days: days,
+    pick: pick,
+    setPick: setPick,
+    showX: false
+  }), /*#__PURE__*/React.createElement(InventoryTrendMini, {
+    label: "20kg",
+    color: VIZ.s2,
+    dataKey: "20kg",
+    days: days,
+    pick: pick,
+    setPick: setPick,
+    showX: true
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9,
+      color: VIZ.muted,
+      marginTop: 2
+    }
+  }, "※ 日々の変動が読めるように、縦軸は0から始めていません"));
+}
+
+/* ---------- 月次出荷実績：棒グラフ（1系列なので凡例は不要） ---------- */
+function MonthlyShipChart({
+  months
+}) {
+  const W = 340,
+    H = 168;
+  const padL = 40,
+    padR = 8,
+    padT = 14,
+    padB = 24;
+  const plotW = W - padL - padR,
+    plotH = H - padT - padB;
+  const asc = [...months].reverse(); // 古い順に左から並べる
+  const maxVal = Math.max(1, ...asc.map(m => m.本数));
+  const {
+    max,
+    ticks
+  } = vizNiceTicks(maxVal, 4);
+  const band = plotW / asc.length;
+  const barW = Math.min(24, band - 8); // 24px上限。枠いっぱいにはしない
+  const yAt = v => padT + plotH - plotH * v / max;
+  const monthLabel = ym => {
+    const p = String(ym).split("-");
+    return p.length === 2 ? Number(p[1]) + "月" : ym;
+  };
+  return /*#__PURE__*/React.createElement("svg", {
+    viewBox: "0 0 " + W + " " + H,
+    style: {
+      width: "100%",
+      height: "auto",
+      display: "block"
+    }
+  }, ticks.map((t, i) => /*#__PURE__*/React.createElement("g", {
+    key: "t" + i
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: padL,
+    y1: yAt(t),
+    x2: padL + plotW,
+    y2: yAt(t),
+    stroke: VIZ.grid,
+    strokeWidth: "1"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: padL - 6,
+    y: yAt(t) + 3,
+    textAnchor: "end",
+    fontSize: "8",
+    fill: VIZ.muted,
+    style: {
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, vizComma(t)))), asc.map((m, i) => {
+    const cx = padL + band * i + band / 2;
+    const y = yAt(m.本数);
+    const h = padT + plotH - y;
+    return /*#__PURE__*/React.createElement("g", {
+      key: m.年月
+    }, /*#__PURE__*/React.createElement("path", {
+      d: vizTopRoundedPath(cx - barW / 2, y, barW, Math.max(h, 1), 4),
+      fill: VIZ.s1
+    }), /*#__PURE__*/React.createElement("text", {
+      x: cx,
+      y: y - 4,
+      textAnchor: "middle",
+      fontSize: "8.5",
+      fontWeight: "700",
+      fill: VIZ.ink2,
+      style: {
+        fontVariantNumeric: "tabular-nums"
+      }
+    }, vizComma(m.本数)), /*#__PURE__*/React.createElement("text", {
+      x: cx,
+      y: H - 8,
+      textAnchor: "middle",
+      fontSize: "8.5",
+      fill: VIZ.muted
+    }, monthLabel(m.年月)));
+  }));
+}
+
+/* ---------- 実績・推移タブ本体 ---------- */
+function ActualsTab({
+  shipActuals,
+  invTrend,
+  onRefresh
+}) {
+  const [showTable, setShowTable] = useState(false);
+  const inv = invTrend,
+    act = shipActuals;
+  const Card = ({
+    title,
+    note,
+    children,
+    extra
+  }) => /*#__PURE__*/React.createElement("div", {
+    className: "rounded-lg border border-slate-200 bg-white p-3 mb-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-bold",
+    style: {
+      color: NAVY
+    }
+  }, title), note && /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-400 mt-0.5"
+  }, note)), extra), children);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
+    title: "在庫推移",
+    note: inv && inv.days && inv.days.length > 0 ? inv.days.length + "日分（" + inv.days[0].日付 + " 〜 " + inv.days[inv.days.length - 1].日付 + "）" : null
+  }, !inv ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-400 py-4 text-center"
+  }, "読み込み中…") : inv.error ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-amber-700 py-2"
+  }, "取得エラー：", inv.error) : !inv.days || inv.days.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500 py-2"
+  }, "まだ在庫の履歴が貯まっていません。1時間ごとの自動収集で溜まっていきます。") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-end gap-4 mb-3"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500"
+  }, "総本数（", inv.latest.日付, "）"), /*#__PURE__*/React.createElement("div", {
+    className: "text-2xl font-bold",
+    style: {
+      color: NAVY
+    }
+  }, vizComma(inv.latest.総本数))), inv.change && /*#__PURE__*/React.createElement("div", {
+    className: "pb-1"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500"
+  }, "前回（", inv.change.前回日付, "）比"), /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-semibold",
+    style: {
+      color: VIZ.ink2
+    }
+  }, (inv.change.総本数 > 0 ? "▲ " : inv.change.総本数 < 0 ? "▼ " : "± ") + vizComma(Math.abs(inv.change.総本数))))), inv.days.length >= 2 ? /*#__PURE__*/React.createElement(InventoryTrendChart, {
+    days: inv.days
+  }) : /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500 py-2"
+  }, "推移グラフは2日分以上貯まると出ます。"))), /*#__PURE__*/React.createElement(Card, {
+    title: "月次出荷実績",
+    note: act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null,
+    extra: act && act.sheetUrl && /*#__PURE__*/React.createElement("a", {
+      href: act.sheetUrl,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      className: "text-[10px] font-semibold",
+      style: {
+        color: NAVY
+      }
+    }, "元データ")
+  }, !act ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-400 py-4 text-center"
+  }, "読み込み中…") : act.error ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-amber-700 py-2"
+  }, "取得エラー：", act.error) : !act.months || act.months.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500 py-2"
+  }, "まだ出荷実績が貯まっていません。指図書PDFを1時間ごとに読み込んで集計します （初回は全期間ぶんあるので数日かかります）。") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyShipChart, {
+    months: act.months
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 rounded-md border border-slate-200 overflow-hidden"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-14"
+  }, "月"), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-right"
+  }, "本数"), /*#__PURE__*/React.createElement("span", {
+    className: "w-12 text-right"
+  }, "件数"), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-right"
+  }, "内訳")), act.months.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.年月,
+    className: "flex text-[11px] px-2 py-1.5 border-t border-slate-100"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-14 text-slate-600"
+  }, m.年月), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-right font-semibold tabular-nums",
+    style: {
+      color: NAVY
+    }
+  }, vizComma(m.本数)), /*#__PURE__*/React.createElement("span", {
+    className: "w-12 text-right text-slate-500 tabular-nums"
+  }, m.件数), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-right text-slate-500 text-[10px]"
+  }, Object.keys(m.サイズ別).sort().map(k => k + " " + vizComma(m.サイズ別[k])).join(" / "))))), act.topDests && act.topDests.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "mt-3"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowTable(!showTable),
+    className: "text-[11px] font-semibold",
+    style: {
+      color: NAVY
+    }
+  }, showTable ? "出荷先を隠す" : "出荷先の上位を見る"), showTable && /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 rounded-md border border-slate-200 overflow-hidden"
+  }, act.topDests.map(dst => /*#__PURE__*/React.createElement("div", {
+    key: dst.コード,
+    className: "flex items-center text-[11px] px-2 py-1.5 border-t border-slate-100 first:border-t-0"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400 tabular-nums w-10"
+  }, dst.コード), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 truncate text-slate-700"
+  }, dst.名), /*#__PURE__*/React.createElement("span", {
+    className: "text-right font-semibold tabular-nums w-14",
+    style: {
+      color: NAVY
+    }
+  }, vizComma(dst.本数)), /*#__PURE__*/React.createElement("span", {
+    className: "text-right text-slate-400 tabular-nums w-10"
+  }, dst.件数, "件"))))), (act.mismatchCount > 0 || act.needsCheckCount > 0 || act.nonCylinderCount > 0) && /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 text-[10px] text-slate-500 leading-relaxed"
+  }, act.mismatchCount > 0 && /*#__PURE__*/React.createElement("div", null, "数量と容器番号レンジが食い違う指図書：", act.mismatchCount, "件"), act.needsCheckCount > 0 && /*#__PURE__*/React.createElement("div", null, "PDFの文字が読めず要確認：", act.needsCheckCount, "件"), act.nonCylinderCount > 0 && /*#__PURE__*/React.createElement("div", null, "容器以外（バルク貯槽など）で本数集計から除外：", act.nonCylinderCount, "件")))), /*#__PURE__*/React.createElement("button", {
+    onClick: onRefresh,
+    className: "w-full py-2 rounded-lg text-xs font-semibold text-white",
+    style: {
+      background: NAVY
+    }
+  }, "最新に更新"));
+}
 function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
@@ -3221,6 +3667,8 @@ function App() {
     shipping: null,
     orderPlan: null,
     dispatch: null,
+    shipActuals: null,
+    invTrend: null,
     loading: true,
     error: null
   });
@@ -3234,7 +3682,7 @@ function App() {
   const markLoaded = () => {
     setLoadedCount(prev => {
       const next = prev + 1;
-      if (next >= 5) setInitialLoadDone(true);
+      if (next >= 7) setInitialLoadDone(true); // 4集計 + ヤード + 出荷実績 + 在庫推移
       return next;
     });
   };
@@ -3247,6 +3695,9 @@ function App() {
   }, {
     id: "dispatch",
     label: "配車・当日出荷"
+  }, {
+    id: "actuals",
+    label: "実績・推移"
   }];
 
   // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
@@ -3321,6 +3772,40 @@ function App() {
       }));
       markLoaded();
     }).getDispatchTodayData(force === true);
+
+    // 蓄積シートから月次出荷実績を取得（シートを読むだけなので軽い）
+    google.script.run.withSuccessHandler(sa => {
+      setLive(prev => ({
+        ...prev,
+        shipActuals: sa
+      }));
+      markLoaded();
+    }).withFailureHandler(err => {
+      setLive(prev => ({
+        ...prev,
+        shipActuals: {
+          error: String(err)
+        }
+      }));
+      markLoaded();
+    }).getShippingActualsSummary(force === true);
+
+    // 蓄積シートから在庫推移を取得
+    google.script.run.withSuccessHandler(it => {
+      setLive(prev => ({
+        ...prev,
+        invTrend: it
+      }));
+      markLoaded();
+    }).withFailureHandler(err => {
+      setLive(prev => ({
+        ...prev,
+        invTrend: {
+          error: String(err)
+        }
+      }));
+      markLoaded();
+    }).getInventoryTrendData(force === true);
 
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map(b => ({
@@ -3631,6 +4116,10 @@ function App() {
     byYear: invByYear,
     oldest: invOldest,
     yardLive: yardLive,
+    onRefresh: () => fetchLiveData(true)
+  }), tab === "actuals" && /*#__PURE__*/React.createElement(ActualsTab, {
+    shipActuals: live.shipActuals,
+    invTrend: live.invTrend,
     onRefresh: () => fetchLiveData(true)
   }), tab === "dispatch" && /*#__PURE__*/React.createElement(DispatchTab, {
     dateLabel: dispatchDateLabel,
