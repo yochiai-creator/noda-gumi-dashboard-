@@ -17,6 +17,20 @@
  *   配車表の月合計は指図書よりわずかに少なく出るはず（7月の実績では
  *   1,428本中22本＝約1.5%が小サイズだった）。
  *
+ * ★ 実測で確かめた構造（2026-09-04版のファイルを実際に解析した結果）
+ *   ・シートは 129行 × 2226列。年度をまたいで 2025/03〜2027/04 の列がある。
+ *   ・「ｺﾝﾃﾅ」(半角カナ)・「小口」・「合計」のラベルは列8にあり、
+ *     行34・35・36。既存の日次集計が使っている行番号と一致していた。
+ *   ・見出しは「3/31(月)出」「4/1(火)着」のように曜日入りで、
+ *     1セルが「出発日＼n到着日」の2行になっている。
+ *   ・出発列は1272列、うち合計が両サイズそろっていたのは636列。
+ *   ・2026年8月の合計は 15,103本。落合さんの「8月は15,000本くらい」と一致した。
+ *
+ * ★ 未来の日付には「予定」が入っている（重要）
+ *   9/7時点のファイルに 9/8〜9/30 の数字がすでに入っていた。
+ *   つまり過去日＝実績、未来日＝予定。混ぜると当月が水増しになるので、
+ *   今日以前を「実績」、明日以降を「予定」として分けて集計する。
+ *
  * ★ 検証してから使うこと
  *   この集計が実際の出荷本数と一致するかは、指図書の集計と突き合わせて
  *   確かめる必要がある。そのための関数が compareShipmentSources()。
@@ -36,7 +50,8 @@ function getDispatchMonthlyTotals_uncached_() {
   var data = {
     updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
     file: null,
-    months: [],        // [{ 年月, 本数, '20k', '50k', 小口, コンテナ, 日数 }] 古い順
+    asOf: null,        // 実績と予定を分ける基準日（今日）
+    months: [],        // [{ 年月, 本数, '20k', '50k', 小口, コンテナ, 日数, 予定, 予定日数 }] 古い順
     columnsSeen: 0,    // 走査した日付ブロックの数（構造が読めているかの確認用）
     columnsUsed: 0,    // うち合計が取れたブロック数
     // ★ 上限(MAX_PLAUSIBLE_QTY)を超えて捨てた値。日付シリアル値をはじくための
@@ -55,7 +70,12 @@ function getDispatchMonthlyTotals_uncached_() {
     if (!sheet) throw new Error('シート「' + DISPATCH_CONFIG.SHEET_NAME + '」が見つかりません');
     var values = sheet.getDataRange().getValues();
 
-    var agg = dmon_walkColumns_(values);
+    // 実績と予定の境目。今日ぶんまでを実績として数える。
+    var today = new Date();
+    var todayKey = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+    data.asOf = Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy-MM-dd');
+
+    var agg = dmon_walkColumns_(values, todayKey);
     data.columnsSeen = agg.seen;
     data.columnsUsed = agg.used;
     data.rejectedTooLarge = agg.rejected;
@@ -69,11 +89,13 @@ function getDispatchMonthlyTotals_uncached_() {
       var m = agg.byMonth[k];
       return {
         年月: k,
-        本数: m.k20 + m.k50,
+        本数: m.k20 + m.k50,          // 今日ぶんまでの実績
         '20k': m.k20, '50k': m.k50,
         小口: m.ko20 + m.ko50,
         コンテナ: m.ko20c + m.ko50c,
-        日数: Object.keys(m.days).length
+        日数: Object.keys(m.days).length,
+        予定: m.f20 + m.f50,          // 明日以降ぶん（配車表に入っている予定）
+        予定日数: Object.keys(m.futureDays).length
       };
     });
   } catch (err) {
@@ -88,7 +110,7 @@ function getDispatchMonthlyTotals_uncached_() {
 // あちらは「特定の1日を探す」、こちらは「全部の日を拾う」ので向きが逆。
 // 同じ出発日が複数の列ブロックに現れることがある（翌日着の短距離便と
 // 週末をまたぐ長距離便など）。それぞれ別の実データを持つので合算する。
-function dmon_walkColumns_(values) {
+function dmon_walkColumns_(values, todayKey) {
   var GOUKEI = DISPATCH_CONFIG.ROW_GOUKEI;
   var KOGUCHI = DISPATCH_CONFIG.ROW_KOGUCHI;
   var KONTENA = DISPATCH_CONFIG.ROW_KONTENA;
@@ -116,7 +138,8 @@ function dmon_walkColumns_(values) {
   }
   function bucket(ym) {
     if (!out.byMonth[ym]) {
-      out.byMonth[ym] = { k20: 0, k50: 0, ko20: 0, ko50: 0, ko20c: 0, ko50c: 0, days: {} };
+      out.byMonth[ym] = { k20: 0, k50: 0, ko20: 0, ko50: 0, ko20c: 0, ko50c: 0,
+                          f20: 0, f50: 0, days: {}, futureDays: {} };
     }
     return out.byMonth[ym];
   }
@@ -139,29 +162,41 @@ function dmon_walkColumns_(values) {
     out.seen++;
     var ymKey = year + '-' + (mo < 10 ? '0' + mo : mo);
     var b = bucket(ymKey);
-    b.days[mo + '/' + da] = true;
+
+    // ★ 未来の日付には「予定」が入っている。実績と混ぜない。
+    var dayKey = year * 10000 + mo * 100 + da;
+    var isFuture = (todayKey != null) && (dayKey > todayKey);
+    if (isFuture) b.futureDays[mo + '/' + da] = true;
+    else b.days[mo + '/' + da] = true;
 
     // 合計は20k・50kの両方がそろっている場合だけ採る（片方だけの列は
     // レイアウトのずれや書きかけの可能性があるため）。
     var v20 = values[GOUKEI] ? values[GOUKEI][c] : null;
     var v50 = values[GOUKEI] ? values[GOUKEI][c + 1] : null;
     if (plausible(v20) && plausible(v50)) {
-      b.k20 += Number(v20);
-      b.k50 += Number(v50);
-      out.used++;
+      if (isFuture) {
+        b.f20 += Number(v20);
+        b.f50 += Number(v50);
+      } else {
+        b.k20 += Number(v20);
+        b.k50 += Number(v50);
+        out.used++;
 
-      var g20 = values[KOGUCHI] ? values[KOGUCHI][c] : null;
-      var g50 = values[KOGUCHI] ? values[KOGUCHI][c + 1] : null;
-      if (plausible(g20)) b.ko20 += Number(g20);
-      if (plausible(g50)) b.ko50 += Number(g50);
+        var g20 = values[KOGUCHI] ? values[KOGUCHI][c] : null;
+        var g50 = values[KOGUCHI] ? values[KOGUCHI][c + 1] : null;
+        if (plausible(g20)) b.ko20 += Number(g20);
+        if (plausible(g50)) b.ko50 += Number(g50);
+      }
     }
 
     // コンテナは合計の有無と独立して判定する（合計が空でもコンテナに
-    // 値が入っている列が実在する）。
-    var c20 = values[KONTENA] ? values[KONTENA][c] : null;
-    var c50 = values[KONTENA] ? values[KONTENA][c + 1] : null;
-    if (plausible(c20)) b.ko20c += Number(c20);
-    if (plausible(c50)) b.ko50c += Number(c50);
+    // 値が入っている列が実在する）。予定ぶんは数えない。
+    if (!isFuture) {
+      var c20 = values[KONTENA] ? values[KONTENA][c] : null;
+      var c50 = values[KONTENA] ? values[KONTENA][c + 1] : null;
+      if (plausible(c20)) b.ko20c += Number(c20);
+      if (plausible(c50)) b.ko50c += Number(c50);
+    }
   }
   return out;
 }
