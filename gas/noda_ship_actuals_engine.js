@@ -40,6 +40,16 @@ var SHIP_ACT_CONFIG = {
   // 1回の実行で使う時間の上限。GASの実行上限は6分なので余裕をみて4分で打ち切る。
   TIME_BUDGET_MS: 4 * 60 * 1000,
 
+  // ★ 容器Noレンジから数えた本数の上限。
+  //   1件の指図書はトラック1台ぶんなので、多くても数百本。実データの最大は200本。
+  //   ところがテキスト化の失敗で「HXP 60901 〜 70060」のような桁違いのレンジが
+  //   取れることがあり、そのまま数えると9,160本になる。
+  //   本文から数量が取れなかったときはレンジの本数を採用する作りなので、
+  //   こういう行が1件混ざるだけで月合計が跳ね上がる。
+  //   （実際2026年7月の20kgが10,485本と出た。配車表では6,152本。）
+  //   上限を超えるレンジは「読めなかった」ものとして扱い、数量には使わない。
+  MAX_PLAUSIBLE_RANGE: 1000,
+
   // 出荷作業指図書_YY.MM.DD_依頼No-枝番(バージョン).pdf
   NAME_PATTERN: /^出荷作業指図書_(\d{2})\.(\d{2})\.(\d{2})_(\d+-\d+)-(\d+)(?:\((\d+)\))?\.pdf$/i,
 
@@ -409,12 +419,19 @@ function shipact_buildRow_(file, nameMatch) {
     //   どちらも無い → テキストが読めていない。要確認として残す
     var qty = f.qty;
     var rangeQty = f.rangeQty;
+    // ★ 桁違いのレンジは読み取り失敗とみなす。数量の代わりには使わない。
+    var rangeUsable = (rangeQty != null && rangeQty <= SHIP_ACT_CONFIG.MAX_PLAUSIBLE_RANGE);
     var check;
     if (qty != null && rangeQty != null) {
-      check = (qty === rangeQty) ? '一致' : '不一致';
+      check = rangeUsable ? ((qty === rangeQty) ? '一致' : '不一致') : 'レンジ異常';
     } else if (qty == null && rangeQty != null) {
-      qty = rangeQty;
-      check = 'レンジ採用';
+      if (rangeUsable) {
+        qty = rangeQty;
+        check = 'レンジ採用';
+      } else {
+        // 数量も取れず、レンジも桁違い。0本と混同しないよう空欄で残す。
+        check = 'レンジ異常';
+      }
     } else if (qty != null && rangeQty == null) {
       check = 'レンジ無し';
     } else {
@@ -566,4 +583,92 @@ function testHarvestShippingActuals() {
 
 function testShippingActualsSummary() {
   Logger.log(JSON.stringify(getShippingActualsSummary(true), null, 2));
+}
+
+// ===== 公開関数：既に貯めた行のうち、桁違いのレンジを数量にしてしまった行を直す =====
+// ★ 取込をやり直すと数時間かかるので、該当行だけを直す。
+//   「レンジ採用」なのにレンジ本数が上限を超えている行が対象。
+//   数量を空欄に戻し、検算を「レンジ異常」にする（0本と混同させないため）。
+function repairImplausibleQuantities() {
+  var sheet = shipact_getSheet_();
+  var last = sheet.getLastRow();
+  if (last < 2) return { ok: true, fixed: 0, rows: [] };
+
+  var H = {};
+  SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+  var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+
+  var fixed = [], changed = false;
+  for (var i = 0; i < values.length; i++) {
+    var r = values[i];
+    var rangeQty = Number(r[H['レンジ本数']]);
+    if (isNaN(rangeQty) || rangeQty <= SHIP_ACT_CONFIG.MAX_PLAUSIBLE_RANGE) continue;
+    var chk = String(r[H['検算']] || '');
+    // 数量がレンジ由来になっている行だけを直す。
+    // 本文から数量が取れている行（一致・不一致）は数量を信じてよいので触らない。
+    if (chk !== 'レンジ採用') continue;
+    fixed.push({
+      行: i + 2, 年月: nc_dateText_(r[H['年月']], 'yyyy-MM'), サイズ: r[H['サイズ']],
+      もとの数量: r[H['数量']], レンジ本数: rangeQty, ファイル名: r[H['ファイル名']]
+    });
+    r[H['数量']] = '';
+    r[H['検算']] = 'レンジ異常';
+    changed = true;
+  }
+
+  if (changed) {
+    sheet.getRange(2, 1, values.length, SHIP_ACT_CONFIG.HEADERS.length).setValues(values);
+    nc_forget_('shipActuals');
+    nc_forget_('monthlyCombined');
+  }
+  Logger.log('桁違いのレンジを数量にしていた行を ' + fixed.length + ' 件直しました。');
+  fixed.forEach(function (f) {
+    Logger.log('  ' + f.年月 + ' ' + f.サイズ + ' ' + f.もとの数量 + '本 → 空欄  (レンジ' +
+               f.レンジ本数 + ') ' + f.ファイル名);
+  });
+  return { ok: true, fixed: fixed.length, rows: fixed };
+}
+
+// ===== 公開関数：ある月の内訳を調べる（数字が合わないときの確認用） =====
+// 本数の多い順に並べて出す。1件だけ桁違いの行が混ざっていれば先頭に出てくる。
+function diagnoseShippingMonth(ym) {
+  var target = ym || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  var sheet = shipact_getSheet_();
+  var last = sheet.getLastRow();
+  var H = {};
+  SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+  var values = last < 2 ? [] : sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+
+  // 集計と同じ重複排除（依頼No＋枝番でバージョン最大のみ）
+  var best = {};
+  values.forEach(function (r) {
+    if (nc_dateText_(r[H['年月']], 'yyyy-MM') !== target) return;
+    var key = String(r[H['依頼No']]) + '_' + String(r[H['枝番']]);
+    var ver = Number(r[H['バージョン']]) || 0;
+    if (!best[key] || ver > best[key].__ver) best[key] = { row: r, __ver: ver };
+  });
+
+  var bySize = {}, list = [], byCheck = {};
+  Object.keys(best).forEach(function (k) {
+    var r = best[k].row;
+    var size = r[H['サイズ']] ? String(r[H['サイズ']]) : '(サイズ無し)';
+    var qty = Number(r[H['数量']]) || 0;
+    var chk = String(r[H['検算']] || '');
+    byCheck[chk] = (byCheck[chk] || 0) + 1;
+    if (r[H['サイズ']]) bySize[size] = (bySize[size] || 0) + qty;
+    list.push({ 依頼No: r[H['依頼No']], サイズ: size, 数量: qty,
+                レンジ本数: r[H['レンジ本数']], 検算: chk, ファイル名: r[H['ファイル名']] });
+  });
+  list.sort(function (a, b) { return b.数量 - a.数量; });
+
+  var out = {
+    年月: target,
+    件数: Object.keys(best).length,
+    サイズ別: bySize,
+    合計: Object.keys(bySize).reduce(function (a, k) { return a + bySize[k]; }, 0),
+    検算の内訳: byCheck,
+    本数の多い順トップ15: list.slice(0, 15)
+  };
+  Logger.log(JSON.stringify(out, null, 2));
+  return out;
 }
