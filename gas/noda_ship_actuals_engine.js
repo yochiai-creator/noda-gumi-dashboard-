@@ -227,12 +227,20 @@ function getShippingActualsSummary_uncached_() {
 // 在庫推移を先にやるのは、こちらが軽い（初回15件・以降1日1件）ため。
 // 出荷実績は重いので、残り時間で進むところまで進める。
 function harvestDailyData() {
-  var out = { inventory: null, shipping: null };
+  var out = { inventory: null, orders: null, shipping: null };
   try {
     out.inventory = harvestInventoryHistory();
   } catch (err) {
     out.inventory = { error: String(err) };
     Logger.log('在庫推移の取込で例外: ' + String(err));
+  }
+  // 受注推移は在庫より重く出荷より軽い（1日1ファイル・PDF変換2〜4秒）。
+  // 初回だけ42件ぶんあるので数回に分かれるが、追いついた後は1日1件で済む。
+  try {
+    out.orders = harvestOrderHistory();
+  } catch (err) {
+    out.orders = { error: String(err) };
+    Logger.log('受注推移の取込で例外: ' + String(err));
   }
   try {
     out.shipping = harvestShippingActuals();

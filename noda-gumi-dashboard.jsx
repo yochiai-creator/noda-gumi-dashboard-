@@ -1019,11 +1019,16 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh }) {
 
 const VIZ = {
   s1: "#2a78d6",      // 系列1：50kg
-  s2: "#eb6834",      // 系列2：20kg
+  s2: "#eb6834",      // 系列2：20kg / 出荷
+  s3: "#7c3aed",      // 系列3：受注
+  /* ★ 3色は scripts/validate_palette.js で検証済み。
+       色覚特性がある場合でも隣り合う色の差はΔE 24.7以上、
+       通常の見え方では33.6。色だけに頼らず凡例と直接ラベルも併用する。 */
   grid: "#e2e8f0",    // 目盛り線（面色から1段だけ違う色。実線のヘアライン）
   ink: "#0f172a",     // 本文
   ink2: "#475569",    // 補助
   muted: "#94a3b8",   // 目盛りラベル
+  divider: "#cbd5e1", // 月の区切り線（目盛り線より1段はっきりさせる）
   surface: "#ffffff", // 面色（マーカーのリングに使う）
 };
 
@@ -1066,6 +1071,68 @@ const vizShortDate = (v) => { const p = vizDateParts(v); return p && p.d ? p.m +
 const vizMonthLabel = (v) => { const p = vizDateParts(v); return p ? p.m + "月" : String(v == null ? "" : v); };
 const vizYearMonth = (v) => { const p = vizDateParts(v); return p ? p.y + "-" + (p.m < 10 ? "0" + p.m : p.m) : String(v == null ? "" : v); };
 
+/* 日の並びから「月が変わる位置」を拾う。
+   在庫推移は日ごとの点を全期間ぶん並べるので、どこで月が替わったのかが
+   わからないと読めない。区切り線と月の見出しを入れるための下ごしらえ。
+   返す i は「新しい月の最初の点」の位置。区切り線はその1つ前との中間に引く。 */
+function vizMonthBounds(days, dateKey) {
+  const out = [];
+  let prev = null;
+  days.forEach((d, i) => {
+    const p = vizDateParts(d[dateKey]);
+    if (!p) return;
+    const ym = p.y + "-" + p.m;
+    if (prev !== null && ym !== prev) out.push({ i: i, label: p.m + "月" });
+    prev = ym;
+  });
+  return out;
+}
+
+/* SVGの文字幅のおおよその見積り。ラベルが重なるかどうかの判定に使う。
+   （SVGには折り返しも自動回避も無いので、重なりは自分で防ぐしかない） */
+function vizTextW(str, fontSize) {
+  let w = 0;
+  for (const ch of String(str)) w += (ch.charCodeAt(0) > 0x2e80 ? 1.0 : 0.56) * fontSize;
+  return w;
+}
+
+/* x軸に置くラベルを決める（純関数）。
+   「最初の日付 → 月の見出し → 最後の日付」の順に置いていき、
+   SVGは文字が重なっても勝手に避けてくれないので、置く前に幅を見て
+   ぶつかるものは落とす。優先順位は 最初の日付 > 月の見出し > 最後の日付。
+   （最後の日付はカードの見出しにも出ているので、落ちても情報は失われない）
+   ★ グラフ本体から切り出してあるのは、日数が増えたときに
+     ラベルが重ならないかを、描画せずに数だけで検証できるようにするため。 */
+function vizXAxisItems(days, bounds, dateKey, xAt, padL, plotW, fontSize) {
+  const FS = fontSize, GAP = 4;
+  const items = [];
+  if (!days || days.length === 0) return items;
+
+  const startTxt = vizShortDate(days[0][dateKey]);
+  items.push({ x: padL, anchor: "start", text: startTxt,
+               l: padL, r: padL + vizTextW(startTxt, FS) });
+
+  bounds.forEach((b) => {
+    const bx = xAt(b.i - 0.5) + 2;
+    const w = vizTextW(b.label, FS);
+    if (bx + w > padL + plotW) return;                       // 右端からはみ出す
+    if (items.some((it) => bx < it.r + GAP && bx + w + GAP > it.l)) return;
+    items.push({ x: bx, anchor: "start", text: b.label,
+                 l: bx, r: bx + w, month: true });
+  });
+
+  if (days.length > 1) {
+    const endTxt = vizShortDate(days[days.length - 1][dateKey]);
+    const w = vizTextW(endTxt, FS);
+    const r = padL + plotW, l = r - w;
+    if (!items.some((it) => l < it.r + GAP && r + GAP > it.l)) {
+      items.push({ x: r, anchor: "end", text: endTxt, l: l, r: r });
+    }
+  }
+  return items;
+}
+
+
 // 上だけ角を丸めた棒（下端は台に接するので角張らせる）
 function vizTopRoundedPath(x, y, w, h, r) {
   const rr = Math.min(r, w / 2, h);
@@ -1086,7 +1153,7 @@ function vizTopRoundedPath(x, y, w, h, r) {
      （第2軸を足すのは禁じ手。読み手が誤解する）
      → サイズごとに小さなグラフを分け、それぞれの値の範囲に合わせて縦軸を取る。
        縦軸が0から始まらないので、その旨を明記する。 */
-function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX }) {
+function InventoryTrendMini({ label, color, dataKey, days, bounds, pick, setPick, showX }) {
   const W = 340, H = 96;
   const padL = 40, padR = 48, padT = 8, padB = showX ? 18 : 6;
   const plotW = W - padL - padR, plotH = H - padT - padB;
@@ -1100,6 +1167,7 @@ function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX 
   const mid = Math.round((yMin + yMax) / 2);
   const axisVals = [yMax, mid, yMin];
 
+  // i は小数でもよい（月の区切り線を点と点の中間に置くため）
   const xAt = (i) => padL + (days.length <= 1 ? plotW / 2 : (plotW * i) / (days.length - 1));
   const yAt = (v) => padT + plotH - (plotH * (v - yMin)) / (yMax - yMin);
   const lastI = days.length - 1;
@@ -1114,6 +1182,14 @@ function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX 
             style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(Math.round(v))}</text>
         </g>
       ))}
+      {/* 月の区切り線。値の目盛り線より1段はっきりした色にして、
+          「これは目盛りではなく月の境目」だとわかるようにする。
+          位置は月末の点と月初の点のちょうど中間（境目は観測点の間にある）。 */}
+      {bounds.map((b) => (
+        <line key={"mb" + b.i} x1={xAt(b.i - 0.5)} y1={padT} x2={xAt(b.i - 0.5)} y2={padT + plotH}
+          stroke={VIZ.divider} strokeWidth="1" />
+      ))}
+
       {/* サイズ名はグラフの中に置く。1系列なので凡例の箱は不要 */}
       <text x={padL + 3} y={padT + 8} fontSize="9" fontWeight="700" fill={VIZ.ink2}>{label}</text>
 
@@ -1137,12 +1213,11 @@ function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX 
 
       {showX && (
         <g>
-          <text x={padL} y={H - 4} fontSize="7.5" fill={VIZ.muted}>{vizShortDate(days[0].日付)}</text>
-          {days.length > 1 && (
-            <text x={padL + plotW} y={H - 4} textAnchor="end" fontSize="7.5" fill={VIZ.muted}>
-              {vizShortDate(days[lastI].日付)}
-            </text>
-          )}
+          {vizXAxisItems(days, bounds, "日付", xAt, padL, plotW, 7.5).map((it, k) => (
+            <text key={"x" + k} x={it.x} y={H - 4} textAnchor={it.anchor} fontSize="7.5"
+              fontWeight={it.month ? "700" : "400"}
+              fill={it.month ? VIZ.ink2 : VIZ.muted}>{it.text}</text>
+          ))}
         </g>
       )}
     </svg>
@@ -1152,6 +1227,8 @@ function InventoryTrendMini({ label, color, dataKey, days, pick, setPick, showX 
 function InventoryTrendChart({ days }) {
   const [pick, setPick] = useState(null);
   const sel = pick != null && days[pick] ? days[pick] : null;
+  // 区切り位置は親で1回だけ求めて両方のグラフに渡す（上下でずれないように）
+  const bounds = vizMonthBounds(days, "日付");
   return (
     <div>
       <div style={{ fontSize: 10, color: VIZ.muted, marginBottom: 2, textAlign: "right" }}>
@@ -1159,12 +1236,12 @@ function InventoryTrendChart({ days }) {
           ? vizShortDate(sel.日付) + "：50kg " + vizComma(sel["50kg"]) + " / 20kg " + vizComma(sel["20kg"])
           : "グラフをタップすると値が出ます"}
       </div>
-      <InventoryTrendMini label="50kg" color={VIZ.s1} dataKey="50kg" days={days}
+      <InventoryTrendMini label="50kg" color={VIZ.s1} dataKey="50kg" days={days} bounds={bounds}
         pick={pick} setPick={setPick} showX={false} />
-      <InventoryTrendMini label="20kg" color={VIZ.s2} dataKey="20kg" days={days}
+      <InventoryTrendMini label="20kg" color={VIZ.s2} dataKey="20kg" days={days} bounds={bounds}
         pick={pick} setPick={setPick} showX={true} />
       <div style={{ fontSize: 9, color: VIZ.muted, marginTop: 2 }}>
-        ※ 日々の変動が読めるように、縦軸は0から始めていません
+        ※ 縦の線は月の区切り。日々の変動が読めるように、縦軸は0から始めていません
       </div>
     </div>
   );
@@ -1209,10 +1286,149 @@ function MonthlyShipChart({ months }) {
   );
 }
 
+
+/* ---------- 在庫・出荷・受注を1つのグラフに（月次） ---------- */
+/* ★ なぜ「月」なのか、なぜ1つの縦軸でよいのか
+     出荷は約15,000本/月、在庫は総本数で1万本弱。月単位なら同じ桁なので
+     1つの縦軸に3つとも載せて素直に読める。
+     （日単位にすると出荷は1営業日あたり数百本になり、在庫の1万本と
+       10倍以上離れて、出荷の棒が軸の底に貼りついてしまう。）
+     第2縦軸は使わない。線が交差した位置に意味があるように見えてしまうが、
+     実際は軸の取り方でどこでも交差させられるので、読み手が必ず誤解する。
+
+   ★ 描き分け
+     出荷・受注 … その月に積み上がった量（フロー）なので棒
+     在庫       … その時点の残高（ストック）なので折れ線と点
+     単位はどれも「本」なので同じ縦軸でよい。 */
+function MonthlyCombinedChart({ months, hasOrders, partialMonth }) {
+  const [pick, setPick] = useState(null);
+  const W = 340, H = 190;
+  const padL = 42, padR = 10, padT = 16, padB = 34;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const vals = [];
+  months.forEach((m) => {
+    if (m.出荷 != null) vals.push(m.出荷);
+    if (m.在庫 != null) vals.push(m.在庫);
+    if (m.受注 != null) vals.push(m.受注);
+  });
+  const { max, ticks } = vizNiceTicks(Math.max(1, ...vals), 4);
+  const band = plotW / Math.max(months.length, 1);
+  const yAt = (v) => padT + plotH - (plotH * v) / max;
+  const cxAt = (i) => padL + band * i + band / 2;
+
+  // 棒は2本（出荷・受注）を並べる。受注がまだ無い月は出荷だけ中央に置く。
+  const nBars = hasOrders ? 2 : 1;
+  const barW = Math.min(16, Math.max(4, (band - 10) / nBars - 2));
+  const barX = (i, k) => cxAt(i) - (nBars * barW + (nBars - 1) * 2) / 2 + k * (barW + 2);
+
+  const invPts = months.map((m, i) => (m.在庫 == null ? null : [cxAt(i), yAt(m.在庫)]))
+    .filter((p) => p !== null);
+  const sel = pick != null && months[pick] ? months[pick] : null;
+
+  return (
+    <div>
+      {/* 凡例。3系列あるので必ず出す（色だけに頼らない） */}
+      <div className="flex items-center gap-3 mb-1 text-[10px]" style={{ color: VIZ.ink2 }}>
+        <span className="flex items-center gap-1">
+          <span style={{ width: 9, height: 9, borderRadius: 2, background: VIZ.s2, display: "inline-block" }} />出荷
+        </span>
+        {hasOrders && (
+          <span className="flex items-center gap-1">
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: VIZ.s3, display: "inline-block" }} />受注
+          </span>
+        )}
+        <span className="flex items-center gap-1">
+          <span style={{ width: 12, height: 2, background: VIZ.s1, display: "inline-block" }} />月末在庫
+        </span>
+      </div>
+
+      <div className="text-[10px] mb-1 text-right" style={{ color: VIZ.muted }}>
+        {sel
+          ? vizYearMonth(sel.年月) + "：出荷 " + vizComma(sel.出荷) +
+            (hasOrders ? " / 受注 " + vizComma(sel.受注) : "") +
+            " / 在庫 " + vizComma(sel.在庫)
+          : "月をタップすると数字が出ます"}
+      </div>
+
+      <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: "auto", display: "block" }}>
+        {ticks.map((t, i) => (
+          <g key={"t" + i}>
+            <line x1={padL} y1={yAt(t)} x2={padL + plotW} y2={yAt(t)} stroke={VIZ.grid} strokeWidth="1" />
+            <text x={padL - 6} y={yAt(t) + 3} textAnchor="end" fontSize="8" fill={VIZ.muted}
+              style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(t)}</text>
+          </g>
+        ))}
+
+        {months.map((m, i) => (
+          <rect key={"hit" + i} x={padL + band * i} y={padT} width={band} height={plotH}
+            fill="transparent" onClick={() => setPick(pick === i ? null : i)}
+            style={{ cursor: "pointer" }} />
+        ))}
+        {sel && <rect x={padL + band * pick} y={padT} width={band} height={plotH}
+          fill={VIZ.grid} opacity="0.45" />}
+
+        {months.map((m, i) => (
+          <g key={"b" + m.年月}>
+            {m.出荷 != null && (
+              <path d={vizTopRoundedPath(barX(i, 0), yAt(m.出荷), barW,
+                Math.max(padT + plotH - yAt(m.出荷), 1), 3)} fill={VIZ.s2} />
+            )}
+            {hasOrders && m.受注 != null && (
+              <path d={vizTopRoundedPath(barX(i, 1), yAt(m.受注), barW,
+                Math.max(padT + plotH - yAt(m.受注), 1), 3)} fill={VIZ.s3} />
+            )}
+          </g>
+        ))}
+
+        {/* 在庫は残高なので線。棒より前面に、面色のリングを付けた点で置く */}
+        {invPts.length > 1 && (
+          <polyline points={invPts.map((p) => p[0] + "," + p[1]).join(" ")} fill="none"
+            stroke={VIZ.s1} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        )}
+        {invPts.map((p, i) => (
+          <circle key={"ip" + i} cx={p[0]} cy={p[1]} r="3.5" fill={VIZ.s1}
+            stroke={VIZ.surface} strokeWidth="2" />
+        ))}
+        {/* 在庫は最新の1点だけ値を直接書く。
+            ★ 在庫推移を貯め始めたのが8/17なので、当面この線は右端の
+              2〜3点しかない。棒に埋もれて気づかれないので、直接ラベルで
+              「これが在庫」とわかるようにしておく。
+              点が増えても値を書くのは最新の1つだけ（全点に数字を振らない）。 */}
+        {invPts.length > 0 && (() => {
+          const last = invPts[invPts.length - 1];
+          const v = vizComma(months[months.length - 1].在庫 != null
+            ? months[months.length - 1].在庫
+            : months.filter((m) => m.在庫 != null).slice(-1)[0].在庫);
+          const w = vizTextW(v, 8.5);
+          // 右端で切れるなら点の左側に出す
+          const right = last[0] + 7 + w <= padL + plotW;
+          return (
+            <text x={last[0] + (right ? 7 : -7)} y={last[1] - 5}
+              textAnchor={right ? "start" : "end"} fontSize="8.5" fontWeight="700"
+              fill={VIZ.s1} style={{ fontVariantNumeric: "tabular-nums" }}>{v}</text>
+          );
+        })()}
+
+        {months.map((m, i) => (
+          <text key={"x" + m.年月} x={cxAt(i)} y={H - 12} textAnchor="middle" fontSize="8.5"
+            fontWeight={pick === i ? "700" : "400"}
+            fill={pick === i ? VIZ.ink2 : VIZ.muted}>{vizMonthLabel(m.年月)}</text>
+        ))}
+        {partialMonth && months.length > 0 &&
+          months[months.length - 1].年月 === partialMonth && (
+          <text x={cxAt(months.length - 1)} y={H - 3} textAnchor="middle" fontSize="7"
+            fill={VIZ.muted}>集計中</text>
+        )}
+      </svg>
+    </div>
+  );
+}
+
 /* ---------- 実績・推移タブ本体 ---------- */
-function ActualsTab({ shipActuals, invTrend, onRefresh }) {
+function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
   const [showTable, setShowTable] = useState(false);
-  const inv = invTrend, act = shipActuals;
+  const inv = invTrend, act = shipActuals, mc = monthly;
 
   const Card = ({ title, note, children, extra }) => (
     <div className="rounded-lg border border-slate-200 bg-white p-3 mb-3">
@@ -1227,8 +1443,65 @@ function ActualsTab({ shipActuals, invTrend, onRefresh }) {
     </div>
   );
 
+  const mcMonths = mc && mc.months ? mc.months : null;
+
   return (
     <div>
+      {/* ---- 在庫・出荷・受注をまとめて（月次） ---- */}
+      <Card title="在庫・出荷・受注"
+        note="月ごと。単位はどれも本数なので同じ縦軸に載せています"
+        extra={mc && mc.sheetUrl && (
+          <a href={mc.sheetUrl} target="_blank" rel="noreferrer"
+            className="text-[10px] underline" style={{ color: NAVY }}>元データ</a>
+        )}>
+        {!mc ? (
+          <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
+        ) : mc.error ? (
+          <div className="text-xs text-amber-700 py-2">取得エラー：{mc.error}</div>
+        ) : !mcMonths || mcMonths.length === 0 ? (
+          <div className="text-xs text-slate-500 py-2">
+            まだデータが貯まっていません。1時間ごとに取り込んで集計します。
+          </div>
+        ) : (
+          <div>
+            <MonthlyCombinedChart months={mcMonths} hasOrders={mc.hasOrders}
+              partialMonth={mc.partialMonth} />
+
+            {/* グラフだけに数字を閉じ込めない。表でも読めるようにする */}
+            <div className="mt-3 rounded-md border border-slate-200 overflow-hidden">
+              <div className="flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5">
+                <span className="w-12">月</span>
+                <span className="flex-1 text-right">出荷</span>
+                {mc.hasOrders && <span className="flex-1 text-right">受注</span>}
+                <span className="flex-1 text-right">月末在庫</span>
+              </div>
+              {mcMonths.slice().reverse().map((m) => (
+                <div key={m.年月} className="flex text-[11px] px-2 py-1.5 border-t border-slate-100">
+                  <span className="w-12 text-slate-600">{vizMonthLabel(m.年月)}</span>
+                  <span className="flex-1 text-right tabular-nums font-semibold" style={{ color: NAVY }}>
+                    {m.出荷 == null ? "—" : vizComma(m.出荷)}
+                  </span>
+                  {mc.hasOrders && (
+                    <span className="flex-1 text-right tabular-nums text-slate-600">
+                      {m.受注 == null ? "—" : vizComma(m.受注)}
+                    </span>
+                  )}
+                  <span className="flex-1 text-right tabular-nums text-slate-600">
+                    {m.在庫 == null ? "—" : vizComma(m.在庫)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-[9px] mt-2 leading-relaxed" style={{ color: VIZ.muted }}>
+              ※ 出荷と受注はその月の合計、在庫はその月の最後に取れた日の残高です。
+              「—」はまだデータが無い月で、0本という意味ではありません。
+              {!mc.hasOrders && "受注は今日から貯め始めるので、明日以降に出てきます。"}
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* ---- 在庫推移 ---- */}
       <Card title="在庫推移"
         note={inv && inv.days && inv.days.length > 0
@@ -1352,7 +1625,7 @@ function ActualsTab({ shipActuals, invTrend, onRefresh }) {
 export default function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
-  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, loading: true, error: null });
+  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, monthly: null, loading: true, error: null });
   const [yardLive, setYardLive] = useState({ "50k": {}, "20k": {} });
   const [loadedCount, setLoadedCount] = useState(0);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -1362,7 +1635,7 @@ export default function App() {
   const markLoaded = () => {
     setLoadedCount((prev) => {
       const next = prev + 1;
-      if (next >= 7) setInitialLoadDone(true);   // 4集計 + ヤード + 出荷実績 + 在庫推移
+      if (next >= 8) setInitialLoadDone(true);   // 4集計 + ヤード + 出荷実績 + 在庫推移 + 月次まとめ
       return next;
     });
   };
@@ -1417,6 +1690,12 @@ export default function App() {
       .withSuccessHandler((it) => { setLive((prev) => ({ ...prev, invTrend: it })); markLoaded(); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, invTrend: { error: String(err) } })); markLoaded(); })
       .getInventoryTrendData(force === true);
+
+    // 在庫・出荷・受注を月でそろえたまとめ
+    google.script.run
+      .withSuccessHandler((mc) => { setLive((prev) => ({ ...prev, monthly: mc })); markLoaded(); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, monthly: { error: String(err) } })); markLoaded(); })
+      .getMonthlyCombinedData(force === true);
 
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map((b) => ({ pos: String(b.pos) }));
@@ -1632,7 +1911,7 @@ export default function App() {
 
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} />}
-          {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} onRefresh={() => fetchLiveData(true)} />}
+          {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab dateLabel={dispatchDateLabel} shipments={dispatchShipments} week={dispatchWeek} />}
         </div>
 
