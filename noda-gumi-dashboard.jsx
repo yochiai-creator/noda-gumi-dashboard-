@@ -1193,13 +1193,6 @@ function InventoryTrendMini({ label, color, dataKey, days, bounds, pick, setPick
       {/* サイズ名はグラフの中に置く。1系列なので凡例の箱は不要 */}
       <text x={padL + 3} y={padT + 8} fontSize="9" fontWeight="700" fill={VIZ.ink2}>{label}</text>
 
-      {days.map((dd, i) => {
-        const half = days.length <= 1 ? plotW / 2 : plotW / (days.length - 1) / 2;
-        return (
-          <rect key={"hit" + i} x={xAt(i) - half} y={padT} width={half * 2} height={plotH}
-            fill="transparent" onClick={() => setPick(pick === i ? null : i)} style={{ cursor: "pointer" }} />
-        );
-      })}
       {sel && <line x1={xAt(pick)} y1={padT} x2={xAt(pick)} y2={padT + plotH} stroke={VIZ.muted} strokeWidth="1" />}
 
       <polyline points={days.map((dd, i) => xAt(i) + "," + yAt(dd[dataKey])).join(" ")}
@@ -1220,6 +1213,16 @@ function InventoryTrendMini({ label, color, dataKey, days, bounds, pick, setPick
           ))}
         </g>
       )}
+
+      {/* ★ 当たり判定は最後（＝一番手前）に置く。理由は月次グラフ側のコメント参照。
+            縦はグラフの高さいっぱいに取り、指で押しやすくしてある。 */}
+      {days.map((dd, i) => {
+        const half = days.length <= 1 ? plotW / 2 : plotW / (days.length - 1) / 2;
+        return (
+          <rect key={"hit" + i} x={xAt(i) - half} y={0} width={half * 2} height={H}
+            fill="transparent" onClick={() => setPick(pick === i ? null : i)} style={{ cursor: "pointer" }} />
+        );
+      })}
     </svg>
   );
 }
@@ -1368,11 +1371,6 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
           </g>
         ))}
 
-        {months.map((m, i) => (
-          <rect key={"hit" + i} x={padL + band * i} y={padT} width={band} height={plotH}
-            fill="transparent" onClick={() => setPick(pick === i ? null : i)}
-            style={{ cursor: "pointer" }} />
-        ))}
         {sel && <rect x={padL + band * pick} y={padT} width={band} height={plotH}
           fill={VIZ.grid} opacity="0.45" />}
 
@@ -1437,6 +1435,19 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
           <text x={cxAt(months.length - 1)} y={H - 3} textAnchor="middle" fontSize="7"
             fill={VIZ.muted}>集計中</text>
         )}
+
+        {/* ★ 当たり判定は必ず最後に置く（＝一番手前）。
+              以前は目盛りの直後に置いていたので、棒・折れ線・月名の文字が
+              上に重なり、それらの上を押すとタップが吸われて反応しなかった。
+              jsdomのテストは要素へ直接クリックを送るので、この不具合を
+              すり抜けていた。実機の座標で押すテスト（tools/tap_test.js）で発覚。
+              透明なので見た目には影響しない。縦は目盛りの外まで広げて、
+              月名のあたりを押しても反応するようにしてある。 */}
+        {months.map((m, i) => (
+          <rect key={"hit" + i} x={padL + band * i} y={0} width={band} height={H}
+            fill="transparent" onClick={() => setPick(pick === i ? null : i)}
+            style={{ cursor: "pointer" }} />
+        ))}
       </svg>
     </div>
   );

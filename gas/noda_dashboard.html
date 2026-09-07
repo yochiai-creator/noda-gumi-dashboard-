@@ -3531,21 +3531,7 @@ function InventoryTrendMini({
     fontSize: "9",
     fontWeight: "700",
     fill: VIZ.ink2
-  }, label), days.map((dd, i) => {
-    const half = days.length <= 1 ? plotW / 2 : plotW / (days.length - 1) / 2;
-    return /*#__PURE__*/React.createElement("rect", {
-      key: "hit" + i,
-      x: xAt(i) - half,
-      y: padT,
-      width: half * 2,
-      height: plotH,
-      fill: "transparent",
-      onClick: () => setPick(pick === i ? null : i),
-      style: {
-        cursor: "pointer"
-      }
-    });
-  }), sel && /*#__PURE__*/React.createElement("line", {
+  }, label), sel && /*#__PURE__*/React.createElement("line", {
     x1: xAt(pick),
     y1: padT,
     x2: xAt(pick),
@@ -3590,7 +3576,21 @@ function InventoryTrendMini({
     fontSize: "7.5",
     fontWeight: it.month ? "700" : "400",
     fill: it.month ? VIZ.ink2 : VIZ.muted
-  }, it.text))));
+  }, it.text))), days.map((dd, i) => {
+    const half = days.length <= 1 ? plotW / 2 : plotW / (days.length - 1) / 2;
+    return /*#__PURE__*/React.createElement("rect", {
+      key: "hit" + i,
+      x: xAt(i) - half,
+      y: 0,
+      width: half * 2,
+      height: H,
+      fill: "transparent",
+      onClick: () => setPick(pick === i ? null : i),
+      style: {
+        cursor: "pointer"
+      }
+    });
+  }));
 }
 function InventoryTrendChart({
   days
@@ -3832,18 +3832,7 @@ function MonthlyCombinedChart({
     style: {
       fontVariantNumeric: "tabular-nums"
     }
-  }, vizComma(t)))), months.map((m, i) => /*#__PURE__*/React.createElement("rect", {
-    key: "hit" + i,
-    x: padL + band * i,
-    y: padT,
-    width: band,
-    height: plotH,
-    fill: "transparent",
-    onClick: () => setPick(pick === i ? null : i),
-    style: {
-      cursor: "pointer"
-    }
-  })), sel && /*#__PURE__*/React.createElement("rect", {
+  }, vizComma(t)))), sel && /*#__PURE__*/React.createElement("rect", {
     x: padL + band * pick,
     y: padT,
     width: band,
@@ -3912,7 +3901,18 @@ function MonthlyCombinedChart({
     textAnchor: "middle",
     fontSize: "7",
     fill: VIZ.muted
-  }, "\u96C6\u8A08\u4E2D")));
+  }, "\u96C6\u8A08\u4E2D"), months.map((m, i) => /*#__PURE__*/React.createElement("rect", {
+    key: "hit" + i,
+    x: padL + band * i,
+    y: 0,
+    width: band,
+    height: H,
+    fill: "transparent",
+    onClick: () => setPick(pick === i ? null : i),
+    style: {
+      cursor: "pointer"
+    }
+  }))));
 }
 
 /* ---------- 実績・推移タブ本体 ---------- */
