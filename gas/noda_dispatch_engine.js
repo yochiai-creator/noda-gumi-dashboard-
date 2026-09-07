@@ -57,7 +57,18 @@ var DISPATCH_CONFIG = {
     '新潟','富山','石川','福井','山梨','長野','岐阜','静岡','愛知','三重','滋賀','京都','大阪','兵庫','奈良','和歌山',
     '鳥取','島根','岡山','広島','山口','徳島','香川','愛媛','高知','福岡','佐賀','長崎','熊本','大分','宮崎','鹿児島','沖縄'],
 
-  LABEL_SEARCH_BACK: 12   // ラベルを左方向に何列までさかのぼって探すか
+  LABEL_SEARCH_BACK: 12,  // ラベルを左方向に何列までさかのぼって探すか
+
+  // 「コンテナ」「小口」「合計」の行位置（0始まり。実際の行35・36・37）。
+  // シート全体を通じて常に同じ行にあり、21列おきに日付ブロックが繰り返される。
+  // ★ 月次集計（noda_dispatch_monthly.js）も同じ行を読むので、ここ1か所にまとめてある。
+  //   シートのレイアウトが変わったときは、ここだけ直せば両方に効く。
+  ROW_KONTENA: 34,
+  ROW_KOGUCHI: 35,
+  ROW_GOUKEI: 36,
+
+  // これを超える値は本数ではない（日付シリアル値等）とみなす
+  MAX_PLAUSIBLE_QTY: 3000
 };
 
 // ===== 公開関数：ダッシュボード用データを組み立てる（本日＋週間7日分） =====
@@ -167,10 +178,10 @@ function disp_findTodayColumns_(values, todayY, todayLabel) {
 // （「合計」に値が無くても「コンテナ」には値がある、というケースを
 //  取りこぼさないよう、項目ごとに判定する）。
 function disp_findDailyTotals_(values, todayLabel, todayY) {
-  var GOUKEI_ROW = 36;   // 「合計」行（0始まり index。実際の行37）
-  var KOGUCHI_ROW = 35;  // 「小口」行（0始まり index。実際の行36）
-  var KONTENA_ROW = 34;  // 「コンテナ」行（0始まり index。実際の行35）
-  var MAX_PLAUSIBLE_QTY = 3000; // これを超える値は本数ではない（日付シリアル値等）とみなす
+  var GOUKEI_ROW = DISPATCH_CONFIG.ROW_GOUKEI;
+  var KOGUCHI_ROW = DISPATCH_CONFIG.ROW_KOGUCHI;
+  var KONTENA_ROW = DISPATCH_CONFIG.ROW_KONTENA;
+  var MAX_PLAUSIBLE_QTY = DISPATCH_CONFIG.MAX_PLAUSIBLE_QTY;
   var headerRow = values[2] || [];
   var yearRow = values[0] || [];
 
