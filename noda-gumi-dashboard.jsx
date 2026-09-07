@@ -1300,7 +1300,7 @@ function MonthlyShipChart({ months }) {
      出荷・受注 … その月に積み上がった量（フロー）なので棒
      在庫       … その時点の残高（ストック）なので折れ線と点
      単位はどれも「本」なので同じ縦軸でよい。 */
-function MonthlyCombinedChart({ months, hasOrders, partialMonth }) {
+function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
   const [pick, setPick] = useState(null);
   const W = 340, H = 190;
   const padL = 42, padR = 10, padT = 16, padB = 34;
@@ -1308,7 +1308,8 @@ function MonthlyCombinedChart({ months, hasOrders, partialMonth }) {
 
   const vals = [];
   months.forEach((m) => {
-    if (m.出荷 != null) vals.push(m.出荷);
+    // 予定は実績の上に積むので、軸の最大値は積んだ高さで決める
+    if (m.出荷 != null) vals.push(m.出荷 + (m.出荷予定 || 0));
     if (m.在庫 != null) vals.push(m.在庫);
     if (m.受注 != null) vals.push(m.受注);
   });
@@ -1333,6 +1334,12 @@ function MonthlyCombinedChart({ months, hasOrders, partialMonth }) {
         <span className="flex items-center gap-1">
           <span style={{ width: 9, height: 9, borderRadius: 2, background: VIZ.s2, display: "inline-block" }} />出荷
         </span>
+        {hasPlan && (
+          <span className="flex items-center gap-1">
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: VIZ.s2,
+              opacity: 0.35, display: "inline-block" }} />出荷予定
+          </span>
+        )}
         {hasOrders && (
           <span className="flex items-center gap-1">
             <span style={{ width: 9, height: 9, borderRadius: 2, background: VIZ.s3, display: "inline-block" }} />受注
@@ -1346,6 +1353,7 @@ function MonthlyCombinedChart({ months, hasOrders, partialMonth }) {
       <div className="text-[10px] mb-1 text-right" style={{ color: VIZ.muted }}>
         {sel
           ? vizYearMonth(sel.年月) + "：出荷 " + vizComma(sel.出荷) +
+            (sel.出荷予定 ? "（予定 +" + vizComma(sel.出荷予定) + "）" : "") +
             (hasOrders ? " / 受注 " + vizComma(sel.受注) : "") +
             " / 在庫 " + vizComma(sel.在庫)
           : "月をタップすると数字が出ます"}
@@ -1374,6 +1382,15 @@ function MonthlyCombinedChart({ months, hasOrders, partialMonth }) {
               <path d={vizTopRoundedPath(barX(i, 0), yAt(m.出荷), barW,
                 Math.max(padT + plotH - yAt(m.出荷), 1), 3)} fill={VIZ.s2} />
             )}
+            {/* 予定は実績の上に薄く積む。別の系列ではなく同じ「出荷」の
+                まだ来ていないぶんなので、色は変えずに薄さで区別する。
+                実績との境目は面色の2pxの隙間であけて、積み上げだと分かるようにする。 */}
+            {m.出荷 != null && m.出荷予定 > 0 && (() => {
+              const topY = yAt(m.出荷 + m.出荷予定);
+              const h = Math.max(yAt(m.出荷) - topY - 2, 1);
+              return <path d={vizTopRoundedPath(barX(i, 0), topY, barW, h, 3)}
+                fill={VIZ.s2} opacity="0.35" />;
+            })()}
             {hasOrders && m.受注 != null && (
               <path d={vizTopRoundedPath(barX(i, 1), yAt(m.受注), barW,
                 Math.max(padT + plotH - yAt(m.受注), 1), 3)} fill={VIZ.s3} />
@@ -1465,13 +1482,14 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
         ) : (
           <div>
             <MonthlyCombinedChart months={mcMonths} hasOrders={mc.hasOrders}
-              partialMonth={mc.partialMonth} />
+              hasPlan={mc.hasPlan} partialMonth={mc.partialMonth} />
 
             {/* グラフだけに数字を閉じ込めない。表でも読めるようにする */}
             <div className="mt-3 rounded-md border border-slate-200 overflow-hidden">
               <div className="flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5">
                 <span className="w-12">月</span>
                 <span className="flex-1 text-right">出荷</span>
+                {mc.hasPlan && <span className="w-14 text-right">予定</span>}
                 {mc.hasOrders && <span className="flex-1 text-right">受注</span>}
                 <span className="flex-1 text-right">月末在庫</span>
               </div>
@@ -1481,6 +1499,11 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
                   <span className="flex-1 text-right tabular-nums font-semibold" style={{ color: NAVY }}>
                     {m.出荷 == null ? "—" : vizComma(m.出荷)}
                   </span>
+                  {mc.hasPlan && (
+                    <span className="w-14 text-right tabular-nums text-slate-400">
+                      {m.出荷予定 ? "+" + vizComma(m.出荷予定) : ""}
+                    </span>
+                  )}
                   {mc.hasOrders && (
                     <span className="flex-1 text-right tabular-nums text-slate-600">
                       {m.受注 == null ? "—" : vizComma(m.受注)}
@@ -1494,7 +1517,10 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
             </div>
 
             <div className="text-[9px] mt-2 leading-relaxed" style={{ color: VIZ.muted }}>
-              ※ 出荷と受注はその月の合計、在庫はその月の最後に取れた日の残高です。
+              ※ 出荷は配車表の合計行から。20kgと50kgのみで、5kg・8kg・10kg・30kgは含みません
+              （7月の実績で全体の約1.5%）。
+              {mc.hasPlan && "「予定」は配車表に入っている明日以降のぶんです。"}
+              出荷と受注はその月の合計、在庫はその月の最後に取れた日の残高です。
               「—」はまだデータが無い月で、0本という意味ではありません。
               {!mc.hasOrders && "受注は今日から貯め始めるので、明日以降に出てきます。"}
             </div>

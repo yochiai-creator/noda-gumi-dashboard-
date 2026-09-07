@@ -173,7 +173,10 @@ function dmon_walkColumns_(values, todayKey) {
     // レイアウトのずれや書きかけの可能性があるため）。
     var v20 = values[GOUKEI] ? values[GOUKEI][c] : null;
     var v50 = values[GOUKEI] ? values[GOUKEI][c + 1] : null;
-    if (plausible(v20) && plausible(v50)) {
+    // ★ && で短絡させないこと。plausible() は「上限を超えた値」を数える副作用を
+    //   持っているので、片方で打ち切ると数え落として診断が狂う。両方必ず通す。
+    var ok20 = plausible(v20), ok50 = plausible(v50);
+    if (ok20 && ok50) {
       if (isFuture) {
         b.f20 += Number(v20);
         b.f50 += Number(v50);

@@ -3666,6 +3666,7 @@ function MonthlyShipChart({
 function MonthlyCombinedChart({
   months,
   hasOrders,
+  hasPlan,
   partialMonth
 }) {
   const [pick, setPick] = useState(null);
@@ -3679,7 +3680,8 @@ function MonthlyCombinedChart({
     plotH = H - padT - padB;
   const vals = [];
   months.forEach(m => {
-    if (m.出荷 != null) vals.push(m.出荷);
+    // 予定は実績の上に積むので、軸の最大値は積んだ高さで決める
+    if (m.出荷 != null) vals.push(m.出荷 + (m.出荷予定 || 0));
     if (m.在庫 != null) vals.push(m.在庫);
     if (m.受注 != null) vals.push(m.受注);
   });
@@ -3712,7 +3714,18 @@ function MonthlyCombinedChart({
       background: VIZ.s2,
       display: "inline-block"
     }
-  }), "出荷"), hasOrders && /*#__PURE__*/React.createElement("span", {
+  }), "出荷"), hasPlan && /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 9,
+      height: 9,
+      borderRadius: 2,
+      background: VIZ.s2,
+      opacity: 0.35,
+      display: "inline-block"
+    }
+  }), "出荷予定"), hasOrders && /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3736,7 +3749,7 @@ function MonthlyCombinedChart({
     style: {
       color: VIZ.muted
     }
-  }, sel ? vizYearMonth(sel.年月) + "：出荷 " + vizComma(sel.出荷) + (hasOrders ? " / 受注 " + vizComma(sel.受注) : "") + " / 在庫 " + vizComma(sel.在庫) : "月をタップすると数字が出ます"), /*#__PURE__*/React.createElement("svg", {
+  }, sel ? vizYearMonth(sel.年月) + "：出荷 " + vizComma(sel.出荷) + (sel.出荷予定 ? "（予定 +" + vizComma(sel.出荷予定) + "）" : "") + (hasOrders ? " / 受注 " + vizComma(sel.受注) : "") + " / 在庫 " + vizComma(sel.在庫) : "月をタップすると数字が出ます"), /*#__PURE__*/React.createElement("svg", {
     viewBox: "0 0 " + W + " " + H,
     style: {
       width: "100%",
@@ -3784,7 +3797,15 @@ function MonthlyCombinedChart({
   }, m.出荷 != null && /*#__PURE__*/React.createElement("path", {
     d: vizTopRoundedPath(barX(i, 0), yAt(m.出荷), barW, Math.max(padT + plotH - yAt(m.出荷), 1), 3),
     fill: VIZ.s2
-  }), hasOrders && m.受注 != null && /*#__PURE__*/React.createElement("path", {
+  }), m.出荷 != null && m.出荷予定 > 0 && (() => {
+    const topY = yAt(m.出荷 + m.出荷予定);
+    const h = Math.max(yAt(m.出荷) - topY - 2, 1);
+    return /*#__PURE__*/React.createElement("path", {
+      d: vizTopRoundedPath(barX(i, 0), topY, barW, h, 3),
+      fill: VIZ.s2,
+      opacity: "0.35"
+    });
+  })(), hasOrders && m.受注 != null && /*#__PURE__*/React.createElement("path", {
     d: vizTopRoundedPath(barX(i, 1), yAt(m.受注), barW, Math.max(padT + plotH - yAt(m.受注), 1), 3),
     fill: VIZ.s3
   }))), invPts.length > 1 && /*#__PURE__*/React.createElement("polyline", {
@@ -3886,6 +3907,7 @@ function ActualsTab({
   }, "まだデータが貯まっていません。1時間ごとに取り込んで集計します。") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyCombinedChart, {
     months: mcMonths,
     hasOrders: mc.hasOrders,
+    hasPlan: mc.hasPlan,
     partialMonth: mc.partialMonth
   }), /*#__PURE__*/React.createElement("div", {
     className: "mt-3 rounded-md border border-slate-200 overflow-hidden"
@@ -3895,7 +3917,9 @@ function ActualsTab({
     className: "w-12"
   }, "月"), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
-  }, "出荷"), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
+  }, "出荷"), mc.hasPlan && /*#__PURE__*/React.createElement("span", {
+    className: "w-14 text-right"
+  }, "予定"), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
   }, "受注"), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
@@ -3909,7 +3933,9 @@ function ActualsTab({
     style: {
       color: NAVY
     }
-  }, m.出荷 == null ? "—" : vizComma(m.出荷)), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
+  }, m.出荷 == null ? "—" : vizComma(m.出荷)), mc.hasPlan && /*#__PURE__*/React.createElement("span", {
+    className: "w-14 text-right tabular-nums text-slate-400"
+  }, m.出荷予定 ? "+" + vizComma(m.出荷予定) : ""), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right tabular-nums text-slate-600"
   }, m.受注 == null ? "—" : vizComma(m.受注)), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right tabular-nums text-slate-600"
@@ -3918,7 +3944,7 @@ function ActualsTab({
     style: {
       color: VIZ.muted
     }
-  }, "※ 出荷と受注はその月の合計、在庫はその月の最後に取れた日の残高です。 「—」はまだデータが無い月で、0本という意味ではありません。", !mc.hasOrders && "受注は今日から貯め始めるので、明日以降に出てきます。"))), /*#__PURE__*/React.createElement(Card, {
+  }, "※ 出荷は配車表の合計行から。20kgと50kgのみで、5kg・8kg・10kg・30kgは含みません （7月の実績で全体の約1.5%）。", mc.hasPlan && "「予定」は配車表に入っている明日以降のぶんです。", "出荷と受注はその月の合計、在庫はその月の最後に取れた日の残高です。 「—」はまだデータが無い月で、0本という意味ではありません。", !mc.hasOrders && "受注は今日から貯め始めるので、明日以降に出てきます。"))), /*#__PURE__*/React.createElement(Card, {
     title: "在庫推移",
     note: inv && inv.days && inv.days.length > 0 ? inv.days.length + "日分（" + inv.days[0].日付 + " 〜 " + inv.days[inv.days.length - 1].日付 + "）" : null
   }, !inv ? /*#__PURE__*/React.createElement("div", {
