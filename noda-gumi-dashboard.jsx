@@ -1466,7 +1466,8 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
     <div>
       {/* ---- 在庫・出荷・受注をまとめて（月次） ---- */}
       <Card title="在庫・出荷・受注"
-        note="月ごと。単位はどれも本数なので同じ縦軸に載せています"
+        note={(mc && mc.startMonth ? vizYearMonth(mc.startMonth).replace("-", "年") + "月以降（年度）。" : "") +
+          "月ごと。単位はどれも本数なので同じ縦軸に載せています"}
         extra={mc && mc.sheetUrl && (
           <a href={mc.sheetUrl} target="_blank" rel="noreferrer"
             className="text-[10px] underline" style={{ color: NAVY }}>元データ</a>

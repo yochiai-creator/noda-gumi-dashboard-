@@ -29,8 +29,45 @@
  *   種類がちがうので、画面では在庫を折れ線、出荷と受注を棒で描き分ける。
  *   単位はどれも「本」なので、同じ縦軸に載せて問題ない。
  *
+ * ★ 表示する期間は「年度」（4月〜翌年3月）
+ *   配車表が年度で作られていて、現場も年度で見るため。
+ *   落合さんの指示で2026年4月始まりにした。年が変わっても効くように、
+ *   固定値ではなく「今の年度の4月」を計算している。
+ *   ただし年度の頭（4〜6月ごろ）は月数が少なすぎてグラフにならないので、
+ *   その間は前年度も含める。
+ *
+ * ★ データが無い月は出さない
+ *   配車表には未来の月の列も用意されていて中身が空。そのまま渡すと
+ *   0本の棒が並んでしまい、「出荷が無かった月」に見えてしまう。
+ *   出荷・予定・在庫・受注のどれも無い月は落とす。
+ *
  * 名前の衝突に注意：内部関数はすべて mcomb_ 接頭辞にしてある。
  */
+
+var MONTHLY_COMBINED_CONFIG = {
+  // 年度の開始月（4月）
+  FISCAL_START_MONTH: 4,
+  // 今年度がこの月数に満たないうちは前年度も出す
+  MIN_MONTHS: 4
+};
+
+// ===== 内部：表示を始める年月（'yyyy-MM'）を決める =====
+function mcomb_startMonth_(now, availableMonths) {
+  var y = now.getFullYear(), mo = now.getMonth() + 1;
+  var fy = (mo >= MONTHLY_COMBINED_CONFIG.FISCAL_START_MONTH) ? y : y - 1;
+  var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+  var start = fy + '-' + pad(MONTHLY_COMBINED_CONFIG.FISCAL_START_MONTH);
+
+  // 今年度に十分な月数が無ければ前年度まで下げる
+  var inFy = 0;
+  for (var i = 0; i < availableMonths.length; i++) {
+    if (availableMonths[i] >= start) inFy++;
+  }
+  if (inFy < MONTHLY_COMBINED_CONFIG.MIN_MONTHS) {
+    start = (fy - 1) + '-' + pad(MONTHLY_COMBINED_CONFIG.FISCAL_START_MONTH);
+  }
+  return start;
+}
 
 // ===== 公開関数：画面用に月次データを組み立てて返す（キャッシュ付き） =====
 function getMonthlyCombinedData(force) {
@@ -43,7 +80,8 @@ function getMonthlyCombinedData_uncached_() {
     sheetUrl: null,
     months: [],          // [{ 年月, 出荷, 出荷予定, 在庫, 受注, 在庫日, 日数 }] 古い順
     hasOrders: false,    // 受注のデータが1件でもあるか（無ければ凡例から外す）
-    hasPlan: false,      // 予定（未来日）のデータがあるか
+    hasPlan: false,      // 表示期間内に予定（未来日）のデータがあるか
+    startMonth: null,    // 表示を始める年月（年度の4月）
     partialMonth: null,  // 集計途中の月（当月）
     出荷の出所: '配車表',
     asOf: null,          // 実績と予定を分ける基準日
@@ -59,7 +97,6 @@ function getMonthlyCombinedData_uncached_() {
     var ship = { byMonth: {} };
     (disp.months || []).forEach(function (m) {
       ship.byMonth[m.年月] = { 本数: m.本数, 予定: m.予定, 日数: m.日数 };
-      if (m.予定 > 0) data.hasPlan = true;
     });
 
     var inv = mcomb_invMonthEnd_();
@@ -74,7 +111,16 @@ function getMonthlyCombinedData_uncached_() {
     Object.keys(ord.byMonth).forEach(function (k) { keys[k] = true; });
 
     var thisMonth = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
-    data.months = Object.keys(keys).sort().map(function (k) {
+
+    // 中身のある月だけを対象にする（配車表の空の未来月を0本として描かないため）
+    var withData = Object.keys(keys).sort().filter(function (k) {
+      var s = ship.byMonth[k], i = inv.byMonth[k], o = ord.byMonth[k];
+      var hasShip = s && ((s.本数 || 0) > 0 || (s.予定 || 0) > 0);
+      return hasShip || (i && i.総本数 > 0) || (o && o.本数 > 0);
+    });
+
+    data.startMonth = mcomb_startMonth_(new Date(), withData);
+    data.months = withData.filter(function (k) { return k >= data.startMonth; }).map(function (k) {
       var s = ship.byMonth[k], i = inv.byMonth[k], o = ord.byMonth[k];
       return {
         年月: k,
@@ -86,7 +132,10 @@ function getMonthlyCombinedData_uncached_() {
         受注: o ? o.本数 : null
       };
     });
-    data.hasOrders = Object.keys(ord.byMonth).length > 0;
+    // 凡例と表の列は「表示している期間」に合わせて出す。
+    // 期間外にしかデータが無い項目を凡例に出すと、探しても見つからない。
+    data.hasOrders = data.months.some(function (m) { return m.受注 != null; });
+    data.hasPlan = data.months.some(function (m) { return m.出荷予定 != null; });
     if (keys[thisMonth]) data.partialMonth = thisMonth;
   } catch (err) {
     data.error = String(err);
