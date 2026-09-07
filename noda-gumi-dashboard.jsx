@@ -1494,6 +1494,36 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
                 {mc.hasOrders && <span className="flex-1 text-right">受注</span>}
                 <span className="flex-1 text-right">月末在庫</span>
               </div>
+              {/* 年度の累計。★ 在庫は「残高」なので足さないこと。
+                  4月〜9月の月末在庫を合計しても意味のない数字になる。
+                  足せるのは出荷・予定・受注（その月に積み上がった量）だけ。 */}
+              {(() => {
+                const sum = (k) => mcMonths.reduce((a, m) => a + (m[k] || 0), 0);
+                const range = mcMonths.length > 1
+                  ? vizMonthLabel(mcMonths[0].年月) + "〜" + vizMonthLabel(mcMonths[mcMonths.length - 1].年月)
+                  : vizMonthLabel(mcMonths[0].年月);
+                return (
+                  <div className="flex text-[11px] px-2 py-1.5 border-t-2 border-slate-300 bg-slate-50 font-bold">
+                    <span className="w-12 text-slate-600">{range}</span>
+                    <span className="flex-1 text-right tabular-nums" style={{ color: NAVY }}>
+                      {vizComma(sum("出荷"))}
+                    </span>
+                    {mc.hasPlan && (
+                      <span className="w-14 text-right tabular-nums text-slate-400">
+                        {sum("出荷予定") ? "+" + vizComma(sum("出荷予定")) : ""}
+                      </span>
+                    )}
+                    {mc.hasOrders && (
+                      <span className="flex-1 text-right tabular-nums text-slate-600">
+                        {vizComma(sum("受注"))}
+                      </span>
+                    )}
+                    {/* 在庫は残高なので累計を出さない */}
+                    <span className="flex-1 text-right text-slate-300">—</span>
+                  </div>
+                );
+              })()}
+
               {mcMonths.slice().reverse().map((m) => (
                 <div key={m.年月} className="flex text-[11px] px-2 py-1.5 border-t border-slate-100">
                   <span className="w-12 text-slate-600">{vizMonthLabel(m.年月)}</span>

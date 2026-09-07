@@ -3923,7 +3923,26 @@ function ActualsTab({
     className: "flex-1 text-right"
   }, "受注"), /*#__PURE__*/React.createElement("span", {
     className: "flex-1 text-right"
-  }, "月末在庫")), mcMonths.slice().reverse().map(m => /*#__PURE__*/React.createElement("div", {
+  }, "月末在庫")), (() => {
+    const sum = k => mcMonths.reduce((a, m) => a + (m[k] || 0), 0);
+    const range = mcMonths.length > 1 ? vizMonthLabel(mcMonths[0].年月) + "〜" + vizMonthLabel(mcMonths[mcMonths.length - 1].年月) : vizMonthLabel(mcMonths[0].年月);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex text-[11px] px-2 py-1.5 border-t-2 border-slate-300 bg-slate-50 font-bold"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "w-12 text-slate-600"
+    }, range), /*#__PURE__*/React.createElement("span", {
+      className: "flex-1 text-right tabular-nums",
+      style: {
+        color: NAVY
+      }
+    }, vizComma(sum("出荷"))), mc.hasPlan && /*#__PURE__*/React.createElement("span", {
+      className: "w-14 text-right tabular-nums text-slate-400"
+    }, sum("出荷予定") ? "+" + vizComma(sum("出荷予定")) : ""), mc.hasOrders && /*#__PURE__*/React.createElement("span", {
+      className: "flex-1 text-right tabular-nums text-slate-600"
+    }, vizComma(sum("受注"))), /*#__PURE__*/React.createElement("span", {
+      className: "flex-1 text-right text-slate-300"
+    }, "—"));
+  })(), mcMonths.slice().reverse().map(m => /*#__PURE__*/React.createElement("div", {
     key: m.年月,
     className: "flex text-[11px] px-2 py-1.5 border-t border-slate-100"
   }, /*#__PURE__*/React.createElement("span", {
