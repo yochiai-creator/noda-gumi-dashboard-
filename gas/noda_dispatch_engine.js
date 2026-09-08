@@ -94,11 +94,13 @@ function getDispatchTodayData_uncached_() {
   };
 
   try {
-    var file = disp_getLatestFile_(DISPATCH_CONFIG.FOLDER_ID);
-    data.file = file.getName();
-
-    var ss = SpreadsheetApp.open(file);
-    var sheet = ss.getSheetByName(DISPATCH_CONFIG.SHEET_NAME);
+    // ★ 移行済みならGoogleスプレッドシート、まだならExcel。
+    //   移行しても今までの画面がそのまま動くよう、読む先をここ1か所で切り替える。
+    var src = dgrid_getSourceSheet_();
+    data.file = src.editable ? DISP_GRID_CONFIG.SPREADSHEET_TITLE : src.name;
+    data.source = src.source;
+    var sheet = src.sheet;
+    if (!sheet) throw new Error('シート「' + DISPATCH_CONFIG.SHEET_NAME + '」が読めません');
     var values = sheet.getDataRange().getValues();
 
     var today = new Date();

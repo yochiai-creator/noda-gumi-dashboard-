@@ -29,6 +29,8 @@ const REPLY = {
   getDispatchTodayData: () => ({ ...E, file: null, dateLabel: '9/7', shipments: [], week: [] }),
   getYardMapUpdatesBothWithOrderText: () => JSON.stringify({ '50k': [], '20k': [] }),
   getYardBlockDetailWithPdf: () => ({ found: false, orders: [] }),
+  getDispatchGridData: () => ({ updated: 'x', error: null, source: 'Excel', editable: false,
+    weekOffset: 0, weekLabel: null, hasPrev: false, hasNext: false, days: [], trucks: [], totals: {} }),
   getShippingActualsSummary: () => ({ ...E, sheetUrl: 'https://x.test', rowCount: 0, shipmentCount: 0, months: [], bySize: {}, topDests: [], mismatchCount: 0, needsCheckCount: 0, nonCylinderCount: 0 }),
   getInventoryTrendData: () => ({ ...E, sheetUrl: 'https://x.test', days: DAYS,
     latest: DAYS[DAYS.length - 1], change: { 前回日付: DAYS[DAYS.length - 2].日付, 総本数: 10, '50kg': 20, '20kg': -5 }, bySizeLatest: { '50K_軽量型': 7280 } }),

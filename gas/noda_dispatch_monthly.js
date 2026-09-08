@@ -63,10 +63,11 @@ function getDispatchMonthlyTotals_uncached_() {
   };
 
   try {
-    var file = disp_getLatestFile_(DISPATCH_CONFIG.FOLDER_ID);
-    data.file = file.getName();
-
-    var sheet = SpreadsheetApp.open(file).getSheetByName(DISPATCH_CONFIG.SHEET_NAME);
+    // 移行済みならGoogleスプレッドシート、まだならExcel（切り替えは1か所）
+    var src = dgrid_getSourceSheet_();
+    data.file = src.editable ? DISP_GRID_CONFIG.SPREADSHEET_TITLE : src.name;
+    data.source = src.source;
+    var sheet = src.sheet;
     if (!sheet) throw new Error('シート「' + DISPATCH_CONFIG.SHEET_NAME + '」が見つかりません');
     var values = sheet.getDataRange().getValues();
 

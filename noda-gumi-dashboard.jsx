@@ -169,13 +169,24 @@ function SectionTitle({ children, note }) {
 }
 
 /* ---------- タブ本体 ---------- */
-function DispatchTab({ dateLabel, shipments, week }) {
+function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, saving }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const days = week && week.length > 0 ? week : [{ dateLabel: dateLabel, shipments: shipments, qty20k: null, qty50k: null, koguchi20k: null, koguchi50k: null, kontena20k: null, kontena50k: null }];
   const selected = days[selectedIdx] || days[0];
 
   return (
     <div className="space-y-6">
+      {/* ---- 配車表（トラック×日付）。細かく見て、その場で直せる ---- */}
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <div className="mb-2">
+          <div className="text-sm font-bold" style={{ color: NAVY }}>トラック運行スケジュール</div>
+          <div className="text-[10px] text-slate-400 mt-0.5">
+            {grid && grid.source ? "出所：" + grid.source : ""}
+          </div>
+        </div>
+        <DispatchGrid grid={grid} onSave={onSaveCell} onWeek={onWeek} saving={saving} />
+      </div>
+
       <div>
         <SectionTitle note="トラック運行スケジュール・共有ドライブ日次取得">週間の配車予定</SectionTitle>
         <div className="flex gap-1 mb-3 overflow-x-auto -mx-1 px-1">
@@ -1489,6 +1500,159 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
   );
 }
 
+
+/* ---------- 配車表：トラック×日付のグリッド（編集できる） ---------- */
+/* ★ 元の配車表は21列で1週間、行3〜33がトラック。その形をそのまま画面に出す。
+     セルは4種類：行き先 / ←依頼No（引取） / ×（運休） / お休み。
+     色だけで区別すると分からないので、運休は「×」の字をそのまま出し、
+     引取は「←」を残す。文字が種類を表している。 */
+const DGRID_KIND_STYLE = {
+  "出荷": { bg: "#ffffff", fg: VIZ.ink },
+  "引取": { bg: "#f1f5f9", fg: VIZ.ink2 },
+  "運休": { bg: "#f8fafc", fg: VIZ.muted },
+  "休み": { bg: "#f8fafc", fg: VIZ.muted },
+  "":     { bg: "#ffffff", fg: VIZ.muted },
+};
+
+function DispatchGrid({ grid, onSave, onWeek, saving }) {
+  const [edit, setEdit] = useState(null);      // { row, col, value, truck, day }
+  const g = grid;
+
+  if (!g) return <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>;
+  if (g.error) return <div className="text-xs text-amber-700 py-2">取得エラー：{g.error}</div>;
+  if (!g.days || g.days.length === 0) {
+    return <div className="text-xs text-slate-500 py-2">配車表の週が読み取れませんでした。</div>;
+  }
+
+  const cellW = 84;   // 1日ぶんの幅。iPhoneでは横スクロールで見る
+  const nameW = 96;
+  /* ★ 行き先が長いとマスが縦に伸びて、行の高さがバラバラになり読みにくい
+       （「東京都西多摩郡瑞穂町 東京都羽村市」で3行になった）。
+       2行で打ち切って行の高さを揃える。全文はタップしたときの入力欄に出るので
+       情報は失われない。 */
+  const clamp2 = {
+    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+    overflow: "hidden", lineHeight: 1.35,
+  };
+
+  return (
+    <div>
+      {/* 週の移動 */}
+      <div className="flex items-center justify-between mb-2">
+        <button onClick={() => onWeek(g.weekOffset - 1)} disabled={!g.hasPrev || saving}
+          className="text-[13px] font-semibold px-3 py-2 rounded border border-slate-200 disabled:opacity-50"
+          style={{ color: NAVY }}>◀ 前の週</button>
+        <div className="text-[13px] font-bold" style={{ color: NAVY }}>{g.weekLabel}</div>
+        <button onClick={() => onWeek(g.weekOffset + 1)} disabled={!g.hasNext || saving}
+          className="text-[13px] font-semibold px-3 py-2 rounded border border-slate-200 disabled:opacity-50"
+          style={{ color: NAVY }}>次の週 ▶</button>
+      </div>
+
+      {!g.editable && (
+        <div className="text-[11px] mb-2 px-2 py-2 rounded bg-amber-50 text-amber-800">
+          まだExcelを読んでいるので編集できません。GASエディタで
+          「配車表をスプレッドシートに移す」を実行してください。
+        </div>
+      )}
+
+      {/* 表本体。横に長いのでこの中だけ横スクロールさせる（ページ全体は動かさない） */}
+      <div className="overflow-x-auto rounded-md border border-slate-200">
+        <div style={{ minWidth: nameW + cellW * g.days.length }}>
+          {/* 見出し */}
+          <div className="flex bg-slate-50 border-b border-slate-200">
+            <div className="text-[11px] font-semibold text-slate-500 px-2 py-2"
+              style={{ width: nameW, flex: "0 0 auto" }}>トラック</div>
+            {g.days.map((d) => (
+              <div key={d.col} className="text-[11px] font-semibold text-slate-600 px-2 py-2 border-l border-slate-200"
+                style={{ width: cellW, flex: "0 0 auto" }}>{d.header}</div>
+            ))}
+          </div>
+
+          {/* トラックごとの行 */}
+          {g.trucks.map((t, i) => (
+            <div key={t.row} className="flex border-b border-slate-100"
+              style={{ background: i % 2 ? "#fcfdfe" : "#ffffff" }}>
+              <div className="px-2 py-2" style={{ width: nameW, flex: "0 0 auto" }}>
+                <div className="text-[12px] font-semibold" style={{ color: NAVY }}>{t.truck}</div>
+                {t.company && <div className="text-[10px] text-slate-400">{t.company}</div>}
+              </div>
+              {g.days.map((d) => {
+                const c = t.cells[d.col];
+                const kind = c ? c.kind : "";
+                const st = DGRID_KIND_STYLE[kind] || DGRID_KIND_STYLE[""];
+                return (
+                  <button key={d.col}
+                    onClick={() => g.editable && setEdit({ row: t.row, col: d.col,
+                      value: c ? c.text : "", truck: t.truck, day: d.header })}
+                    className="px-2 py-2 border-l border-slate-200 text-left"
+                    style={{ width: cellW, flex: "0 0 auto", background: st.bg,
+                      minHeight: 44,   // 指で押しやすい高さを確保する
+                      cursor: g.editable ? "pointer" : "default" }}>
+                    <span className="text-[11px]" style={{ color: st.fg,
+                      wordBreak: "break-all", ...clamp2 }}>
+                      {c ? c.text : "—"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+
+          {/* その日の本数（配車表の合計行そのまま） */}
+          {["合計20k", "合計50k", "小口", "コンテナ"].map((k) => (
+            <div key={k} className="flex bg-slate-50 border-t border-slate-200">
+              <div className="text-[11px] font-semibold text-slate-500 px-2 py-2"
+                style={{ width: nameW, flex: "0 0 auto" }}>{k}</div>
+              {g.days.map((d) => {
+                const t = g.totals[d.col] || {};
+                return (
+                  <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-right text-[12px] tabular-nums"
+                    style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2 }}>
+                    {t[k] == null ? "—" : vizComma(t[k])}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="text-[10px] mt-2" style={{ color: VIZ.muted }}>
+        {g.editable ? "マスをタップすると直せます。" : ""}
+        ← は引取、× は運休です。
+      </div>
+
+      {/* 編集の入力。1マスずつ確認して保存する（まとめて保存はしない） */}
+      {edit && (
+        <div className="mt-3 rounded-md border p-3" style={{ borderColor: NAVY }}>
+          <div className="text-[12px] font-bold mb-1" style={{ color: NAVY }}>
+            {edit.truck} ／ {edit.day}
+          </div>
+          <input value={edit.value} autoFocus
+            onChange={(e) => setEdit({ ...edit, value: e.target.value })}
+            placeholder="行き先（空にすると予定なし）"
+            className="w-full text-[15px] px-2 py-2 rounded border border-slate-300 mb-2" />
+          <div className="flex items-center gap-2 mb-2">
+            {["×", "お休み", ""].map((v) => (
+              <button key={v || "clear"} onClick={() => setEdit({ ...edit, value: v })}
+                className="text-[11px] px-2 py-1.5 rounded border border-slate-200 text-slate-600">
+                {v === "×" ? "運休(×)" : v === "お休み" ? "お休み" : "空にする"}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { onSave(edit); setEdit(null); }} disabled={saving}
+              className="text-[13px] font-bold px-3 py-2 rounded text-white disabled:opacity-50"
+              style={{ background: NAVY }}>{saving ? "保存中…" : "保存"}</button>
+            <button onClick={() => setEdit(null)}
+              className="text-[13px] px-3 py-2 rounded border border-slate-200 text-slate-600">やめる</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- 実績・推移タブ本体 ---------- */
 function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
   const [showTable, setShowTable] = useState(false);
@@ -1719,7 +1883,10 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
 export default function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
-  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, monthly: null, loading: true, error: null });
+  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, monthly: null, dispGrid: null, loading: true, error: null });
+  // 配車グリッドは週を切り替えるので、ほかの集計とは別に持つ
+  const [gridWeek, setGridWeek] = useState(0);
+  const [gridSaving, setGridSaving] = useState(false);
   const [yardLive, setYardLive] = useState({ "50k": {}, "20k": {} });
   const [loadedCount, setLoadedCount] = useState(0);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -1729,7 +1896,7 @@ export default function App() {
   const markLoaded = () => {
     setLoadedCount((prev) => {
       const next = prev + 1;
-      if (next >= 8) setInitialLoadDone(true);   // 4集計 + ヤード + 出荷実績 + 在庫推移 + 月次まとめ
+      if (next >= 9) setInitialLoadDone(true);   // 4集計 + ヤード + 出荷実績 + 在庫推移 + 月次まとめ + 配車グリッド
       return next;
     });
   };
@@ -1742,6 +1909,42 @@ export default function App() {
   ];
 
   // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
+  // 配車グリッドの取得。週を切り替えたときはこれだけ呼ぶ（ほかを取り直さない）
+  const fetchDispatchGrid = (week, force, done) => {
+    if (!isGasEnv) { if (done) done(); return; }
+    google.script.run
+      .withSuccessHandler((g) => { setLive((prev) => ({ ...prev, dispGrid: g })); if (done) done(); })
+      .withFailureHandler((err) => {
+        setLive((prev) => ({ ...prev, dispGrid: { error: String(err) } })); if (done) done();
+      })
+      .getDispatchGridData(force === true, week);
+  };
+
+  // マスを1つ保存する。
+  // ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存できて
+  //   いないのに直ったように見える状態を作ってしまう（配車表は本番のデータ）。
+  const saveDispatchCell = (e) => {
+    if (!isGasEnv) return;
+    setGridSaving(true);
+    google.script.run
+      .withSuccessHandler((r) => {
+        setGridSaving(false);
+        if (r && r.error) { window.alert("保存できませんでした：" + r.error); return; }
+        fetchDispatchGrid(gridWeek, true);
+      })
+      .withFailureHandler((err) => {
+        setGridSaving(false);
+        window.alert("保存できませんでした：" + String(err));
+      })
+      .setDispatchCell({ row: e.row, col: e.col, value: e.value });
+  };
+
+  const changeGridWeek = (week) => {
+    setGridWeek(week);
+    setLive((prev) => ({ ...prev, dispGrid: null }));
+    fetchDispatchGrid(week, true);
+  };
+
   const fetchLiveData = (force) => {
     setNow(new Date());
     // GAS環境(google.script.run が使える)でだけ実データを取りに行く。
@@ -1790,6 +1993,9 @@ export default function App() {
       .withSuccessHandler((mc) => { setLive((prev) => ({ ...prev, monthly: mc })); markLoaded(); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, monthly: { error: String(err) } })); markLoaded(); })
       .getMonthlyCombinedData(force === true);
+
+    // 配車表のトラック×日付グリッド
+    fetchDispatchGrid(gridWeek, force === true, markLoaded);
 
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map((b) => ({ pos: String(b.pos) }));
@@ -2037,7 +2243,8 @@ export default function App() {
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} />}
           {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
-          {tab === "dispatch" && <DispatchTab dateLabel={dispatchDateLabel} shipments={dispatchShipments} week={dispatchWeek} />}
+          {tab === "dispatch" && <DispatchTab dateLabel={dispatchDateLabel} shipments={dispatchShipments} week={dispatchWeek}
+            grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
         </div>
 
         <p className="text-center text-[10px] text-slate-400 pt-2">

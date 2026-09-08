@@ -34,6 +34,36 @@ const REPLY = {
   getYardBlockDetailWithPdf: () => ({ found: false, orders: [] }),
   getShippingActualsSummary: () => ({ ...E, sheetUrl: 'https://x.test', rowCount: 0, shipmentCount: 0, months: [], bySize: {}, topDests: [], mismatchCount: 0, needsCheckCount: 0, nonCylinderCount: 0 }),
   getInventoryTrendData: () => ({ ...E, sheetUrl: 'x', days: [], latest: null, change: null, bySizeLatest: {} }),
+  getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
+    sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/12', hasPrev: true, hasNext: true,
+    days: [
+      { col: 2, date: '2026-09-07', label: '9/7', header: '9/7(月)出' },
+      { col: 3, date: '2026-09-08', label: '9/8', header: '9/8(火)出' },
+      { col: 4, date: '2026-09-09', label: '9/9', header: '9/9(水)出' },
+      { col: 5, date: '2026-09-10', label: '9/10', header: '9/10(木)出' },
+      { col: 6, date: '2026-09-11', label: '9/11', header: '9/11(金)出' },
+      { col: 7, date: '2026-09-12', label: '9/12', header: '9/12(土)出' },
+    ],
+    trucks: [
+      { row: 3, company: '', truck: '10ｔ箱', cells: { 2: { kind: '運休', text: '×' } } },
+      { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: { 3: { kind: '出荷', text: '岐阜県可児市' } } },
+      { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
+        cells: { 2: { kind: '出荷', text: '熊本県山鹿市' }, 3: { kind: '引取', text: '←60665' },
+                 4: { kind: '出荷', text: '広島県東広島市 (4600L×1)' } } },
+      { row: 10, company: '', truck: '4ｔ平標準 福安',
+        cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市' }, 4: { kind: '休み', text: 'お休み' } } },
+      { row: 18, company: '倉吉運送 自社便', truck: '10ｔ平 ②',
+        cells: { 2: { kind: '出荷', text: '南港：底黒' } } },
+      { row: 27, company: '', truck: '4ｔ平ﾜｲﾄﾞ ②', cells: { 2: { kind: '出荷', text: '70246→' } } },
+    ],
+    totals: {
+      2: { 合計20k: 235, 合計50k: 292, 小口: 15, コンテナ: 30 },
+      3: { 合計20k: 100, 合計50k: 150, 小口: 0, コンテナ: 0 },
+      4: { 合計20k: null, 合計50k: null, 小口: 0, コンテナ: 0 },
+      5: { 合計20k: null, 合計50k: null, 小口: 0, コンテナ: 0 },
+      6: { 合計20k: 180, 合計50k: 90, 小口: 5, コンテナ: 0 },
+      7: { 合計20k: null, 合計50k: null, 小口: 0, コンテナ: 0 },
+    } }),
   getMonthlyCombinedData: () => ({ ...E, sheetUrl: 'https://x.test', months: MONTHS,
     hasOrders: process.argv[2] === 'orders', hasPlan: true, partialMonth: '2026-09',
     出荷の出所: '配車表', asOf: '2026-09-07', startMonth: '2026-04' }),
@@ -64,10 +94,12 @@ const REPLY = {
   await page.goto('file://' + tmp, { waitUntil: 'networkidle' });
   console.log('window.google あり?', await page.evaluate(() => typeof window.google));
   await page.waitForTimeout(2500);
-  const tab = page.locator('button', { hasText: '実績・推移' }).first();
+  const tabName = process.argv[3] === 'dispatch' ? '配車・当日出荷' : '実績・推移';
+  const tab = page.locator('button', { hasText: tabName }).first();
   await tab.click();
   await page.waitForTimeout(800);
-  const name = process.argv[2] === 'orders' ? 'actuals_orders' : 'actuals';
+  const name = process.argv[3] === 'dispatch' ? 'dispatch_grid'
+    : (process.argv[2] === 'orders' ? 'actuals_orders' : 'actuals');
   await page.screenshot({ path: SP + '/' + name + '.png', fullPage: true });
   // 表の実測幅を出す
   const info = await page.evaluate(() => {
