@@ -94,11 +94,13 @@ const REPLY = {
   await page.goto('file://' + tmp, { waitUntil: 'networkidle' });
   console.log('window.google あり?', await page.evaluate(() => typeof window.google));
   await page.waitForTimeout(2500);
-  const tabName = process.argv[3] === 'dispatch' ? '配車・当日出荷' : '実績・推移';
+  const tabName = process.argv[3] === 'dispatch' ? '配車・当日出荷'
+    : process.argv[3] === 'yard' ? 'ヤード・現場' : '実績・推移';
   const tab = page.locator('button', { hasText: tabName }).first();
   await tab.click();
   await page.waitForTimeout(800);
-  const name = process.argv[3] === 'dispatch' ? 'dispatch_grid'
+  const name = process.argv[3] === 'yard' ? 'yard_tab'
+    : process.argv[3] === 'dispatch' ? 'dispatch_grid'
     : (process.argv[2] === 'orders' ? 'actuals_orders' : 'actuals');
   await page.screenshot({ path: SP + '/' + name + '.png', fullPage: true });
   // 表の実測幅を出す

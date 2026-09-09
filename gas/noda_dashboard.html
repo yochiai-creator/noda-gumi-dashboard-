@@ -2386,7 +2386,27 @@ const MAP_20K = {
     "h": 24,
     "orders": []
   }],
-  "landmarks": []
+  "landmarks": [
+  /* ★ 位置63〜70は構内から離れた「野外置場」。位置を足したときにマップ幅を
+       890に広げたため全体が36%まで縮み、右端のこの一帯が点線でかすかに
+       見えるだけになって「なくなった」と受け取られた。
+       見出しを置いて、縮尺が小さいままでも場所が分かるようにする。 */
+  {
+    "x": 676,
+    "y": 8,
+    "w": 210,
+    "h": 24,
+    "label": "野外置場",
+    "kind": "area"
+  }],
+  "focus": [/* ズームで一発で寄れるようにする範囲 */
+  {
+    "label": "野外置場",
+    "x": 668,
+    "y": 4,
+    "w": 222,
+    "h": 145
+  }]
 };
 const YARD_STYLE = {
   "50k": {
@@ -2740,6 +2760,20 @@ function YardMap({
     setZoom(clampZoom(cx - nw / 2, cy - nh / 2, nextScale));
   };
   const resetZoom = () => setZoom(null);
+
+  // ★ 指定した範囲が画面いっぱいになるように寄る。
+  //   マップ全体が36%まで縮んでいて、野外置場のように端にある一帯は
+  //   最初の表示では区画の判別ができない。1タップで寄れるようにする。
+  const zoomToRect = r => {
+    const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(baseW / r.w, baseH / r.h)));
+    if (s <= MIN_SCALE) {
+      setZoom(null);
+      return;
+    }
+    const cx = r.x + r.w / 2,
+      cy = r.y + r.h / 2;
+    setZoom(clampZoom(cx - baseW / s / 2, cy - baseH / s / 2, s));
+  };
   const switchSize = s => {
     setSize(s);
     setSel(null);
@@ -2997,9 +3031,23 @@ function YardMap({
       color: NAVY,
       background: "none",
       border: "none",
-      padding: "4px 2px"
+      padding: "4px 2px",
+      whiteSpace: "nowrap"
     }
-  }, "\u5168\u4F53\u306B\u623B\u3059"), /*#__PURE__*/React.createElement("span", {
+  }, "\u5168\u4F53\u306B\u623B\u3059"), (data.focus || []).map(r => /*#__PURE__*/React.createElement("button", {
+    key: r.label,
+    onClick: () => zoomToRect(r),
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: "#fff",
+      background: NAVY,
+      border: "none",
+      borderRadius: 6,
+      padding: "5px 9px",
+      whiteSpace: "nowrap"
+    }
+  }, r.label)), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
       color: "#94a3b8",
