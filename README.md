@@ -23,13 +23,25 @@ Googleスプレッドシート・Google Driveをバックエンドとして使�
 |---|---|
 | `noda-gumi-dashboard.jsx` | **フロントエンドの正規ソース**（Reactコンポーネント一式）。GASにはpushしない |
 | `gas/noda_dashboard.html` | 上の`.jsx`をBabelでコンパイルして埋め込んだ、GASにデプロイする実体 |
-| `gas/配信用.js` | `doGet`（`noda_dashboard`をHtmlServiceで返す） |
+| `gas/配信用.js` | `doGet(e)`。既定でダッシュボード、`?page=yard` のときは野外置場の画面を返す |
+| `gas/noda_common_cache.js` | 各エンジン共通のキャッシュと日付整形（`nc_` プレフィックス） |
 | `gas/Noda inventory engine.js` | 在庫照会CSV集計（`getInventoryDashboardData`） |
 | `gas/noda_shipping_engine.js` | 出荷作業指図書の月別フォルダ自動集計（`getShippingDashboardData`） |
 | `gas/noda_orderplan_engine.js` | 受注出荷計画表PDF集計・前日比（`getOrderPlanDashboardData`） |
 | `gas/noda_dispatch_engine.js` | トラック運行スケジュール集計（`getDispatchTodayData`） |
+| `gas/noda_dispatch_grid.js` | 配車表をトラック×日付のグリッドで読み書き（`getDispatchGridData` / `setDispatchCell`） |
+| `gas/noda_dispatch_monthly.js` | 配車表の積算による月次出荷本数 |
+| `gas/noda_ship_actuals_engine.js` | 指図書の夜間パースと蓄積シート（`getShippingActualsSummary`） |
+| `gas/noda_inventory_history.js` | 在庫推移の蓄積（`getInventoryTrendData`） |
+| `gas/noda_order_history.js` | 受注推移の蓄積（計画表の差分） |
+| `gas/noda_monthly_combined.js` | 在庫・出荷・受注を月でそろえる（`getMonthlyCombinedData`） |
 | `gas/noda_yard_edit_engine.js` | **ヤードマップの全機能**（読み書き・PDFリンク検索・状態判定）。49関数 |
 | `gas/noda_yard_extras.js` | **意図的に空**。中身はコメントのみ（理由はファイル内に記載） |
+| `gas/noda_yard_capacity.js` | 野外置場（置場容量）のAPI。`yardDoGet_` / `getYardCapacitySummary` ほか |
+| `gas/noda_yard_capacity_sheet.js` | 野外置場のシートアクセス（`置場容量` / `変更履歴`） |
+| `gas/yard_capacity_index.html` | 野外置場の画面（`?page=yard` が返すHTML） |
+| `gas/yard_capacity_script.html` | 同・クライアントJS（敷地レイアウト図・建物編集） |
+| `gas/yard_capacity_style.html` | 同・CSS |
 | `gas/appsscript.json` | マニフェスト（V8 / Drive v3 / webapp: USER_DEPLOYING・DOMAIN） |
 
 ### ファイル名・配置についての重要な注意
@@ -42,6 +54,30 @@ PDF検索の高速化（キャッシュ化）が効かなくなっていた（20
 **関数を追加するときは既存ファイルに追記し、同名関数を2箇所に置かないこと。**
 また、ファイルを増やす・リネームするときは、本番プロジェクト側のファイル名と
 必ず一致させること（別名で`clasp push`すると重複定義が発生する）。
+
+### 野外置場タブについて（2026/09 統合）
+
+野外置場の画面は、もともと**別のGASプロジェクト**だった。
+
+- 旧プロジェクト scriptId: `1JBkJt8Ry2dMeD0x3lVs5vePOzFgDKRGJhQCar2xbZuYZJq446ih6e5hn`
+  （タイトル「LPG容器 屋外在庫管理」）
+- データ: スプレッドシート `1eaook3wVMpKRU_MVsLxtFwL89XlwPNwKqPLY2Sujkaw`
+
+**旧プロジェクトはまだ残っていて、Webアプリとしても生きている。**
+コードは*コピー*なので、旧プロジェクトを直してもダッシュボードのタブは変わらない。
+**直すのはこちら（`gas/noda_yard_capacity*.js` / `yard_capacity_*.html`）だけ。**
+共有されているのはスプレッドシートだけで、どちらのアプリからでも同じ行を読み書きする。
+
+スプレッドシートIDは `YARD_CAPACITY_FILE_ID` に直接書いてある。
+スクリプトプロパティはプロジェクトごとに別物で、空のままだと
+`yardGetSpreadsheet_()` が**新規作成して2021年の初期データで上書き**してしまうため。
+
+旧プロジェクトのスクリプトプロパティ（`YARD_BUILDING_OVERRIDES` / `YARD_AREA_ZONES` /
+`YARD_NOTIFY_EMAIL`）は引き継いでいない（2026/09/09時点で「手調整の覚えがない」と確認済み）。
+建屋の位置は図面PDFの実測座標がコードに入っているので、既定値のままで地図は正しく出る。
+
+満杯通知の日次トリガーは旧プロジェクト側に残っている。こちらに移すときは
+`yardSetupDailyNotificationTrigger()` を実行し、旧側のトリガーを削除する。
 
 ## 開発の流れ
 
