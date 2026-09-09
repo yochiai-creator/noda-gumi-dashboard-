@@ -173,6 +173,11 @@ function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, sav
   const [selectedIdx, setSelectedIdx] = useState(0);
   const days = week && week.length > 0 ? week : [{ dateLabel: dateLabel, shipments: shipments, qty20k: null, qty50k: null, koguchi20k: null, koguchi50k: null, kontena20k: null, kontena50k: null }];
   const selected = days[selectedIdx] || days[0];
+  /* ★ 先頭を無条件に「本日」と呼んでいたが、週の先頭は土日をとばした最初の
+       平日なので、土日に見ると月曜が「本日」と出てしまう。日付で判定する。 */
+  const todayLabel = (() => { const n = new Date(); return (n.getMonth() + 1) + "/" + n.getDate(); })();
+  const isToday = (d) => d && d.dateLabel === todayLabel;
+  const dayWord = isToday(selected) ? "本日" : selected.dateLabel;
 
   return (
     <div className="space-y-6">
@@ -188,7 +193,9 @@ function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, sav
       </div>
 
       <div>
-        <SectionTitle note="トラック運行スケジュール・共有ドライブ日次取得">週間の配車予定</SectionTitle>
+        {/* ★ 注記が長すぎて見出しを95pxまで押しつぶし、両方2行に折り返していた。
+            上の表と同じ出所なので注記そのものを外す。 */}
+        <SectionTitle>日ごとの内訳</SectionTitle>
         <div className="flex gap-1 mb-3 overflow-x-auto -mx-1 px-1">
           {days.map((d, i) => {
             const active = i === selectedIdx;
@@ -201,7 +208,7 @@ function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, sav
                 }`}
                 style={active ? { background: NAVY } : undefined}
               >
-                <span>{i === 0 ? "本日" : d.dateLabel}</span>
+                <span>{d.dateLabel}{isToday(d) ? "（本日）" : ""}</span>
                 <span className={`text-[10px] mt-0.5 ${active ? "text-slate-300" : "text-slate-400"}`}>
                   {d.shipments.length}台
                 </span>
@@ -212,14 +219,14 @@ function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, sav
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
           <Card className="p-4" style={{ background: NAVY }}>
-            <div className="text-xs text-slate-300 mb-1">{selected.dateLabel} の出荷台数</div>
+            <div className="text-xs text-slate-300 mb-1">{dayWord} の出荷台数</div>
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-bold tabular-nums text-white">{selected.shipments.length}</span>
               <span className="text-xs text-slate-400">台</span>
             </div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs text-slate-500 mb-1">本日出荷 20k</div>
+            <div className="text-xs text-slate-500 mb-1">{dayWord} 出荷 20k</div>
             <div className="flex items-baseline gap-1">
               <span className="text-xl font-bold tabular-nums text-slate-900">
                 {selected.qty20k != null ? selected.qty20k : "—"}
@@ -234,7 +241,7 @@ function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, sav
             )}
           </Card>
           <Card className="p-4">
-            <div className="text-xs text-slate-500 mb-1">本日出荷 50k</div>
+            <div className="text-xs text-slate-500 mb-1">{dayWord} 出荷 50k</div>
             <div className="flex items-baseline gap-1">
               <span className="text-xl font-bold tabular-nums text-slate-900">
                 {selected.qty50k != null ? selected.qty50k : "—"}
@@ -1554,8 +1561,22 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
     return <div className="text-xs text-slate-500 py-2">配車表の週が読み取れませんでした。</div>;
   }
 
-  const cellW = 84;   // 1日ぶんの幅。iPhoneでは横スクロールで見る
+  const cellW = 76;   // 1日ぶんの幅。iPhoneでは横スクロールで見る
   const nameW = 96;
+  const rowH = 48;    // 行の高さをそろえる（実測で45〜53px とバラついていた）
+
+  /* ★ 実測（iPhone 390px）: 表の中身は600px、見えているのは332pxで268px隠れる。
+       横に送るとトラック名が x=-240 まで出て行ってしまい、どの行がどのトラック
+       なのか分からなくなっていた。1列目を貼り付けて、日付だけが動くようにする。 */
+  const stickyName = {
+    width: nameW, flex: "0 0 auto",
+    position: "sticky", left: 0, zIndex: 2,
+    boxShadow: "1px 0 0 " + VIZ.divider + ", 3px 0 6px -3px rgba(15,41,66,.18)",
+  };
+  const todayKey = (() => {
+    const n = new Date();
+    return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
+  })();
   /* ★ 行き先が長いとマスが縦に伸びて、行の高さがバラバラになり読みにくい
        （「東京都西多摩郡瑞穂町 東京都羽村市」で3行になった）。
        2行で打ち切って行の高さを揃える。全文はタップしたときの入力欄に出るので
@@ -1589,22 +1610,41 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <div style={{ minWidth: nameW + cellW * g.days.length }}>
           {/* 見出し */}
-          <div className="flex bg-slate-50 border-b border-slate-200">
-            <div className="text-[11px] font-semibold text-slate-500 px-2 py-2"
-              style={{ width: nameW, flex: "0 0 auto" }}>トラック</div>
-            {g.days.map((d) => (
-              <div key={d.col} className="text-[11px] font-semibold text-slate-600 px-2 py-2 border-l border-slate-200"
-                style={{ width: cellW, flex: "0 0 auto" }}>{d.header}</div>
-            ))}
+          <div className="flex border-b border-slate-200">
+            <div className="text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50"
+              style={stickyName}>トラック</div>
+            {g.days.map((d) => {
+              const isToday = d.date === todayKey;
+              return (
+                <div key={d.col}
+                  className="text-[11px] font-semibold px-2 py-2 border-l border-slate-200"
+                  style={{ width: cellW, flex: "0 0 auto",
+                    /* ★ 今日の列に色を付けて、横に送ったとき今どこを見ているか
+                          分かるようにする */
+                    background: isToday ? "#e8eef5" : "#f8fafc",
+                    color: isToday ? NAVY : "#475569",
+                    boxShadow: isToday ? "inset 0 2px 0 " + NAVY : "none" }}>
+                  {d.header}
+                </div>
+              );
+            })}
           </div>
 
           {/* トラックごとの行 */}
           {g.trucks.map((t, i) => (
             <div key={t.row} className="flex border-b border-slate-100"
               style={{ background: i % 2 ? "#fcfdfe" : "#ffffff" }}>
-              <div className="px-2 py-2" style={{ width: nameW, flex: "0 0 auto" }}>
-                <div className="text-[12px] font-semibold" style={{ color: NAVY }}>{t.truck}</div>
-                {t.company && <div className="text-[10px] text-slate-400">{t.company}</div>}
+              <div className="px-2" style={{ ...stickyName, background: i % 2 ? "#fcfdfe" : "#ffffff",
+                height: rowH, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                {/* ★ 1行で切ると「4ｔ平標準 福安」「浅津運送 自社便」が
+                      「4ｔ平標準…」になってしまう。行の高さは固定したまま
+                      2行まで折り返す。 */}
+                <div className="text-[11px] font-semibold" style={{ color: NAVY, lineHeight: 1.15,
+                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                  overflow: "hidden", wordBreak: "break-all" }}>{t.truck}</div>
+                {t.company && <div className="text-[9px] text-slate-400" style={{ lineHeight: 1.15,
+                  display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical",
+                  overflow: "hidden", wordBreak: "break-all" }}>{t.company}</div>}
               </div>
               {g.days.map((d) => {
                 const c = t.cells[d.col];
@@ -1614,9 +1654,13 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                   <button key={d.col}
                     onClick={() => g.editable && setEdit({ row: t.row, col: d.col,
                       value: c ? c.text : "", truck: t.truck, day: d.header })}
-                    className="px-2 py-2 border-l border-slate-200 text-left"
-                    style={{ width: cellW, flex: "0 0 auto", background: st.bg,
-                      minHeight: 44,   // 指で押しやすい高さを確保する
+                    className="px-2 border-l border-slate-200 text-left"
+                    style={{ width: cellW, flex: "0 0 auto",
+                      /* 予定なしのマスは、今日の列だけほんのり色を残す */
+                      background: st.bg !== "transparent" ? st.bg
+                        : (d.date === todayKey ? "#f4f7fb" : "transparent"),
+                      height: rowH,    // 行の高さをそろえる（指で押せる大きさは確保）
+                      display: "flex", alignItems: "center",
                       cursor: g.editable ? "pointer" : "default" }}>
                     <span className="text-[11px]" style={{ color: st.fg,
                       wordBreak: "break-all", ...clamp2 }}>
@@ -1630,14 +1674,15 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
 
           {/* その日の本数（配車表の合計行そのまま） */}
           {["合計20k", "合計50k", "小口", "コンテナ"].map((k) => (
-            <div key={k} className="flex bg-slate-50 border-t border-slate-200">
-              <div className="text-[11px] font-semibold text-slate-500 px-2 py-2"
-                style={{ width: nameW, flex: "0 0 auto" }}>{k}</div>
+            <div key={k} className={`flex bg-slate-50 ${k === "合計20k" ? "border-t-2" : "border-t"} border-slate-200`}>
+              <div className="text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50"
+                style={stickyName}>{k}</div>
               {g.days.map((d) => {
                 const t = g.totals[d.col] || {};
                 return (
                   <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-right text-[12px] tabular-nums"
-                    style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2 }}>
+                    style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2,
+                      background: d.date === todayKey ? "#eef2f7" : "transparent" }}>
                     {t[k] == null ? "—" : vizComma(t[k])}
                   </div>
                 );
@@ -1648,6 +1693,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
       </div>
 
       <div className="text-[10px] mt-2" style={{ color: VIZ.muted }}>
+        横に指で送ると先の日が見えます（トラック名は残ります）。
         {g.editable ? "マスをタップすると直せます。" : ""}
         ← は引取、× は運休です。
       </div>

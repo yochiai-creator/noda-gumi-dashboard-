@@ -912,6 +912,14 @@ function DispatchTab({
     kontena50k: null
   }];
   const selected = days[selectedIdx] || days[0];
+  /* ★ 先頭を無条件に「本日」と呼んでいたが、週の先頭は土日をとばした最初の
+       平日なので、土日に見ると月曜が「本日」と出てしまう。日付で判定する。 */
+  const todayLabel = (() => {
+    const n = new Date();
+    return n.getMonth() + 1 + "/" + n.getDate();
+  })();
+  const isToday = d => d && d.dateLabel === todayLabel;
+  const dayWord = isToday(selected) ? "本日" : selected.dateLabel;
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", {
@@ -930,9 +938,7 @@ function DispatchTab({
     onSave: onSaveCell,
     onWeek: onWeek,
     saving: saving
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "\u30C8\u30E9\u30C3\u30AF\u904B\u884C\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB\u30FB\u5171\u6709\u30C9\u30E9\u30A4\u30D6\u65E5\u6B21\u53D6\u5F97"
-  }, "\u9031\u9593\u306E\u914D\u8ECA\u4E88\u5B9A"), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, null, "\u65E5\u3054\u3068\u306E\u5185\u8A33"), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-1 mb-3 overflow-x-auto -mx-1 px-1"
   }, days.map((d, i) => {
     const active = i === selectedIdx;
@@ -943,7 +949,7 @@ function DispatchTab({
       style: active ? {
         background: NAVY
       } : undefined
-    }, /*#__PURE__*/React.createElement("span", null, i === 0 ? "本日" : d.dateLabel), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, d.dateLabel, isToday(d) ? "（本日）" : ""), /*#__PURE__*/React.createElement("span", {
       className: `text-[10px] mt-0.5 ${active ? "text-slate-300" : "text-slate-400"}`
     }, d.shipments.length, "\u53F0"));
   })), /*#__PURE__*/React.createElement("div", {
@@ -955,7 +961,7 @@ function DispatchTab({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-300 mb-1"
-  }, selected.dateLabel, " \u306E\u51FA\u8377\u53F0\u6570"), /*#__PURE__*/React.createElement("div", {
+  }, dayWord, " \u306E\u51FA\u8377\u53F0\u6570"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-2xl font-bold tabular-nums text-white"
@@ -965,7 +971,7 @@ function DispatchTab({
     className: "p-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 mb-1"
-  }, "\u672C\u65E5\u51FA\u8377 20k"), /*#__PURE__*/React.createElement("div", {
+  }, dayWord, " \u51FA\u8377 20k"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xl font-bold tabular-nums text-slate-900"
@@ -979,7 +985,7 @@ function DispatchTab({
     className: "p-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 mb-1"
-  }, "\u672C\u65E5\u51FA\u8377 50k"), /*#__PURE__*/React.createElement("div", {
+  }, dayWord, " \u51FA\u8377 50k"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xl font-bold tabular-nums text-slate-900"
@@ -4080,8 +4086,25 @@ function DispatchGrid({
       className: "text-xs text-slate-500 py-2"
     }, "\u914D\u8ECA\u8868\u306E\u9031\u304C\u8AAD\u307F\u53D6\u308C\u307E\u305B\u3093\u3067\u3057\u305F\u3002");
   }
-  const cellW = 84; // 1日ぶんの幅。iPhoneでは横スクロールで見る
+  const cellW = 76; // 1日ぶんの幅。iPhoneでは横スクロールで見る
   const nameW = 96;
+  const rowH = 48; // 行の高さをそろえる（実測で45〜53px とバラついていた）
+
+  /* ★ 実測（iPhone 390px）: 表の中身は600px、見えているのは332pxで268px隠れる。
+       横に送るとトラック名が x=-240 まで出て行ってしまい、どの行がどのトラック
+       なのか分からなくなっていた。1列目を貼り付けて、日付だけが動くようにする。 */
+  const stickyName = {
+    width: nameW,
+    flex: "0 0 auto",
+    position: "sticky",
+    left: 0,
+    zIndex: 2,
+    boxShadow: "1px 0 0 " + VIZ.divider + ", 3px 0 6px -3px rgba(15,41,66,.18)"
+  };
+  const todayKey = (() => {
+    const n = new Date();
+    return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
+  })();
   /* ★ 行き先が長いとマスが縦に伸びて、行の高さがバラバラになり読みにくい
        （「東京都西多摩郡瑞穂町 東京都羽村市」で3行になった）。
        2行で打ち切って行の高さを揃える。全文はタップしたときの入力欄に出るので
@@ -4123,39 +4146,62 @@ function DispatchGrid({
       minWidth: nameW + cellW * g.days.length
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex bg-slate-50 border-b border-slate-200"
+    className: "flex border-b border-slate-200"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-[11px] font-semibold text-slate-500 px-2 py-2",
-    style: {
-      width: nameW,
-      flex: "0 0 auto"
-    }
-  }, "\u30C8\u30E9\u30C3\u30AF"), g.days.map(d => /*#__PURE__*/React.createElement("div", {
-    key: d.col,
-    className: "text-[11px] font-semibold text-slate-600 px-2 py-2 border-l border-slate-200",
-    style: {
-      width: cellW,
-      flex: "0 0 auto"
-    }
-  }, d.header))), g.trucks.map((t, i) => /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50",
+    style: stickyName
+  }, "\u30C8\u30E9\u30C3\u30AF"), g.days.map(d => {
+    const isToday = d.date === todayKey;
+    return /*#__PURE__*/React.createElement("div", {
+      key: d.col,
+      className: "text-[11px] font-semibold px-2 py-2 border-l border-slate-200",
+      style: {
+        width: cellW,
+        flex: "0 0 auto",
+        /* ★ 今日の列に色を付けて、横に送ったとき今どこを見ているか
+              分かるようにする */
+        background: isToday ? "#e8eef5" : "#f8fafc",
+        color: isToday ? NAVY : "#475569",
+        boxShadow: isToday ? "inset 0 2px 0 " + NAVY : "none"
+      }
+    }, d.header);
+  })), g.trucks.map((t, i) => /*#__PURE__*/React.createElement("div", {
     key: t.row,
     className: "flex border-b border-slate-100",
     style: {
       background: i % 2 ? "#fcfdfe" : "#ffffff"
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "px-2 py-2",
+    className: "px-2",
     style: {
-      width: nameW,
-      flex: "0 0 auto"
+      ...stickyName,
+      background: i % 2 ? "#fcfdfe" : "#ffffff",
+      height: rowH,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center"
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-[12px] font-semibold",
+    className: "text-[11px] font-semibold",
     style: {
-      color: NAVY
+      color: NAVY,
+      lineHeight: 1.15,
+      display: "-webkit-box",
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: "vertical",
+      overflow: "hidden",
+      wordBreak: "break-all"
     }
   }, t.truck), t.company && /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400"
+    className: "text-[9px] text-slate-400",
+    style: {
+      lineHeight: 1.15,
+      display: "-webkit-box",
+      WebkitLineClamp: 1,
+      WebkitBoxOrient: "vertical",
+      overflow: "hidden",
+      wordBreak: "break-all"
+    }
   }, t.company)), g.days.map(d => {
     const c = t.cells[d.col];
     const kind = c ? c.kind : "";
@@ -4169,13 +4215,16 @@ function DispatchGrid({
         truck: t.truck,
         day: d.header
       }),
-      className: "px-2 py-2 border-l border-slate-200 text-left",
+      className: "px-2 border-l border-slate-200 text-left",
       style: {
         width: cellW,
         flex: "0 0 auto",
-        background: st.bg,
-        minHeight: 44,
-        // 指で押しやすい高さを確保する
+        /* 予定なしのマスは、今日の列だけほんのり色を残す */
+        background: st.bg !== "transparent" ? st.bg : d.date === todayKey ? "#f4f7fb" : "transparent",
+        height: rowH,
+        // 行の高さをそろえる（指で押せる大きさは確保）
+        display: "flex",
+        alignItems: "center",
         cursor: g.editable ? "pointer" : "default"
       }
     }, /*#__PURE__*/React.createElement("span", {
@@ -4188,13 +4237,10 @@ function DispatchGrid({
     }, c ? c.text : "—"));
   }))), ["合計20k", "合計50k", "小口", "コンテナ"].map(k => /*#__PURE__*/React.createElement("div", {
     key: k,
-    className: "flex bg-slate-50 border-t border-slate-200"
+    className: `flex bg-slate-50 ${k === "合計20k" ? "border-t-2" : "border-t"} border-slate-200`
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-[11px] font-semibold text-slate-500 px-2 py-2",
-    style: {
-      width: nameW,
-      flex: "0 0 auto"
-    }
+    className: "text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50",
+    style: stickyName
   }, k), g.days.map(d => {
     const t = g.totals[d.col] || {};
     return /*#__PURE__*/React.createElement("div", {
@@ -4203,7 +4249,8 @@ function DispatchGrid({
       style: {
         width: cellW,
         flex: "0 0 auto",
-        color: VIZ.ink2
+        color: VIZ.ink2,
+        background: d.date === todayKey ? "#eef2f7" : "transparent"
       }
     }, t[k] == null ? "—" : vizComma(t[k]));
   }))))), /*#__PURE__*/React.createElement("div", {
@@ -4211,7 +4258,7 @@ function DispatchGrid({
     style: {
       color: VIZ.muted
     }
-  }, g.editable ? "マスをタップすると直せます。" : "", "\u2190 \u306F\u5F15\u53D6\u3001\xD7 \u306F\u904B\u4F11\u3067\u3059\u3002"), edit && /*#__PURE__*/React.createElement("div", {
+  }, "\u6A2A\u306B\u6307\u3067\u9001\u308B\u3068\u5148\u306E\u65E5\u304C\u898B\u3048\u307E\u3059\uFF08\u30C8\u30E9\u30C3\u30AF\u540D\u306F\u6B8B\u308A\u307E\u3059\uFF09\u3002", g.editable ? "マスをタップすると直せます。" : "", "\u2190 \u306F\u5F15\u53D6\u3001\xD7 \u306F\u904B\u4F11\u3067\u3059\u3002"), edit && /*#__PURE__*/React.createElement("div", {
     className: "mt-3 rounded-md border p-3",
     style: {
       borderColor: NAVY
