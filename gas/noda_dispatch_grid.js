@@ -67,16 +67,19 @@ function 配車表をスプレッドシートに移す() {
   Logger.log('元にするExcel: ' + src.getName());
 
   // Drive APIでMIMEタイプを変えてコピー＝Googleスプレッドシートに変換
+  // ★ supportsAllDrives が必須。配車表は共有ドライブにあるので、これを付けないと
+  //   ファイルは存在するのに「File not found」で失敗する（実際にそれで1回失敗した）。
   var converted = Drive.Files.copy(
     { name: DISP_GRID_CONFIG.SPREADSHEET_TITLE, mimeType: MimeType.GOOGLE_SHEETS },
-    src.getId()
+    src.getId(),
+    { supportsAllDrives: true }
   );
   var ss = SpreadsheetApp.openById(converted.id);
 
   // 構造が読めるか確認してから採用する（読めないものを本物にしてはいけない）
   var check = dgrid_validate_(ss);
   if (!check.ok) {
-    try { Drive.Files.remove(converted.id); } catch (e) {}
+    try { Drive.Files.remove(converted.id, { supportsAllDrives: true }); } catch (e) {}
     Logger.log('★ 変換したシートの構造が読めませんでした: ' + check.reason);
     Logger.log('  移行を中止しました（作ったシートは削除しました）。');
     return { ok: false, error: check.reason };
@@ -85,7 +88,8 @@ function 配車表をスプレッドシートに移す() {
   // アプリから書き込む前の状態を1つ残す
   var backup = Drive.Files.copy(
     { name: DISP_GRID_CONFIG.SPREADSHEET_TITLE + '（移行時のバックアップ）' },
-    converted.id
+    converted.id,
+    { supportsAllDrives: true }
   );
 
   props.setProperty(DISP_GRID_CONFIG.PROP_SHEET_ID, converted.id);
