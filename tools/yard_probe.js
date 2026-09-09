@@ -1,4 +1,4 @@
-// 20kマップの右端（位置63〜70＝野外置き場）が見える範囲にあるかを実測する。
+// 20kマップの右端（位置63〜70＝小容器ボビン）が見える範囲にあるかを実測する。
 const { chromium } = require('playwright');
 const fs = require('fs');
 const SP = '/tmp/claude-0/-home-user-GAS-/302da6aa-62eb-5fdd-b3ab-d0a545e5e7fd/scratchpad';
@@ -36,13 +36,13 @@ const REPLY = {
   await page.locator('button', { hasText: '20k 入込場' }).first().click();
   await page.waitForTimeout(800);
 
-  // ★「野外置場へ」を押して、その一帯が読める大きさになるかを測る
-  const btn = page.locator('button', { hasText: '野外置場' }).first();
+  // ★「小容器ボビンへ」を押して、その一帯が読める大きさになるかを測る
+  const btn = page.locator('button', { hasText: '小容器ボビン' }).first();
   const hasBtn = await btn.count() > 0;
-  console.log('「野外置場へ」ボタン:', hasBtn ? 'あり' : '★なし');
+  console.log('「小容器ボビンへ」ボタン:', hasBtn ? 'あり' : '★なし');
   const before = await page.evaluate(() => {
     const svg = [...document.querySelectorAll('svg')].find((s) => s.getAttribute('viewBox') && s.querySelector('rect'));
-    const t = [...svg.querySelectorAll('text')].find((x) => x.textContent === '野外置場');
+    const t = [...svg.querySelectorAll('text')].find((x) => x.textContent === '小容器ボビン');
     const r = t ? t.getBoundingClientRect() : null;
     const b = [...svg.querySelectorAll('text')].filter((x) => /^<?(6[3-9]|70)>?$/.test(x.textContent || ''));
     return { 見出し: t ? { w: Math.round(r.width), h: Math.round(r.height) } : null,
@@ -53,7 +53,7 @@ const REPLY = {
     await btn.click(); await page.waitForTimeout(500);
     const after = await page.evaluate(() => {
       const svg = [...document.querySelectorAll('svg')].find((s) => s.getAttribute('viewBox') && s.querySelector('rect'));
-      const t = [...svg.querySelectorAll('text')].find((x) => x.textContent === '野外置場');
+      const t = [...svg.querySelectorAll('text')].find((x) => x.textContent === '小容器ボビン');
       const cr = svg.parentElement.getBoundingClientRect();
       const b = [...svg.querySelectorAll('text')].filter((x) => /^<?(6[3-9]|70)>?$/.test(x.textContent || ''));
       const vis = b.filter((x) => { const r = x.getBoundingClientRect(); return r.x >= cr.x - 1 && r.right <= cr.right + 1 && r.width > 0; });
