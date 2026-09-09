@@ -1910,10 +1910,74 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
   );
 }
 
+/* ---------- 野外置場タブ ---------- */
+/*  もとは別プロジェクトのGASアプリ（LPG容器 屋外置場 在庫管理）。同じスクリプト
+    プロジェクトに取り込んで、?page=yard で開けるようにした（gas/配信用.js）。
+    中身は47KBの独自UI（敷地レイアウト図・建物編集・変更履歴）なので、Reactに
+    書き直さずそのまま iframe で読み込む。旧アプリ側も setXFrameOptionsMode(ALLOWALL)
+    が入っていて、もともと埋め込む前提で書かれていた。 */
+function YardCapacityTab({ summary, url, onRefresh }) {
+  const err = (summary && summary.error) || (url && url.error) || null;
+  const src = url && url.url ? url.url : null;
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        {/* ヘッダーがすでに「野外置場」なので、ここは中身の説明にする */}
+        <SectionTitle note={summary ? summary.locations + " か所" : ""}>置場容量（実績数 / 収容MAX）</SectionTitle>
+        {err && (
+          <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2 mb-2">
+            読み込めませんでした：{err}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {src && (
+            <a href={src} target="_blank" rel="noopener"
+              className="px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+              style={{ background: NAVY, textDecoration: "none" }}>
+              別画面で開く
+            </a>
+          )}
+          {summary && summary.sheetUrl && (
+            <a href={summary.sheetUrl} target="_blank" rel="noopener"
+              className="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100"
+              style={{ textDecoration: "none" }}>
+              元のシートを開く
+            </a>
+          )}
+          <button onClick={onRefresh}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100">
+            数字を取り直す
+          </button>
+          {summary && summary.updated && (
+            <span className="text-[10px] text-slate-400 ml-auto">{summary.updated} 時点</span>
+          )}
+        </div>
+      </Card>
+
+      {src ? (
+        /* ★ 画面が狭いと入れ子のスクロールがつらいので、高さは広めに取って
+              外側のページを送ってもらう。全画面で使いたいときは上の
+              「別画面で開く」を押す。 */
+        <Card className="p-0" style={{ overflow: "hidden" }}>
+          <iframe src={src} title="野外置場 在庫管理"
+            style={{ display: "block", width: "100%", height: "78vh", minHeight: 480, border: "none" }} />
+        </Card>
+      ) : (
+        <Card className="p-4">
+          <p className="text-xs text-slate-500">
+            GAS環境で開くと、ここに野外置場の在庫管理画面が出ます。
+          </p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
-  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, monthly: null, dispGrid: null, loading: true, error: null });
+  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, monthly: null, dispGrid: null, yardCap: null, yardCapUrl: null, loading: true, error: null });
   // 配車グリッドは週を切り替えるので、ほかの集計とは別に持つ
   const [gridWeek, setGridWeek] = useState(0);
   const [gridSaving, setGridSaving] = useState(false);
@@ -1936,6 +2000,7 @@ export default function App() {
     { id: "yard",   label: "ヤード・現場" },
     { id: "dispatch", label: "配車・当日出荷" },
     { id: "actuals", label: "実績・推移" },
+    { id: "yardcap", label: "野外置場" },
   ];
 
   // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
@@ -2026,6 +2091,18 @@ export default function App() {
 
     // 配車表のトラック×日付グリッド
     fetchDispatchGrid(gridWeek, force === true, markLoaded);
+
+    // 野外置場（置場容量）の合計と、埋め込むURL。
+    // URLは変わらないので1回取れれば取り直さない。
+    google.script.run
+      .withSuccessHandler((yc) => { setLive((prev) => ({ ...prev, yardCap: yc })); markLoaded(); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, yardCap: { error: String(err) } })); markLoaded(); })
+      .getYardCapacitySummary();
+
+    google.script.run
+      .withSuccessHandler((u) => { setLive((prev) => ({ ...prev, yardCapUrl: u })); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, yardCapUrl: { error: String(err) } })); })
+      .getYardCapacityUrl();
 
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map((b) => ({ pos: String(b.pos) }));
@@ -2128,6 +2205,7 @@ export default function App() {
     orders: { title: "受注・指図書", subtitle: dateLabel },
     yard: { title: "ヤード・現場", subtitle: dateLabel },
     dispatch: { title: "配車・当日出荷", subtitle: dispatchDateLabel + " 時点" },
+    yardcap: { title: "野外置場", subtitle: dateLabel },
   };
   const currentHeader = tabHeaders[tab] || tabHeaders.orders;
 
@@ -2191,6 +2269,22 @@ export default function App() {
       { label: "週の出荷合計 50k", value: dispatchWeekQty50k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
       { label: "週の総計本数", value: (dispatchWeekQty20k + dispatchWeekQty50k).toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
     ],
+    yardcap: (() => {
+      const y = live.yardCap;
+      const n = (v) => (v == null ? "—" : Number(v).toLocaleString());
+      // 満杯(100%以上)が1つでもあれば赤、80%以上だけなら黄。
+      const fullTone = y && y.over > 0 ? "alert" : (y && y.nearFull > 0 ? "warn" : "ok");
+      return [
+        { label: "野外置場 合計本数", value: n(y && y.total), unit: "本", icon: Boxes, tone: "neutral" },
+        { label: "20kg 実績", value: n(y && y.a20), unit: "本", icon: Boxes, tone: "ok" },
+        { label: "50kg 実績", value: n(y && y.a50), unit: "本", icon: Boxes, tone: "ok" },
+        {
+          label: y && y.over > 0 ? "満杯の置場" : "満杯に近い置場(80%以上)",
+          value: y ? String(y.over > 0 ? y.over : y.nearFull) : "—",
+          unit: "か所", icon: AlertTriangle, tone: fullTone
+        },
+      ];
+    })(),
   };
   const currentKpis = tabKpis[tab] || tabKpis.orders;
 
@@ -2275,6 +2369,7 @@ export default function App() {
           {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab dateLabel={dispatchDateLabel} shipments={dispatchShipments} week={dispatchWeek}
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
+          {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} url={live.yardCapUrl} onRefresh={() => fetchLiveData(true)} />}
         </div>
 
         <p className="text-center text-[10px] text-slate-400 pt-2">

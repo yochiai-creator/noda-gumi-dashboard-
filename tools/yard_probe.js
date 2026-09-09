@@ -14,6 +14,11 @@ const REPLY = {
   getShippingActualsSummary: () => ({ ...E, sheetUrl: 'x', rowCount: 0, shipmentCount: 0, months: [], bySize: {}, topDests: [], mismatchCount: 0, needsCheckCount: 0, nonCylinderCount: 0 }),
   getInventoryTrendData: () => ({ ...E, sheetUrl: 'x', days: [], latest: null, change: null, bySizeLatest: {} }),
   getMonthlyCombinedData: () => ({ ...E, sheetUrl: 'x', months: [], hasOrders: false, hasPlan: false, partialMonth: null, startMonth: null }),
+  getYardCapacitySummary: () => ({ updated: '2026-09-09 12:00', error: null, locations: 36,
+    a20: 15880, m20: 20308, a30: 0, m30: 0, a50: 15800, m50: 19100,
+    total: 31680, max: 39408, nearFull: 3, over: 1,
+    sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
+  getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
   getDispatchGridData: () => ({ ...E, source: 'Excel', editable: false, weekOffset: 0, weekLabel: null, hasPrev: false, hasNext: false, days: [], trucks: [], totals: {} }),
 };
 (async () => {

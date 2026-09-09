@@ -83,6 +83,8 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .ring-red-200{--nd-ring:#fecaca}
 .border-l{border-left-width:1px}
 .text-amber-800{color:#92400e}
+.space-y-4>:not([hidden])~:not([hidden]){margin-top:1rem}
+.p-0{padding:0}
 </style>
 <script>
 /**
@@ -4447,6 +4449,78 @@ function ActualsTab({
     }
   }, "\u6700\u65B0\u306B\u66F4\u65B0"));
 }
+
+/* ---------- 野外置場タブ ---------- */
+/*  もとは別プロジェクトのGASアプリ（LPG容器 屋外置場 在庫管理）。同じスクリプト
+    プロジェクトに取り込んで、?page=yard で開けるようにした（gas/配信用.js）。
+    中身は47KBの独自UI（敷地レイアウト図・建物編集・変更履歴）なので、Reactに
+    書き直さずそのまま iframe で読み込む。旧アプリ側も setXFrameOptionsMode(ALLOWALL)
+    が入っていて、もともと埋め込む前提で書かれていた。 */
+function YardCapacityTab({
+  summary,
+  url,
+  onRefresh
+}) {
+  const err = summary && summary.error || url && url.error || null;
+  const src = url && url.url ? url.url : null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "space-y-4"
+  }, /*#__PURE__*/React.createElement(Card, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement(SectionTitle, {
+    note: summary ? summary.locations + " か所" : ""
+  }, "\u7F6E\u5834\u5BB9\u91CF\uFF08\u5B9F\u7E3E\u6570 / \u53CE\u5BB9MAX\uFF09"), err && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-red-700 bg-red-50 rounded-md px-3 py-2 mb-2"
+  }, "\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F\uFF1A", err), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center gap-2"
+  }, src && /*#__PURE__*/React.createElement("a", {
+    href: src,
+    target: "_blank",
+    rel: "noopener",
+    className: "px-3 py-1.5 rounded-md text-xs font-semibold text-white",
+    style: {
+      background: NAVY,
+      textDecoration: "none"
+    }
+  }, "\u5225\u753B\u9762\u3067\u958B\u304F"), summary && summary.sheetUrl && /*#__PURE__*/React.createElement("a", {
+    href: summary.sheetUrl,
+    target: "_blank",
+    rel: "noopener",
+    className: "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100",
+    style: {
+      textDecoration: "none"
+    }
+  }, "\u5143\u306E\u30B7\u30FC\u30C8\u3092\u958B\u304F"), /*#__PURE__*/React.createElement("button", {
+    onClick: onRefresh,
+    className: "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100"
+  }, "\u6570\u5B57\u3092\u53D6\u308A\u76F4\u3059"), summary && summary.updated && /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-400 ml-auto"
+  }, summary.updated, " \u6642\u70B9"))), src ?
+  /*#__PURE__*/
+  /* ★ 画面が狭いと入れ子のスクロールがつらいので、高さは広めに取って
+        外側のページを送ってもらう。全画面で使いたいときは上の
+        「別画面で開く」を押す。 */
+  React.createElement(Card, {
+    className: "p-0",
+    style: {
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("iframe", {
+    src: src,
+    title: "\u91CE\u5916\u7F6E\u5834 \u5728\u5EAB\u7BA1\u7406",
+    style: {
+      display: "block",
+      width: "100%",
+      height: "78vh",
+      minHeight: 480,
+      border: "none"
+    }
+  })) : /*#__PURE__*/React.createElement(Card, {
+    className: "p-4"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u3001\u3053\u3053\u306B\u91CE\u5916\u7F6E\u5834\u306E\u5728\u5EAB\u7BA1\u7406\u753B\u9762\u304C\u51FA\u307E\u3059\u3002")));
+}
 function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
@@ -4459,6 +4533,8 @@ function App() {
     invTrend: null,
     monthly: null,
     dispGrid: null,
+    yardCap: null,
+    yardCapUrl: null,
     loading: true,
     error: null
   });
@@ -4491,6 +4567,9 @@ function App() {
   }, {
     id: "actuals",
     label: "実績・推移"
+  }, {
+    id: "yardcap",
+    label: "野外置場"
   }];
 
   // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
@@ -4673,6 +4752,37 @@ function App() {
     // 配車表のトラック×日付グリッド
     fetchDispatchGrid(gridWeek, force === true, markLoaded);
 
+    // 野外置場（置場容量）の合計と、埋め込むURL。
+    // URLは変わらないので1回取れれば取り直さない。
+    google.script.run.withSuccessHandler(yc => {
+      setLive(prev => ({
+        ...prev,
+        yardCap: yc
+      }));
+      markLoaded();
+    }).withFailureHandler(err => {
+      setLive(prev => ({
+        ...prev,
+        yardCap: {
+          error: String(err)
+        }
+      }));
+      markLoaded();
+    }).getYardCapacitySummary();
+    google.script.run.withSuccessHandler(u => {
+      setLive(prev => ({
+        ...prev,
+        yardCapUrl: u
+      }));
+    }).withFailureHandler(err => {
+      setLive(prev => ({
+        ...prev,
+        yardCapUrl: {
+          error: String(err)
+        }
+      }));
+    }).getYardCapacityUrl();
+
     // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
     const q50k = MAP_50K.blocks.map(b => ({
       pos: String(b.pos)
@@ -4804,6 +4914,10 @@ function App() {
     dispatch: {
       title: "配車・当日出荷",
       subtitle: dispatchDateLabel + " 時点"
+    },
+    yardcap: {
+      title: "野外置場",
+      subtitle: dateLabel
     }
   };
   const currentHeader = tabHeaders[tab] || tabHeaders.orders;
@@ -4917,7 +5031,38 @@ function App() {
       unit: "本",
       icon: Boxes,
       tone: "neutral"
-    }]
+    }],
+    yardcap: (() => {
+      const y = live.yardCap;
+      const n = v => v == null ? "—" : Number(v).toLocaleString();
+      // 満杯(100%以上)が1つでもあれば赤、80%以上だけなら黄。
+      const fullTone = y && y.over > 0 ? "alert" : y && y.nearFull > 0 ? "warn" : "ok";
+      return [{
+        label: "野外置場 合計本数",
+        value: n(y && y.total),
+        unit: "本",
+        icon: Boxes,
+        tone: "neutral"
+      }, {
+        label: "20kg 実績",
+        value: n(y && y.a20),
+        unit: "本",
+        icon: Boxes,
+        tone: "ok"
+      }, {
+        label: "50kg 実績",
+        value: n(y && y.a50),
+        unit: "本",
+        icon: Boxes,
+        tone: "ok"
+      }, {
+        label: y && y.over > 0 ? "満杯の置場" : "満杯に近い置場(80%以上)",
+        value: y ? String(y.over > 0 ? y.over : y.nearFull) : "—",
+        unit: "か所",
+        icon: AlertTriangle,
+        tone: fullTone
+      }];
+    })()
   };
   const currentKpis = tabKpis[tab] || tabKpis.orders;
 
@@ -5036,6 +5181,10 @@ function App() {
     onSaveCell: saveDispatchCell,
     onWeek: changeGridWeek,
     saving: gridSaving
+  }), tab === "yardcap" && /*#__PURE__*/React.createElement(YardCapacityTab, {
+    summary: live.yardCap,
+    url: live.yardCapUrl,
+    onRefresh: () => fetchLiveData(true)
   })), /*#__PURE__*/React.createElement("p", {
     className: "text-center text-[10px] text-slate-400 pt-2"
   }, "\u203B GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u5404\u30BF\u30D6\u306E\u5B9F\u30C7\u30FC\u30BF\u306F\u6700\u65B0\u306B\u81EA\u52D5\u66F4\u65B0\u3055\u308C\u307E\u3059\uFF085\u5206\u3054\u3068\uFF09\u3002\u30D8\u30C3\u30C0\u30FC\u30FBKPI\u3082\u30BF\u30D6\u3054\u3068\u306B\u5207\u308A\u66FF\u308F\u308A\u307E\u3059\u3002")));
