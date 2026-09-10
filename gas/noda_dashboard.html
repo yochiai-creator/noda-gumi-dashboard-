@@ -85,6 +85,8 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .text-amber-800{color:#92400e}
 .space-y-4>:not([hidden])~:not([hidden]){margin-top:1rem}
 .p-0{padding:0}
+.self-center{align-self:center}
+.grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 </style>
 <script>
 /**
@@ -892,34 +894,11 @@ function SectionTitle({
 
 /* ---------- タブ本体 ---------- */
 function DispatchTab({
-  dateLabel,
-  shipments,
-  week,
   grid,
   onSaveCell,
   onWeek,
   saving
 }) {
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const days = week && week.length > 0 ? week : [{
-    dateLabel: dateLabel,
-    shipments: shipments,
-    qty20k: null,
-    qty50k: null,
-    koguchi20k: null,
-    koguchi50k: null,
-    kontena20k: null,
-    kontena50k: null
-  }];
-  const selected = days[selectedIdx] || days[0];
-  /* ★ 先頭を無条件に「本日」と呼んでいたが、週の先頭は土日をとばした最初の
-       平日なので、土日に見ると月曜が「本日」と出てしまう。日付で判定する。 */
-  const todayLabel = (() => {
-    const n = new Date();
-    return n.getMonth() + 1 + "/" + n.getDate();
-  })();
-  const isToday = d => d && d.dateLabel === todayLabel;
-  const dayWord = isToday(selected) ? "本日" : selected.dateLabel;
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", {
@@ -938,86 +917,7 @@ function DispatchTab({
     onSave: onSaveCell,
     onWeek: onWeek,
     saving: saving
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, null, "\u65E5\u3054\u3068\u306E\u5185\u8A33"), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-1 mb-3 overflow-x-auto -mx-1 px-1"
-  }, days.map((d, i) => {
-    const active = i === selectedIdx;
-    return /*#__PURE__*/React.createElement("button", {
-      key: i,
-      onClick: () => setSelectedIdx(i),
-      className: `flex flex-col items-center px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${active ? "text-white" : "text-slate-500 bg-slate-100"}`,
-      style: active ? {
-        background: NAVY
-      } : undefined
-    }, /*#__PURE__*/React.createElement("span", null, d.dateLabel, isToday(d) ? "（本日）" : ""), /*#__PURE__*/React.createElement("span", {
-      className: `text-[10px] mt-0.5 ${active ? "text-slate-300" : "text-slate-400"}`
-    }, d.shipments.length, "\u53F0"));
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3"
-  }, /*#__PURE__*/React.createElement(Card, {
-    className: "p-4",
-    style: {
-      background: NAVY
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-slate-300 mb-1"
-  }, dayWord, " \u306E\u51FA\u8377\u53F0\u6570"), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-baseline gap-1"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-2xl font-bold tabular-nums text-white"
-  }, selected.shipments.length), /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-slate-400"
-  }, "\u53F0"))), /*#__PURE__*/React.createElement(Card, {
-    className: "p-4"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-slate-500 mb-1"
-  }, dayWord, " \u51FA\u8377 20k"), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-baseline gap-1"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xl font-bold tabular-nums text-slate-900"
-  }, selected.qty20k != null ? selected.qty20k : "—"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400"
-  }, "\u672C")), selected.koguchi20k != null && selected.koguchi20k > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 mt-0.5"
-  }, "\u3046\u3061\u5C0F\u53E3 ", selected.koguchi20k, "\u672C"), selected.kontena20k != null && selected.kontena20k > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 mt-0.5"
-  }, "\u3046\u3061\u30B3\u30F3\u30C6\u30CA ", selected.kontena20k, "\u672C")), /*#__PURE__*/React.createElement(Card, {
-    className: "p-4"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-slate-500 mb-1"
-  }, dayWord, " \u51FA\u8377 50k"), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-baseline gap-1"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xl font-bold tabular-nums text-slate-900"
-  }, selected.qty50k != null ? selected.qty50k : "—"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400"
-  }, "\u672C")), selected.koguchi50k != null && selected.koguchi50k > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 mt-0.5"
-  }, "\u3046\u3061\u5C0F\u53E3 ", selected.koguchi50k, "\u672C"), selected.kontena50k != null && selected.kontena50k > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 mt-0.5"
-  }, "\u3046\u3061\u30B3\u30F3\u30C6\u30CA ", selected.kontena50k, "\u672C"))), selected.shipments.length === 0 ? /*#__PURE__*/React.createElement(Card, {
-    className: "p-6 text-center"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-slate-400"
-  }, "\u3053\u306E\u65E5\u306B\u51FA\u767A\u3059\u308B\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093\u3067\u3057\u305F\u3002")) : /*#__PURE__*/React.createElement(Card, {
-    className: "overflow-hidden"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "divide-y divide-slate-100"
-  }, selected.shipments.map((s, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    className: "flex items-center gap-3 px-4 py-3"
-  }, /*#__PURE__*/React.createElement(Truck, {
-    size: 16,
-    className: "text-slate-400 shrink-0"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 flex-1"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "text-sm font-medium text-slate-800 truncate"
-  }, s.company), /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-slate-500 truncate"
-  }, s.vehicle, " \u30FB ", s.destination, s.orderNo ? ` ・ 依頼No ${s.orderNo}` : ""))))))), /*#__PURE__*/React.createElement("p", {
-    className: "text-[11px] text-slate-400"
-  }, "\u203B \u5730\u540D\u304C\u5165\u3063\u3066\u3044\u308B\u884C\u304D\u5148\u306E\u307F\u3092\u51FA\u8377\u3068\u3057\u3066\u8868\u793A\u3057\u3066\u3044\u307E\u3059\u3002\u4F9D\u983CNo\uFF08\u5BB9\u5668\u756A\u53F7\uFF09\u306F\u5206\u304B\u308B\u5834\u5408\u306E\u307F\u8868\u793A\u3055\u308C\u307E\u3059\u3002"));
+  })));
 }
 function OrdersTab({
   orders,
@@ -4045,6 +3945,35 @@ function MonthlyCombinedChart({
      セルは4種類：行き先 / ←依頼No（引取） / ×（運休） / お休み。
      色だけで区別すると分からないので、運休は「×」の字をそのまま出し、
      引取は「←」を残す。文字が種類を表している。 */
+/* 種別の見せ方。色だけで区別させず、必ず短い文字を添える。 */
+const DGRID_KIND_BADGE = {
+  "出荷": {
+    label: "出荷",
+    dot: "#0f2942",
+    fg: "#0f172a"
+  },
+  "引取": {
+    label: "引取",
+    dot: "#7c3aed",
+    fg: "#475569"
+  },
+  "運休": {
+    label: "運休",
+    dot: "#cbd5e1",
+    fg: "#94a3b8"
+  },
+  "休み": {
+    label: "お休み",
+    dot: "#cbd5e1",
+    fg: "#94a3b8"
+  }
+};
+const DGRID_KIND_ORDER = {
+  "出荷": 0,
+  "引取": 1,
+  "運休": 2,
+  "休み": 3
+};
 const DGRID_KIND_STYLE = {
   "出荷": {
     bg: "#ffffff",
@@ -4074,6 +4003,12 @@ function DispatchGrid({
   saving
 }) {
   const [edit, setEdit] = useState(null); // { row, col, value, truck, day }
+  /* ★ 6日×31台の表をiPhoneの390pxに詰めるのは無理がある（実測で中身600px・
+       見えるのは332px）。既定は「日」表示にして、1日ぶんを縦のリストで
+       行き先を省略なしに出す。週の表も残して切り替えられるようにする。 */
+  const [view, setView] = useState("day"); // "day" | "week"
+  const [dayIdx, setDayIdx] = useState(null); // null のうちは今日を自動で選ぶ
+  const [showIdle, setShowIdle] = useState(false);
   const g = grid;
   if (!g) return /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-400 py-4 text-center"
@@ -4105,6 +4040,39 @@ function DispatchGrid({
     const n = new Date();
     return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
   })();
+
+  // 見ている日。指定が無ければ、その週に今日があれば今日、無ければ先頭。
+  const todayPos = g.days.findIndex(d => d.date === todayKey);
+  const curIdx = dayIdx != null ? Math.min(dayIdx, g.days.length - 1) : todayPos >= 0 ? todayPos : 0;
+  const curDay = g.days[curIdx];
+
+  // その日に何か入っているトラックだけを、出荷→引取→運休の順に並べる
+  const dayRows = g.trucks.map(t => ({
+    t: t,
+    c: t.cells[curDay.col]
+  })).filter(r => r.c && String(r.c.text).trim() !== "");
+  dayRows.sort((a, b) => {
+    const oa = DGRID_KIND_ORDER[a.c.kind] != null ? DGRID_KIND_ORDER[a.c.kind] : 9;
+    const ob = DGRID_KIND_ORDER[b.c.kind] != null ? DGRID_KIND_ORDER[b.c.kind] : 9;
+    return oa - ob || a.t.row - b.t.row;
+  });
+  const idleTrucks = g.trucks.filter(t => {
+    const c = t.cells[curDay.col];
+    return !c || String(c.text).trim() === "";
+  });
+  const shipCount = dayRows.filter(r => r.c.kind === "出荷").length;
+  const dayTotals = g.totals[curDay.col] || {};
+  const openEdit = (t, col, header) => {
+    if (!g.editable) return;
+    const c = t.cells[col];
+    setEdit({
+      row: t.row,
+      col: col,
+      value: c ? c.text : "",
+      truck: t.truck,
+      day: header
+    });
+  };
   /* ★ 行き先が長いとマスが縦に伸びて、行の高さがバラバラになり読みにくい
        （「東京都西多摩郡瑞穂町 東京都羽村市」で3行になった）。
        2行で打ち切って行の高さを揃える。全文はタップしたときの入力欄に出るので
@@ -4117,6 +4085,24 @@ function DispatchGrid({
     lineHeight: 1.35
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1 mb-2"
+  }, [["day", "日"], ["week", "週"]].map(([v, label]) => /*#__PURE__*/React.createElement("button", {
+    key: v,
+    onClick: () => setView(v),
+    className: "px-3 py-1.5 rounded-md text-xs font-semibold",
+    style: view === v ? {
+      background: NAVY,
+      color: "#fff"
+    } : {
+      background: "#f1f5f9",
+      color: "#64748b"
+    }
+  }, label)), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] ml-auto self-center",
+    style: {
+      color: VIZ.muted
+    }
+  }, view === "day" ? "1日ぶんを縦に並べます" : "週ぜんぶを表で見ます")), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => onWeek(g.weekOffset - 1),
@@ -4139,7 +4125,150 @@ function DispatchGrid({
     }
   }, "\u6B21\u306E\u9031 \u25B6")), !g.editable && /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] mb-2 px-2 py-2 rounded bg-amber-50 text-amber-800"
-  }, "\u307E\u3060Excel\u3092\u8AAD\u3093\u3067\u3044\u308B\u306E\u3067\u7DE8\u96C6\u3067\u304D\u307E\u305B\u3093\u3002GAS\u30A8\u30C7\u30A3\u30BF\u3067 \u300C\u914D\u8ECA\u8868\u3092\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8\u306B\u79FB\u3059\u300D\u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002"), /*#__PURE__*/React.createElement("div", {
+  }, "\u307E\u3060Excel\u3092\u8AAD\u3093\u3067\u3044\u308B\u306E\u3067\u7DE8\u96C6\u3067\u304D\u307E\u305B\u3093\u3002GAS\u30A8\u30C7\u30A3\u30BF\u3067 \u300C\u914D\u8ECA\u8868\u3092\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8\u306B\u79FB\u3059\u300D\u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002"), view === "day" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1 mb-3 overflow-x-auto -mx-1 px-1"
+  }, g.days.map((d, i) => {
+    const active = i === curIdx;
+    const isToday = d.date === todayKey;
+    const n = g.trucks.filter(t => {
+      const c = t.cells[d.col];
+      return c && c.kind === "出荷";
+    }).length;
+    return /*#__PURE__*/React.createElement("button", {
+      key: d.col,
+      onClick: () => {
+        setDayIdx(i);
+        setShowIdle(false);
+      },
+      className: "flex flex-col items-center px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0",
+      style: active ? {
+        background: NAVY,
+        color: "#fff"
+      } : {
+        background: isToday ? "#e8eef5" : "#f1f5f9",
+        color: isToday ? NAVY : "#64748b"
+      }
+    }, /*#__PURE__*/React.createElement("span", null, d.label, isToday ? "（本日）" : ""), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] mt-0.5",
+      style: {
+        color: active ? "#cbd5e1" : VIZ.muted
+      }
+    }, n, "\u53F0"));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-4 gap-2 mb-3"
+  }, [["合計20k", "20k"], ["合計50k", "50k"], ["小口", "小口"], ["コンテナ", "コンテナ"]].map(([k, label]) => /*#__PURE__*/React.createElement("div", {
+    key: k,
+    className: "rounded-md bg-slate-50 px-2 py-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px]",
+    style: {
+      color: VIZ.muted
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    className: "text-base font-bold tabular-nums",
+    style: {
+      color: NAVY
+    }
+  }, dayTotals[k] == null ? "—" : vizComma(dayTotals[k]))))), dayRows.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500 py-4 text-center rounded-md bg-slate-50"
+  }, curDay.label, " \u306F\u914D\u8ECA\u8868\u306B\u4F55\u3082\u5165\u3063\u3066\u3044\u307E\u305B\u3093\u3002") : /*#__PURE__*/React.createElement("div", {
+    className: "rounded-md border border-slate-200 divide-y divide-slate-100"
+  }, dayRows.map((r, i) => {
+    const b = DGRID_KIND_BADGE[r.c.kind] || {
+      label: r.c.kind || "その他",
+      dot: VIZ.muted,
+      fg: VIZ.ink2
+    };
+    const isNewKind = i === 0 || dayRows[i - 1].c.kind !== r.c.kind;
+    const sameKind = dayRows.filter(x => x.c.kind === r.c.kind).length;
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: r.t.row
+    }, isNewKind && /*#__PURE__*/React.createElement("div", {
+      className: "px-3 py-1.5 flex items-center gap-2",
+      style: {
+        background: "#f8fafc"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "rounded-full shrink-0",
+      style: {
+        width: 8,
+        height: 8,
+        background: b.dot
+      }
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] font-bold",
+      style: {
+        color: VIZ.ink2
+      }
+    }, b.label), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px]",
+      style: {
+        color: VIZ.muted
+      }
+    }, sameKind, "\u53F0")), /*#__PURE__*/React.createElement("button", {
+      onClick: () => openEdit(r.t, curDay.col, curDay.header),
+      className: "w-full text-left px-3 py-2.5 flex items-start gap-2.5",
+      style: {
+        cursor: g.editable ? "pointer" : "default",
+        background: "#fff"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "shrink-0",
+      style: {
+        width: 100
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "block text-[12px] font-bold",
+      style: {
+        color: NAVY,
+        lineHeight: 1.25
+      }
+    }, r.t.truck), r.t.company && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] text-slate-400",
+      style: {
+        lineHeight: 1.25
+      }
+    }, r.t.company)), /*#__PURE__*/React.createElement("span", {
+      className: "min-w-0 flex-1 text-[13px]",
+      style: {
+        color: b.fg,
+        lineHeight: 1.35,
+        wordBreak: "break-all"
+      }
+    }, r.c.text)));
+  })), idleTrucks.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "mt-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowIdle(!showIdle),
+    className: "text-[11px] font-semibold px-2 py-1.5 rounded-md bg-slate-100 text-slate-600"
+  }, "\u4E88\u5B9A\u306A\u3057 ", idleTrucks.length, "\u53F0 ", showIdle ? "▲" : "▼"), showIdle && /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 rounded-md border border-slate-200 divide-y divide-slate-100"
+  }, idleTrucks.map(t => /*#__PURE__*/React.createElement("button", {
+    key: t.row,
+    onClick: () => openEdit(t, curDay.col, curDay.header),
+    className: "w-full text-left px-3 py-2 flex items-baseline gap-2",
+    style: {
+      cursor: g.editable ? "pointer" : "default",
+      background: "#fcfdfe"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] font-semibold",
+    style: {
+      color: NAVY
+    }
+  }, t.truck), t.company && /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-400"
+  }, t.company), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] ml-auto",
+    style: {
+      color: VIZ.muted
+    }
+  }, g.editable ? "入れる" : "—"))))), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] mt-2",
+    style: {
+      color: VIZ.muted
+    }
+  }, curDay.label, " \u306E\u51FA\u8377 ", shipCount, "\u53F0\u3002", g.editable ? "行をタップすると直せます。" : "")), view === "week" && /*#__PURE__*/React.createElement("div", {
     className: "overflow-x-auto rounded-md border border-slate-200"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4253,7 +4382,7 @@ function DispatchGrid({
         background: d.date === todayKey ? "#eef2f7" : "transparent"
       }
     }, t[k] == null ? "—" : vizComma(t[k]));
-  }))))), /*#__PURE__*/React.createElement("div", {
+  }))))), view === "week" && /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] mt-2",
     style: {
       color: VIZ.muted
@@ -5221,9 +5350,6 @@ function App() {
     monthly: live.monthly,
     onRefresh: () => fetchLiveData(true)
   }), tab === "dispatch" && /*#__PURE__*/React.createElement(DispatchTab, {
-    dateLabel: dispatchDateLabel,
-    shipments: dispatchShipments,
-    week: dispatchWeek,
     grid: live.dispGrid,
     onSaveCell: saveDispatchCell,
     onWeek: changeGridWeek,

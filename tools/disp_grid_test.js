@@ -92,6 +92,79 @@ const REPLY = {
   await page.locator('button', { hasText: '配車・当日出荷' }).first().click();
   await page.waitForTimeout(1200);
 
+  let pass = 0, fail = 0;
+  const chk = (name, cond, extra) => { if (cond) { pass++; console.log('  OK  ', name); }
+    else { fail++; console.log('  ★NG ', name, extra === undefined ? '' : JSON.stringify(extra)); } };
+
+  /* ---------- 「日」表示（既定） ---------- */
+  console.log('■ 日表示');
+  const dayView = await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('button')];
+    const day = btns.find((b) => b.textContent.trim() === '日');
+    const week = btns.find((b) => b.textContent.trim() === '週');
+    return { 日ボタン: !!day, 週ボタン: !!week,
+      日が選択中: day ? /rgb\(15, 41, 66\)/.test(getComputedStyle(day).backgroundColor) : null,
+      表がある: !!document.querySelector('.overflow-x-auto.rounded-md') };
+  });
+  chk('日／週の切り替えがある', dayView.日ボタン && dayView.週ボタン, dayView);
+  chk('既定は「日」', dayView.日が選択中, dayView);
+  chk('既定では週の表を描いていない', !dayView.表がある, dayView);
+
+  // データが入っている 9/7 を選ぶ
+  await page.locator('button', { hasText: /^9\/7/ }).first().click();
+  await page.waitForTimeout(500);
+
+  const rows = await page.evaluate(() => {
+    const list = document.querySelector('.divide-y.divide-slate-100');
+    if (!list) return null;
+    return [...list.children].map((b) => ({ t: b.innerText.replace(/\n/g, ' | '),
+      h: Math.round(b.getBoundingClientRect().height) }));
+  });
+  console.log('   行:', JSON.stringify(rows, null, 0));
+  chk('その日のトラックが並んでいる', rows && rows.length >= 3, rows && rows.length);
+  chk('行き先が省略されていない（…が無い）',
+    rows && rows.every((r) => r.t.indexOf('…') === -1), rows);
+  chk('長い行き先も全部出る（東京都西多摩郡瑞穂町 東京都羽村市）',
+    rows && rows.some((r) => r.t.indexOf('東京都羽村市') !== -1), rows);
+  chk('出荷が先に並ぶ', rows && rows[0].t.indexOf('出荷') !== -1, rows && rows[0]);
+  /* 種別は行ごとではなく、変わり目の見出しでまとめて出す（「出荷」が全行に
+     並ぶと邪魔なため）。色だけに頼らないことは、見出しに文字があることで担保する。 */
+  const heads = rows ? rows.filter((r) => /^(出荷|引取|運休|お休み)\s*\|\s*\d+台$/.test(r.t.trim())) : [];
+  chk('種別の見出しが文字で出ている（色だけに頼らない）', heads.length >= 1, rows);
+  chk('見出しは種別が変わるときだけ（出荷が全行に出ていない）',
+    rows && rows.filter((r) => r.t.indexOf('出荷 |') === 0).length === 1, rows);
+  chk('見出しの台数が中身と合っている', (() => {
+    if (!rows) return false;
+    let ok = true, cur = null, n = 0;
+    const flush = () => { if (cur != null && cur.n !== n) ok = false; };
+    rows.forEach((r) => {
+      const m = r.t.trim().match(/^(出荷|引取|運休|お休み)\s*\|\s*(\d+)台$/);
+      if (m) { flush(); cur = { label: m[1], n: Number(m[2]) }; n = 0; } else { n += 1; }
+    });
+    flush();
+    return ok;
+  })(), rows);
+
+  const foot = await page.evaluate(() => {
+    const t = document.body.innerText;
+    return { 予定なし: /予定なし\s*\d+台/.test(t), 合計: /20k[\s\S]{0,40}50k/.test(t),
+      内訳が消えている: t.indexOf('日ごとの内訳') === -1,
+      重複していない: (t.match(/この日に出発する記録/g) || []).length === 0 };
+  });
+  chk('予定なしのトラックがまとまっている', foot.予定なし, foot);
+  chk('その日の本数が出ている', foot.合計, foot);
+  chk('下の「日ごとの内訳」を消した（同じ日を3回描いていた）', foot.内訳が消えている, foot);
+  chk('出荷リストの重複が無い', foot.重複していない, foot);
+
+  const over1 = await page.evaluate(() => ({ b: document.body.scrollWidth, c: document.documentElement.clientWidth }));
+  chk('日表示で横にはみ出していない', over1.b <= over1.c + 1, over1);
+  await page.screenshot({ path: SP + '/disp_day.png', fullPage: false });
+
+  /* ---------- 「週」表示 ---------- */
+  console.log('■ 週表示');
+  await page.locator('button', { hasText: /^週$/ }).first().click();
+  await page.waitForTimeout(500);
+
   const m = await page.evaluate(() => {
     const sc = document.querySelector('.overflow-x-auto.rounded-md');
     const out = { スクローラ: null, 行: [], 見出し衝突: null };
@@ -122,10 +195,6 @@ const REPLY = {
     return out;
   });
   console.log(JSON.stringify(m, null, 1));
-
-  let pass = 0, fail = 0;
-  const chk = (name, cond, extra) => { if (cond) { pass++; console.log('  OK  ', name); }
-    else { fail++; console.log('  ★NG ', name, extra === undefined ? '' : JSON.stringify(extra)); } };
 
   chk('表は横スクロールする（1画面に収まらない）', m.スクローラ && m.スクローラ.はみ出し > 0, m.スクローラ);
   chk('★横に送ってもトラック名が見えている',

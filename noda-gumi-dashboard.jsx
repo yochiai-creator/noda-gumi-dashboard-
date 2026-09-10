@@ -169,16 +169,7 @@ function SectionTitle({ children, note }) {
 }
 
 /* ---------- タブ本体 ---------- */
-function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, saving }) {
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const days = week && week.length > 0 ? week : [{ dateLabel: dateLabel, shipments: shipments, qty20k: null, qty50k: null, koguchi20k: null, koguchi50k: null, kontena20k: null, kontena50k: null }];
-  const selected = days[selectedIdx] || days[0];
-  /* ★ 先頭を無条件に「本日」と呼んでいたが、週の先頭は土日をとばした最初の
-       平日なので、土日に見ると月曜が「本日」と出てしまう。日付で判定する。 */
-  const todayLabel = (() => { const n = new Date(); return (n.getMonth() + 1) + "/" + n.getDate(); })();
-  const isToday = (d) => d && d.dateLabel === todayLabel;
-  const dayWord = isToday(selected) ? "本日" : selected.dateLabel;
-
+function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
   return (
     <div className="space-y-6">
       {/* ---- 配車表（トラック×日付）。細かく見て、その場で直せる ---- */}
@@ -192,96 +183,13 @@ function DispatchTab({ dateLabel, shipments, week, grid, onSaveCell, onWeek, sav
         <DispatchGrid grid={grid} onSave={onSaveCell} onWeek={onWeek} saving={saving} />
       </div>
 
-      <div>
-        {/* ★ 注記が長すぎて見出しを95pxまで押しつぶし、両方2行に折り返していた。
-            上の表と同じ出所なので注記そのものを外す。 */}
-        <SectionTitle>日ごとの内訳</SectionTitle>
-        <div className="flex gap-1 mb-3 overflow-x-auto -mx-1 px-1">
-          {days.map((d, i) => {
-            const active = i === selectedIdx;
-            return (
-              <button
-                key={i}
-                onClick={() => setSelectedIdx(i)}
-                className={`flex flex-col items-center px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-colors shrink-0 ${
-                  active ? "text-white" : "text-slate-500 bg-slate-100"
-                }`}
-                style={active ? { background: NAVY } : undefined}
-              >
-                <span>{d.dateLabel}{isToday(d) ? "（本日）" : ""}</span>
-                <span className={`text-[10px] mt-0.5 ${active ? "text-slate-300" : "text-slate-400"}`}>
-                  {d.shipments.length}台
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-          <Card className="p-4" style={{ background: NAVY }}>
-            <div className="text-xs text-slate-300 mb-1">{dayWord} の出荷台数</div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold tabular-nums text-white">{selected.shipments.length}</span>
-              <span className="text-xs text-slate-400">台</span>
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-xs text-slate-500 mb-1">{dayWord} 出荷 20k</div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl font-bold tabular-nums text-slate-900">
-                {selected.qty20k != null ? selected.qty20k : "—"}
-              </span>
-              <span className="text-[10px] text-slate-400">本</span>
-            </div>
-            {selected.koguchi20k != null && selected.koguchi20k > 0 && (
-              <div className="text-[10px] text-slate-400 mt-0.5">うち小口 {selected.koguchi20k}本</div>
-            )}
-            {selected.kontena20k != null && selected.kontena20k > 0 && (
-              <div className="text-[10px] text-slate-400 mt-0.5">うちコンテナ {selected.kontena20k}本</div>
-            )}
-          </Card>
-          <Card className="p-4">
-            <div className="text-xs text-slate-500 mb-1">{dayWord} 出荷 50k</div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl font-bold tabular-nums text-slate-900">
-                {selected.qty50k != null ? selected.qty50k : "—"}
-              </span>
-              <span className="text-[10px] text-slate-400">本</span>
-            </div>
-            {selected.koguchi50k != null && selected.koguchi50k > 0 && (
-              <div className="text-[10px] text-slate-400 mt-0.5">うち小口 {selected.koguchi50k}本</div>
-            )}
-            {selected.kontena50k != null && selected.kontena50k > 0 && (
-              <div className="text-[10px] text-slate-400 mt-0.5">うちコンテナ {selected.kontena50k}本</div>
-            )}
-          </Card>
-        </div>
-
-        {selected.shipments.length === 0 ? (
-          <Card className="p-6 text-center">
-            <p className="text-sm text-slate-400">この日に出発する記録はありませんでした。</p>
-          </Card>
-        ) : (
-          <Card className="overflow-hidden">
-            <div className="divide-y divide-slate-100">
-              {selected.shipments.map((s, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-3">
-                  <Truck size={16} className="text-slate-400 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-slate-800 truncate">{s.company}</div>
-                    <div className="text-xs text-slate-500 truncate">
-                      {s.vehicle} ・ {s.destination}{s.orderNo ? ` ・ 依頼No ${s.orderNo}` : ""}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-      </div>
-      <p className="text-[11px] text-slate-400">
-        ※ 地名が入っている行き先のみを出荷として表示しています。依頼No（容器番号）は分かる場合のみ表示されます。
-      </p>
+      {/* ★ ここにあった「日ごとの内訳」は削除した。
+             同じ配車表を読んだ getDispatchTodayData の結果を、日のチップ＋
+             カード＋出荷リストでもう一度描いていたので、1画面に同じ日が
+             3回出ていた（表・チップ・リスト）。しかも行き先は県名を含むマス
+             だけに絞られ、車種と会社名は左右にさかのぼる推測で拾っていて、
+             上の表（構造どおりに読んでいる）より情報が少なく不正確だった。
+             上の「日」表示が同じことを全部やっている。 */}
     </div>
   );
 }
@@ -1543,6 +1451,15 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
      セルは4種類：行き先 / ←依頼No（引取） / ×（運休） / お休み。
      色だけで区別すると分からないので、運休は「×」の字をそのまま出し、
      引取は「←」を残す。文字が種類を表している。 */
+/* 種別の見せ方。色だけで区別させず、必ず短い文字を添える。 */
+const DGRID_KIND_BADGE = {
+  "出荷": { label: "出荷", dot: "#0f2942", fg: "#0f172a" },
+  "引取": { label: "引取", dot: "#7c3aed", fg: "#475569" },
+  "運休": { label: "運休", dot: "#cbd5e1", fg: "#94a3b8" },
+  "休み": { label: "お休み", dot: "#cbd5e1", fg: "#94a3b8" },
+};
+const DGRID_KIND_ORDER = { "出荷": 0, "引取": 1, "運休": 2, "休み": 3 };
+
 const DGRID_KIND_STYLE = {
   "出荷": { bg: "#ffffff", fg: VIZ.ink },
   "引取": { bg: "#f1f5f9", fg: VIZ.ink2 },
@@ -1553,6 +1470,12 @@ const DGRID_KIND_STYLE = {
 
 function DispatchGrid({ grid, onSave, onWeek, saving }) {
   const [edit, setEdit] = useState(null);      // { row, col, value, truck, day }
+  /* ★ 6日×31台の表をiPhoneの390pxに詰めるのは無理がある（実測で中身600px・
+       見えるのは332px）。既定は「日」表示にして、1日ぶんを縦のリストで
+       行き先を省略なしに出す。週の表も残して切り替えられるようにする。 */
+  const [view, setView] = useState("day");     // "day" | "week"
+  const [dayIdx, setDayIdx] = useState(null);  // null のうちは今日を自動で選ぶ
+  const [showIdle, setShowIdle] = useState(false);
   const g = grid;
 
   if (!g) return <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>;
@@ -1577,6 +1500,34 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
     const n = new Date();
     return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
   })();
+
+  // 見ている日。指定が無ければ、その週に今日があれば今日、無ければ先頭。
+  const todayPos = g.days.findIndex((d) => d.date === todayKey);
+  const curIdx = dayIdx != null ? Math.min(dayIdx, g.days.length - 1)
+    : (todayPos >= 0 ? todayPos : 0);
+  const curDay = g.days[curIdx];
+
+  // その日に何か入っているトラックだけを、出荷→引取→運休の順に並べる
+  const dayRows = g.trucks
+    .map((t) => ({ t: t, c: t.cells[curDay.col] }))
+    .filter((r) => r.c && String(r.c.text).trim() !== "");
+  dayRows.sort((a, b) => {
+    const oa = DGRID_KIND_ORDER[a.c.kind] != null ? DGRID_KIND_ORDER[a.c.kind] : 9;
+    const ob = DGRID_KIND_ORDER[b.c.kind] != null ? DGRID_KIND_ORDER[b.c.kind] : 9;
+    return oa - ob || a.t.row - b.t.row;
+  });
+  const idleTrucks = g.trucks.filter((t) => {
+    const c = t.cells[curDay.col];
+    return !c || String(c.text).trim() === "";
+  });
+  const shipCount = dayRows.filter((r) => r.c.kind === "出荷").length;
+  const dayTotals = g.totals[curDay.col] || {};
+
+  const openEdit = (t, col, header) => {
+    if (!g.editable) return;
+    const c = t.cells[col];
+    setEdit({ row: t.row, col: col, value: c ? c.text : "", truck: t.truck, day: header });
+  };
   /* ★ 行き先が長いとマスが縦に伸びて、行の高さがバラバラになり読みにくい
        （「東京都西多摩郡瑞穂町 東京都羽村市」で3行になった）。
        2行で打ち切って行の高さを揃える。全文はタップしたときの入力欄に出るので
@@ -1588,6 +1539,21 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
 
   return (
     <div>
+      {/* 日／週の切り替え */}
+      <div className="flex gap-1 mb-2">
+        {[["day", "日"], ["week", "週"]].map(([v, label]) => (
+          <button key={v} onClick={() => setView(v)}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold"
+            style={view === v ? { background: NAVY, color: "#fff" }
+              : { background: "#f1f5f9", color: "#64748b" }}>
+            {label}
+          </button>
+        ))}
+        <span className="text-[10px] ml-auto self-center" style={{ color: VIZ.muted }}>
+          {view === "day" ? "1日ぶんを縦に並べます" : "週ぜんぶを表で見ます"}
+        </span>
+      </div>
+
       {/* 週の移動 */}
       <div className="flex items-center justify-between mb-2">
         <button onClick={() => onWeek(g.weekOffset - 1)} disabled={!g.hasPrev || saving}
@@ -1606,7 +1572,130 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
         </div>
       )}
 
-      {/* 表本体。横に長いのでこの中だけ横スクロールさせる（ページ全体は動かさない） */}
+      {/* ---- 「日」表示：1日ぶんを縦のリストで。行き先は省略しない ---- */}
+      {view === "day" && (
+        <div>
+          {/* 日を選ぶ */}
+          <div className="flex gap-1 mb-3 overflow-x-auto -mx-1 px-1">
+            {g.days.map((d, i) => {
+              const active = i === curIdx;
+              const isToday = d.date === todayKey;
+              const n = g.trucks.filter((t) => {
+                const c = t.cells[d.col];
+                return c && c.kind === "出荷";
+              }).length;
+              return (
+                <button key={d.col} onClick={() => { setDayIdx(i); setShowIdle(false); }}
+                  className="flex flex-col items-center px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0"
+                  style={active ? { background: NAVY, color: "#fff" }
+                    : { background: isToday ? "#e8eef5" : "#f1f5f9", color: isToday ? NAVY : "#64748b" }}>
+                  <span>{d.label}{isToday ? "（本日）" : ""}</span>
+                  <span className="text-[10px] mt-0.5" style={{ color: active ? "#cbd5e1" : VIZ.muted }}>
+                    {n}台
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* その日の本数（配車表の合計行そのまま） */}
+          <div className="grid grid-cols-4 gap-2 mb-3">
+            {[["合計20k", "20k"], ["合計50k", "50k"], ["小口", "小口"], ["コンテナ", "コンテナ"]].map(([k, label]) => (
+              <div key={k} className="rounded-md bg-slate-50 px-2 py-2">
+                <div className="text-[10px]" style={{ color: VIZ.muted }}>{label}</div>
+                <div className="text-base font-bold tabular-nums" style={{ color: NAVY }}>
+                  {dayTotals[k] == null ? "—" : vizComma(dayTotals[k])}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* トラックごと */}
+          {dayRows.length === 0 ? (
+            <div className="text-xs text-slate-500 py-4 text-center rounded-md bg-slate-50">
+              {curDay.label} は配車表に何も入っていません。
+            </div>
+          ) : (
+            <div className="rounded-md border border-slate-200 divide-y divide-slate-100">
+              {/* ★ 出荷→引取→運休の順に並べてある。種別は行ごとに書くと
+                     「出荷」が全行に出て邪魔なので、変わり目に見出しを入れる。
+                     色だけに頼らず必ず文字で分かるようにする。 */}
+              {dayRows.map((r, i) => {
+                const b = DGRID_KIND_BADGE[r.c.kind] || { label: r.c.kind || "その他", dot: VIZ.muted, fg: VIZ.ink2 };
+                const isNewKind = i === 0 || dayRows[i - 1].c.kind !== r.c.kind;
+                const sameKind = dayRows.filter((x) => x.c.kind === r.c.kind).length;
+                return (
+                  <React.Fragment key={r.t.row}>
+                    {isNewKind && (
+                      <div className="px-3 py-1.5 flex items-center gap-2"
+                        style={{ background: "#f8fafc" }}>
+                        <span className="rounded-full shrink-0"
+                          style={{ width: 8, height: 8, background: b.dot }} />
+                        <span className="text-[11px] font-bold" style={{ color: VIZ.ink2 }}>
+                          {b.label}
+                        </span>
+                        <span className="text-[10px]" style={{ color: VIZ.muted }}>{sameKind}台</span>
+                      </div>
+                    )}
+                    <button onClick={() => openEdit(r.t, curDay.col, curDay.header)}
+                      className="w-full text-left px-3 py-2.5 flex items-start gap-2.5"
+                      style={{ cursor: g.editable ? "pointer" : "default", background: "#fff" }}>
+                      <span className="shrink-0" style={{ width: 100 }}>
+                        <span className="block text-[12px] font-bold" style={{ color: NAVY, lineHeight: 1.25 }}>
+                          {r.t.truck}
+                        </span>
+                        {r.t.company && (
+                          <span className="block text-[10px] text-slate-400" style={{ lineHeight: 1.25 }}>
+                            {r.t.company}
+                          </span>
+                        )}
+                      </span>
+                      {/* ★ 行き先は省略しない。表だと「広島県東広島市 (46…」で切れていた */}
+                      <span className="min-w-0 flex-1 text-[13px]" style={{ color: b.fg, lineHeight: 1.35,
+                        wordBreak: "break-all" }}>
+                        {r.c.text}
+                      </span>
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 予定が入っていないトラック */}
+          {idleTrucks.length > 0 && (
+            <div className="mt-2">
+              <button onClick={() => setShowIdle(!showIdle)}
+                className="text-[11px] font-semibold px-2 py-1.5 rounded-md bg-slate-100 text-slate-600">
+                予定なし {idleTrucks.length}台 {showIdle ? "▲" : "▼"}
+              </button>
+              {showIdle && (
+                <div className="mt-2 rounded-md border border-slate-200 divide-y divide-slate-100">
+                  {idleTrucks.map((t) => (
+                    <button key={t.row} onClick={() => openEdit(t, curDay.col, curDay.header)}
+                      className="w-full text-left px-3 py-2 flex items-baseline gap-2"
+                      style={{ cursor: g.editable ? "pointer" : "default", background: "#fcfdfe" }}>
+                      <span className="text-[12px] font-semibold" style={{ color: NAVY }}>{t.truck}</span>
+                      {t.company && <span className="text-[10px] text-slate-400">{t.company}</span>}
+                      <span className="text-[11px] ml-auto" style={{ color: VIZ.muted }}>
+                        {g.editable ? "入れる" : "—"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="text-[10px] mt-2" style={{ color: VIZ.muted }}>
+            {curDay.label} の出荷 {shipCount}台。
+            {g.editable ? "行をタップすると直せます。" : ""}
+          </div>
+        </div>
+      )}
+
+      {/* ---- 「週」表示：横に長いのでこの中だけ横スクロールさせる ---- */}
+      {view === "week" && (
       <div className="overflow-x-auto rounded-md border border-slate-200">
         <div style={{ minWidth: nameW + cellW * g.days.length }}>
           {/* 見出し */}
@@ -1692,11 +1781,15 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
         </div>
       </div>
 
-      <div className="text-[10px] mt-2" style={{ color: VIZ.muted }}>
-        横に指で送ると先の日が見えます（トラック名は残ります）。
-        {g.editable ? "マスをタップすると直せます。" : ""}
-        ← は引取、× は運休です。
-      </div>
+      )}
+
+      {view === "week" && (
+        <div className="text-[10px] mt-2" style={{ color: VIZ.muted }}>
+          横に指で送ると先の日が見えます（トラック名は残ります）。
+          {g.editable ? "マスをタップすると直せます。" : ""}
+          ← は引取、× は運休です。
+        </div>
+      )}
 
       {/* 編集の入力。1マスずつ確認して保存する（まとめて保存はしない） */}
       {edit && (
@@ -2413,7 +2506,7 @@ export default function App() {
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} />}
           {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
-          {tab === "dispatch" && <DispatchTab dateLabel={dispatchDateLabel} shipments={dispatchShipments} week={dispatchWeek}
+          {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} url={live.yardCapUrl} onRefresh={() => fetchLiveData(true)} />}
         </div>
