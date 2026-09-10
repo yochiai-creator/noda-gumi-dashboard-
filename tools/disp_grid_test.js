@@ -50,13 +50,15 @@ const REPLY = {
       { col: 7, date: '2026-09-12', label: '9/12', header: '9/12(土)出' },
     ],
     trucks: [
-      { row: 3, company: '', truck: '10ｔ箱', cells: { 2: { kind: '運休', text: '×' } } },
-      { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: { 3: { kind: '出荷', text: '岐阜県可児市' } } },
+      { row: 3, company: '', truck: '10ｔ箱', cells: { 2: { kind: '運休', text: '×', q20: null, q50: null } } },
+      { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: { 3: { kind: '出荷', text: '岐阜県可児市', q20: 100, q50: null } } },
       { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
-        cells: { 2: { kind: '出荷', text: '熊本県山鹿市' }, 3: { kind: '引取', text: '←60665' },
-                 4: { kind: '出荷', text: '広島県東広島市 (4600L×1)' } } },
+        cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30 },
+                 3: { kind: '引取', text: '←60665', q20: 0, q50: 20 },
+                 4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
-        cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市' }, 4: { kind: '休み', text: 'お休み' } } },
+        cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
+                 4: { kind: '休み', text: 'お休み', q20: null, q50: null } } },
       { row: 18, company: '倉吉運送 自社便', truck: '10ｔ平 ②',
         cells: { 2: { kind: '出荷', text: '南港：底黒' } } },
       { row: 27, company: '', truck: '4ｔ平ﾜｲﾄﾞ ②', cells: { 2: { kind: '出荷', text: '70246→' } } },
@@ -182,6 +184,19 @@ const REPLY = {
       const nr = name ? name.getBoundingClientRect() : null;
       out.右にスクロール後のトラック名 = nr ? { x: Math.round(nr.x), 見える: nr.x >= r.x - 1 } : null;
       sc.scrollLeft = 0;
+      const tr = rows.find((x) => x.firstElementChild
+        && x.firstElementChild.innerText.trim() === 'その日の本数');
+      out.本数の欄 = tr && tr.children[1] ? tr.children[1].innerText.replace(/\n/g, ' / ') : null;
+      const nomura = rows.find((x) => x.firstElementChild
+        && /野村/.test(x.firstElementChild.innerText));
+      out.マスの例 = nomura && nomura.children[1] ? nomura.children[1].innerText.replace(/\n/g, ' / ') : null;
+      out.引取のマス = nomura && nomura.children[2] ? nomura.children[2].innerText.replace(/\n/g, ' / ') : null;
+      // 本数の行が「…」で切れていないか（scrollWidth が入りきっているか）
+      const qs = nomura ? nomura.children[1].querySelectorAll('span span') : [];
+      const q = qs.length > 1 ? qs[1] : null;
+      out.本数が切れていない = q ? q.scrollWidth <= q.clientWidth : null;
+      out.本数の幅 = q ? { 必要: q.scrollWidth, 入る: q.clientWidth } : null;
+      out.本数の文字 = q ? q.textContent : null;
     }
     // 週間の配車予定 の見出し
     const h2 = [...document.querySelectorAll('h2')].find((x) => x.textContent.includes('週間の配車予定'));
@@ -199,22 +214,31 @@ const REPLY = {
   chk('表は横スクロールする（1画面に収まらない）', m.スクローラ && m.スクローラ.はみ出し > 0, m.スクローラ);
   chk('★横に送ってもトラック名が見えている',
     m.右にスクロール後のトラック名 && m.右にスクロール後のトラック名.見える, m.右にスクロール後のトラック名);
-  const TOTAL_LABELS = ['合計20k', '合計50k', '小口', 'コンテナ'];
-  const truckRows = m.行.filter((r, i) => i > 0 && TOTAL_LABELS.indexOf(r.先頭) === -1);
+  const TOTAL_LABEL = 'その日の本数';
+  const truckRows = m.行.filter((r, i) => i > 0 && r.先頭 !== TOTAL_LABEL);
   const hs = truckRows.map((r) => r.h);
   chk('トラック行の高さがそろっている', hs.length > 0 && Math.max(...hs) - Math.min(...hs) <= 2, hs);
-  chk('トラック行を詰めた（1行36px以下）', hs.length > 0 && Math.max(...hs) <= 36, hs);
-  /* 合計行は配車表では一番下だが、iPhoneだとスクロールしないと見えないので
-     日付の見出しのすぐ下に移した。 */
-  const firstTotal = m.行.findIndex((r) => r.先頭 === '合計20k');
-  const firstTruck = m.行.findIndex((r, i) => i > 0 && TOTAL_LABELS.indexOf(r.先頭) === -1);
-  chk('合計行が日付の見出しのすぐ下にある', firstTotal === 1, { firstTotal: firstTotal, firstTruck: firstTruck });
-  chk('合計行4本がトラック行より前にある', firstTotal < firstTruck, { firstTotal: firstTotal, firstTruck: firstTruck });
+  chk('トラック行を詰めた（1行48px以下）', hs.length > 0 && Math.max(...hs) <= 48, hs);
+  /* 合計は20k/50k/小口/コンテナを別々の行にすると4行ぶん伸びるので1つの欄に
+     まとめた。配車表では一番下だが、iPhoneだとスクロールしないと見えないので
+     日付の見出しのすぐ下に置いている。 */
+  const totalIdx = m.行.findIndex((r) => r.先頭 === TOTAL_LABEL);
+  chk('本数の欄が日付の見出しのすぐ下にある', totalIdx === 1, { totalIdx: totalIdx, 行: m.行.map((r) => r.先頭) });
+  chk('本数の行は1本だけ（4行に分けていない）',
+    m.行.filter((r) => r.先頭 === TOTAL_LABEL).length === 1, m.行.map((r) => r.先頭));
+  chk('20k/50k/小口/コンテナが1つの欄に入っている',
+    m.本数の欄 && /20k/.test(m.本数の欄) && /50k/.test(m.本数の欄)
+      && /小口/.test(m.本数の欄) && /筒/.test(m.本数の欄), m.本数の欄);
   chk('トラック名が切れていない（福安が出ている）',
     m.行.some((r) => r.先頭.indexOf('福安') !== -1), m.行.map((r) => r.先頭));
   chk('自社便の会社名が切れていない',
     m.行.some((r) => r.先頭.indexOf('浅津運送 自社便') !== -1), m.行.map((r) => r.先頭));
-  chk('合計行が表の中にある', m.行.some((r) => r.先頭 === '合計20k'), m.行.map((r) => r.先頭));
+  chk('マスに行き先と本数が一緒に入っている', m.マスの例 && /熊本県山鹿市/.test(m.マスの例)
+    && /20k 50/.test(m.マスの例) && /50k 30/.test(m.マスの例), m.マスの例);
+  chk('0本は書かない（20k 0 と出さない）', m.引取のマス && /50k 20/.test(m.引取のマス)
+    && !/20k 0/.test(m.引取のマス), m.引取のマス);
+  chk('マスの本数が「…」で切れていない', m.本数が切れていない === true,
+    { 切れていない: m.本数が切れていない, 文字: m.本数の文字 });
   chk('見出しと注記がぶつかっていない（注記を外した）', m.見出し衝突 === null, m.見出し衝突);
   const wk = await page.evaluate(() => {
     const t = document.body.innerText;

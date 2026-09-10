@@ -196,9 +196,32 @@ function dgrid_findBlocks_(values) {
         header: h.split('\n')[0].trim()
       });
     }
-    if (block.days.length > 0) out.push(block);
+    if (block.days.length > 0) {
+      // ★ 本数の列を1か所で決めておく。行1が '20k' で、行2の見出しが
+      //   行き先の列と同じ列が20kの本数列。その右隣が50k。
+      //   （位置の計算に頼らず見出しで突き合わせる。列の並びは年度で変わる）
+      block.days.forEach(function (d) {
+        var want = String(header[d.col] || '');
+        d.q20col = null; d.q50col = null;
+        for (var q = block.base; q < block.base + C.BLOCK_WIDTH; q++) {
+          if (String(sub[q] || '').trim() !== '20k') continue;
+          if (String(header[q] || '') !== want) continue;
+          d.q20col = q; d.q50col = q + 1;
+          break;
+        }
+      });
+      out.push(block);
+    }
   }
   return out;
+}
+
+// ===== 内部：本数として使える値か（日付シリアル値や桁違いを弾く） =====
+function dgrid_qty_(v) {
+  if (v === '' || v == null) return null;
+  var n = Number(v);
+  if (isNaN(n) || n < 0 || n > DISPATCH_CONFIG.MAX_PLAUSIBLE_QTY) return null;
+  return n;
 }
 
 // ===== 内部：トラックの一覧を読む（ブロックごとにラベルが繰り返される） =====
@@ -289,15 +312,21 @@ function getDispatchGridData_uncached_(weekOffset) {
     data.trucks = trucks.map(function (t) {
       var cells = {};
       block.days.forEach(function (d) {
-        var v = (values[t.row] || [])[d.col];
-        var k = dgrid_cellKind_(v);
-        if (k.text) cells[d.col] = k;
+        var row = values[t.row] || [];
+        var k = dgrid_cellKind_(row[d.col]);
+        // ★ その便の本数。行き先が空でも本数だけ入っている行があるので、
+        //   本数があればマスを作る（画面では本数だけ出る）。
+        var q20 = d.q20col == null ? null : dgrid_qty_(row[d.q20col]);
+        var q50 = d.q50col == null ? null : dgrid_qty_(row[d.q50col]);
+        if (k.text || q20 || q50) {
+          cells[d.col] = { kind: k.kind, text: k.text, q20: q20, q50: q50 };
+        }
       });
       return { row: t.row, company: t.company, truck: t.truck, cells: cells };
     });
 
     // その週の本数（既存の日次集計と同じ行を読む）
-    data.totals = dgrid_readTotals_(values, blocks, block);
+    data.totals = dgrid_readTotals_(values, block);
   } catch (err) {
     data.error = String(err);
     Logger.log('配車グリッドの取得でエラー: ' + String(err));
@@ -308,34 +337,23 @@ function getDispatchGridData_uncached_(weekOffset) {
 // ===== 内部：日ごとの合計・小口・コンテナを読む =====
 // ★ 本数は「行1に20k/50kが入っている列」に入っている。行き先の列とは別物。
 //   同じ日付の見出しが両方に付くので、行1で区別して本数の列だけを読む。
-function dgrid_readTotals_(values, blocks, block) {
-  var C = DISP_GRID_CONFIG;
-  var sub = values[C.ROW_SUB] || [];
-  var header = values[C.ROW_HEADER] || [];
+function dgrid_readTotals_(values, block) {
   var out = {};
-  var num = function (v) {
-    if (v === '' || v == null) return null;
-    var n = Number(v);
-    if (isNaN(n) || n < 0 || n > DISPATCH_CONFIG.MAX_PLAUSIBLE_QTY) return null;
-    return n;
-  };
+  var num = dgrid_qty_;
 
   block.days.forEach(function (d) {
     var t = { 合計20k: null, 合計50k: null, 小口: null, コンテナ: null };
-    // 同じブロック内で、同じ見出しを持つ「本数の列」を探す
-    var want = String(header[d.col] || '');
-    for (var c = block.base; c < block.base + C.BLOCK_WIDTH; c++) {
-      if (String(sub[c] || '').trim() !== '20k') continue;
-      if (String(header[c] || '') !== want) continue;
+    // 本数の列は dgrid_findBlocks_ で見出しを突き合わせて決めてある
+    var c = d.q20col;
+    if (c != null) {
       t.合計20k = num((values[DISPATCH_CONFIG.ROW_GOUKEI] || [])[c]);
-      t.合計50k = num((values[DISPATCH_CONFIG.ROW_GOUKEI] || [])[c + 1]);
+      t.合計50k = num((values[DISPATCH_CONFIG.ROW_GOUKEI] || [])[d.q50col]);
       var k20 = num((values[DISPATCH_CONFIG.ROW_KOGUCHI] || [])[c]);
-      var k50 = num((values[DISPATCH_CONFIG.ROW_KOGUCHI] || [])[c + 1]);
+      var k50 = num((values[DISPATCH_CONFIG.ROW_KOGUCHI] || [])[d.q50col]);
       t.小口 = (k20 || 0) + (k50 || 0);
       var c20 = num((values[DISPATCH_CONFIG.ROW_KONTENA] || [])[c]);
-      var c50 = num((values[DISPATCH_CONFIG.ROW_KONTENA] || [])[c + 1]);
+      var c50 = num((values[DISPATCH_CONFIG.ROW_KONTENA] || [])[d.q50col]);
       t.コンテナ = (c20 || 0) + (c50 || 0);
-      break;
     }
     out[d.col] = t;
   });

@@ -37,7 +37,9 @@ for (let i = 0; i < 31; i++) {
   if (i < 12) {
     for (let c = 2; c <= 7; c++) {
       if ((i + c) % 3 !== 0) cells[c] = { kind: DESTS[(i + c) % DESTS.length] === '×' ? '運休' : '出荷',
-        text: DESTS[(i + c) % DESTS.length] };
+        text: DESTS[(i + c) % DESTS.length],
+        q20: (i * 7 + c * 13) % 4 === 0 ? null : ((i * 11 + c * 5) % 60) + 10,
+        q50: (i * 3 + c * 7) % 3 === 0 ? null : ((i * 13 + c * 3) % 40) + 5 };
     }
   }
   TRUCKS31.push({ row: 3 + i, company: i % 4 === 2 ? '浅津運送 自社便' : '',
@@ -96,7 +98,10 @@ const REPLY = {
     const rows = sc ? [...sc.querySelectorAll(':scope > div > div.flex')] : [];
     return { 表の高さ: sc ? Math.round(sc.getBoundingClientRect().height) : null,
       カード全体: card ? Math.round(card.getBoundingClientRect().height) : null,
-      行数: rows.length, 行の高さ: [...new Set(rows.slice(1, -4).map((r) => Math.round(r.getBoundingClientRect().height)))] };
+      行数: rows.length,
+      行の高さ: [...new Set(rows.filter((r) => r.firstElementChild
+        && ['トラック', 'その日の本数'].indexOf(r.firstElementChild.innerText.trim()) === -1)
+        .map((r) => Math.round(r.getBoundingClientRect().height)))] };
   });
   let pass = 0, fail = 0;
   const chk = (name, cond, extra) => { if (cond) { pass++; console.log('  OK  ', name); }
@@ -110,16 +115,17 @@ const REPLY = {
   /* ★ 直す前は31台ぜんぶを49pxで並べていて、表だけで
        31*49 + 見出し + 合計4行 = 約1700px あった。行を詰めて、その週に
        予定が無いトラックを畳むことで、1画面ちょっとに収める。 */
-  chk('畳んだ表が700px以下になっている', closed.表の高さ <= 700, closed);
+  chk('畳んだ表が750px以下になっている', closed.表の高さ <= 750, closed);
   chk('カード全体が900px以下になっている', closed.カード全体 <= 900, closed);
-  chk('行を詰めた（36px以下）', Math.max(...closed.行の高さ) <= 36, closed.行の高さ);
-  chk('予定のある12台＋合計4行＋見出しだけ出ている', closed.行数 === 17, closed.行数);
+  chk('行を詰めた（48px以下）', Math.max(...closed.行の高さ) <= 48, closed.行の高さ);
+  /* 見出し1行＋本数1行＋予定のある12台。合計を4行に分けていたときは17行だった。 */
+  chk('見出し＋本数＋予定のある12台だけ出ている', closed.行数 === 14, closed.行数);
 
   await page.locator('button', { hasText: /この週は予定なし/ }).first().click();
   await page.waitForTimeout(500);
   const opened = await meas();
   console.log('   全部出した:', JSON.stringify(opened));
-  chk('畳みを開くと31台ぜんぶ出る', opened.行数 === 36, opened.行数);
+  chk('畳みを開くと31台ぜんぶ出る', opened.行数 === 33, opened.行数);
   chk('開いたぶんだけ縦に伸びている', opened.表の高さ > closed.表の高さ, { closed: closed.表の高さ, opened: opened.表の高さ });
   await page.screenshot({ path: SP + '/sample_4_week31.png', fullPage: true });
 

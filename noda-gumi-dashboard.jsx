@@ -1460,6 +1460,33 @@ const DGRID_KIND_BADGE = {
 };
 const DGRID_KIND_ORDER = { "出荷": 0, "引取": 1, "運休": 2, "休み": 3 };
 
+/* その便の本数。0本は書かない（20kだけの便が「20k 50・50k 0」になると
+   読みづらい）。両方無ければ空の配列を返す。 */
+function dgridQtyParts(c) {
+  if (!c) return [];
+  var out = [];
+  if (c.q20) out.push("20k " + c.q20);
+  if (c.q50) out.push("50k " + c.q50);
+  return out;
+}
+
+// 「日」表示用。横に余裕があるので1行にする。
+function dgridQtyText(c) { return dgridQtyParts(c).join("・"); }
+
+/* 週の表用。★1行にすると入らない。実測で「20k 50・50k 30」が72px必要で
+   マスの中身は71pxしか無く「20k 50 ·…」に切れていた。本数は3桁にも
+   なるので、幅を足すのではなく2行に分けて行の高さを固定する。 */
+function dgridQtyLines(c) { return dgridQtyParts(c).join("\n"); }
+
+/* その日の本数を1行にまとめる。合計20k/合計50k/小口/コンテナを別々の行に
+   すると4行ぶん縦に伸びるので、1つの欄に入れる。 */
+function dgridTotalsText(t) {
+  if (!t) return "—";
+  var n = function (v) { return v == null ? "—" : Number(v).toLocaleString("ja-JP"); };
+  return "20k " + n(t["合計20k"]) + "\n50k " + n(t["合計50k"])
+    + "\n小口 " + n(t["小口"]) + "\n筒 " + n(t["コンテナ"]);
+}
+
 const DGRID_KIND_STYLE = {
   "出荷": { bg: "#ffffff", fg: VIZ.ink },
   "引取": { bg: "#f1f5f9", fg: VIZ.ink2 },
@@ -1484,12 +1511,12 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
     return <div className="text-xs text-slate-500 py-2">配車表の週が読み取れませんでした。</div>;
   }
 
-  const cellW = 76;   // 1日ぶんの幅。iPhoneでは横スクロールで見る
+  const cellW = 84;   // 1日ぶんの幅。横スクロールで見る
   const nameW = 96;
   /* ★ 週表示は31台ぶん並ぶので縦に1500px以上あった。行を詰めたうえで、
        その週にひとつも予定が無いトラックは畳む。行き先が長いときは1行で
        打ち切る（全文は「日」表示で省略なしに読める）。 */
-  const rowH = 34;    // 行の高さをそろえる（実測で45〜53px とバラついていた）
+  const rowH = 44;    // 行の高さをそろえる（行き先1行＋本数2行が入る高さ）
 
   /* ★ 実測（iPhone 390px）: 表の中身は600px、見えているのは332pxで268px隠れる。
        横に送るとトラック名が x=-240 まで出て行ってしまい、どの行がどのトラック
@@ -1607,16 +1634,17 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
             })}
           </div>
 
-          {/* その日の本数（配車表の合計行そのまま） */}
-          <div className="grid grid-cols-4 gap-2 mb-3">
-            {[["合計20k", "20k"], ["合計50k", "50k"], ["小口", "小口"], ["コンテナ", "コンテナ"]].map(([k, label]) => (
-              <div key={k} className="rounded-md bg-slate-50 px-2 py-2">
-                <div className="text-[10px]" style={{ color: VIZ.muted }}>{label}</div>
-                <div className="text-base font-bold tabular-nums" style={{ color: NAVY }}>
+          {/* その日の本数。★4つのタイルに分けず1つの欄にまとめる。 */}
+          <div className="rounded-md bg-slate-50 px-3 py-2 mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            {[["20k", "合計20k"], ["50k", "合計50k"], ["小口", "小口"], ["コンテナ", "コンテナ"]].map(([label, k]) => (
+              <span key={k} className="inline-flex items-baseline gap-1">
+                <span className="text-[10px]" style={{ color: VIZ.muted }}>{label}</span>
+                <span className="text-[15px] font-bold tabular-nums" style={{ color: NAVY }}>
                   {dayTotals[k] == null ? "—" : vizComma(dayTotals[k])}
-                </div>
-              </div>
+                </span>
+              </span>
             ))}
+            <span className="text-[10px] ml-auto" style={{ color: VIZ.muted }}>{curDay.label} の本数</span>
           </div>
 
           {/* トラックごと */}
@@ -1659,10 +1687,19 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                           </span>
                         )}
                       </span>
-                      {/* ★ 行き先は省略しない。表だと「広島県東広島市 (46…」で切れていた */}
-                      <span className="min-w-0 flex-1 text-[13px]" style={{ color: b.fg, lineHeight: 1.35,
-                        wordBreak: "break-all" }}>
-                        {r.c.text}
+                      {/* ★ 行き先は省略しない。表だと「広島県東広島市 (46…」で切れていた。
+                             その便の本数も同じ欄に入れる。 */}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px]" style={{ color: b.fg, lineHeight: 1.35,
+                          wordBreak: "break-all" }}>
+                          {r.c.text}
+                        </span>
+                        {dgridQtyText(r.c) && (
+                          <span className="block text-[11px] tabular-nums mt-0.5"
+                            style={{ color: VIZ.ink2 }}>
+                            {dgridQtyText(r.c)}
+                          </span>
+                        )}
                       </span>
                     </button>
                   </React.Fragment>
@@ -1728,25 +1765,22 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
             })}
           </div>
 
-          {/* その日の本数。★配車表では一番下にあるが、iPhoneだと予定のある
-               トラックぜんぶをスクロールしないと見えないので、日付の見出しの
-               すぐ下に移した。 */}
-          {["合計20k", "合計50k", "小口", "コンテナ"].map((k) => (
-            <div key={k} className={`flex bg-slate-50 ${k === "コンテナ" ? "border-b-2" : "border-b"} border-slate-200`}>
-              <div className="text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50"
-                style={stickyName}>{k}</div>
-              {g.days.map((d) => {
-                const t = g.totals[d.col] || {};
-                return (
-                  <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-right text-[12px] tabular-nums"
-                    style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2,
-                      background: d.date === todayKey ? "#eef2f7" : "transparent" }}>
-                    {t[k] == null ? "—" : vizComma(t[k])}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+          {/* その日の本数。★4行（合計20k/合計50k/小口/コンテナ）に分けると
+                 縦に4行ぶん伸びるので1つの欄にまとめた。配車表では一番下に
+                 あるが、iPhoneだとスクロールしないと見えないので日付の
+                 見出しのすぐ下に置いている。 */}
+          <div className="flex bg-slate-50 border-b-2 border-slate-200">
+            <div className="text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50"
+              style={{ ...stickyName, display: "flex", alignItems: "center" }}>その日の本数</div>
+            {g.days.map((d) => (
+              <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-right text-[11px] tabular-nums"
+                style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2, lineHeight: 1.3,
+                  whiteSpace: "pre-line",
+                  background: d.date === todayKey ? "#eef2f7" : "transparent" }}>
+                {dgridTotalsText(g.totals[d.col])}
+              </div>
+            ))}
+          </div>
           {/* トラックごとの行（その週に予定があるトラックだけ。畳みは下のボタン） */}
           {weekRows.map((t, i) => (
             <div key={t.row} className="flex border-b border-slate-100"
@@ -1767,6 +1801,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                 const c = t.cells[d.col];
                 const kind = c ? c.kind : "";
                 const st = DGRID_KIND_STYLE[kind] || DGRID_KIND_STYLE[""];
+                const qty = dgridQtyLines(c);
                 return (
                   <button key={d.col}
                     onClick={() => g.editable && setEdit({ row: t.row, col: d.col,
@@ -1777,11 +1812,22 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                       background: st.bg !== "transparent" ? st.bg
                         : (d.date === todayKey ? "#f4f7fb" : "transparent"),
                       height: rowH,    // 行の高さをそろえる（指で押せる大きさは確保）
-                      display: "flex", alignItems: "center",
+                      display: "flex", alignItems: "flex-start", paddingTop: 4,
+                      overflow: "hidden",
                       cursor: g.editable ? "pointer" : "default" }}>
-                    <span className="text-[11px]" style={{ color: st.fg,
-                      wordBreak: "break-all", ...clamp1 }}>
-                      {c ? c.text : "—"}
+                    <span className="min-w-0">
+                      <span className="block text-[11px]" style={{ color: st.fg,
+                        wordBreak: "break-all", ...clamp1 }}>
+                        {c && c.text ? c.text : "—"}
+                      </span>
+                      {/* ★ その便の本数を同じマスに入れる（配車表の20k/50kの列）。
+                             1行だと3桁で入らないので20kと50kを別の行にする。 */}
+                      {qty && (
+                        <span className="block text-[10px] tabular-nums" style={{ color: VIZ.ink2,
+                          lineHeight: 1.25, whiteSpace: "pre-line" }}>
+                          {qty}
+                        </span>
+                      )}
                     </span>
                   </button>
                 );
