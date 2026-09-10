@@ -2431,6 +2431,34 @@ function yard_formatShipDateDisplay(v) {
   if (m) return `${Number(m[2])}月${Number(m[3])}日`;
   return String(v);
 }
+
+/* 見た目（位置・建屋配置）は静的データのまま、群番号・容器番号・本数・依頼No・
+   状態・出荷希望日だけを、実際のスプレッドシートの最新値（あれば）で上書きする。
+   ★ YardMap（表示用）と App（搬入可能数のKPI用）の両方で使うので関数に切り出す。 */
+function yard_mergeLiveBlocks_(rawData, liveForSize) {
+  return {
+    ...rawData,
+    blocks: rawData.blocks.map(b => {
+      const liveB = liveForSize[String(b.pos)];
+      if (!liveB) return b;
+      // GAS側が依頼No＋PDFリンクまで一括で解決して返してくるので、そのまま使う
+      const orders = liveB.orders != null ? liveB.orders : b.orders;
+      return {
+        ...b,
+        grp: liveB.groupNo != null ? liveB.groupNo : b.grp,
+        rng: liveB.rangeStart != null && liveB.rangeEnd != null ? `${liveB.rangeStart}〜${liveB.rangeEnd}` : b.rng,
+        cnt: liveB.qty != null ? liveB.qty : b.cnt,
+        kind: liveB.kind || b.kind,
+        /* ★ liveB.shipDate || b.shipDate にすると、GASが空き区画に対して
+             はっきり shipDate: null を返しても null は偽値なので静的データの
+             古い値に戻ってしまい、「空きなのに出荷希望日が出る」ことになる。
+             undefined（そもそも返ってきていない）のときだけ静的値に戻す。 */
+        shipDate: liveB.shipDate !== undefined ? liveB.shipDate : b.shipDate,
+        orders
+      };
+    })
+  };
+}
 function YardMap({
   yardLive,
   onRefresh
@@ -2448,26 +2476,7 @@ function YardMap({
   const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "done" | "error"
   const rawData = size === "50k" ? MAP_50K : MAP_20K;
   const liveForSize = yardLive && yardLive[size] || {};
-  // 見た目（位置・建屋配置）は静的データのまま、群番号・容器番号・本数・依頼No・状態だけ
-  // 実際のスプレッドシートの最新値（あれば）で上書きする
-  const data = {
-    ...rawData,
-    blocks: rawData.blocks.map(b => {
-      const liveB = liveForSize[String(b.pos)];
-      if (!liveB) return b;
-      // GAS側が依頼No＋PDFリンクまで一括で解決して返してくるので、そのまま使う
-      const orders = liveB.orders != null ? liveB.orders : b.orders;
-      return {
-        ...b,
-        grp: liveB.groupNo != null ? liveB.groupNo : b.grp,
-        rng: liveB.rangeStart != null && liveB.rangeEnd != null ? `${liveB.rangeStart}〜${liveB.rangeEnd}` : b.rng,
-        cnt: liveB.qty != null ? liveB.qty : b.cnt,
-        kind: liveB.kind || b.kind,
-        shipDate: liveB.shipDate || b.shipDate,
-        orders
-      };
-    })
-  };
+  const data = yard_mergeLiveBlocks_(rawData, liveForSize);
   /* ---------- 区画検索 ---------- */
   // 依頼No / 容器番号 / GNo / 位置ラベル で該当区画を探す。
   // 検索に必要な値はすべてこの時点の data.blocks に揃っているので、
@@ -3184,9 +3193,12 @@ function YardTab({
   byYear,
   oldest,
   yardLive,
-  onRefresh
+  onRefresh,
+  bySize
 }) {
-  const maxYear = Math.max(...byYear.map(y => y.count));
+  /* ★ byYearが空配列だったり count が未定義だったりすると Math.max が
+       -Infinity / NaN になり、下の棒グラフの width が NaN% になる。 */
+  const maxYear = Math.max(1, ...byYear.map(y => y.count || 0));
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
@@ -3195,11 +3207,11 @@ function YardTab({
     yardLive: yardLive,
     onRefresh: onRefresh
   })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "\u5728\u5EAB\u7167\u4F1A 8/6 \u6642\u70B9"
+    note: "\u5728\u5EAB\u7167\u4F1A"
   }, "\u30B5\u30A4\u30BA\u5225 \u5728\u5EAB\u672C\u6570"), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-3 sm:grid-cols-4 gap-2"
-  }, inventory.map(s => /*#__PURE__*/React.createElement(Card, {
-    key: s.size,
+  }, (bySize && bySize.length > 0 ? bySize : inventory).map((s, i) => /*#__PURE__*/React.createElement(Card, {
+    key: s.size || s.label || i,
     className: "p-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] text-slate-500 mb-0.5 truncate"
@@ -3207,7 +3219,7 @@ function YardTab({
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-lg font-bold tabular-nums text-slate-900"
-  }, s.total.toLocaleString()), /*#__PURE__*/React.createElement("span", {
+  }, (s.count != null ? s.count : s.total).toLocaleString()), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400"
   }, "\u672C", s.approx ? "※" : "")))), /*#__PURE__*/React.createElement(Card, {
     className: "p-3",
@@ -4775,6 +4787,65 @@ function YardCapacityTab({
     className: "text-xs text-slate-500"
   }, "GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u3001\u3053\u3053\u306B\u91CE\u5916\u7F6E\u5834\u306E\u5728\u5EAB\u7BA1\u7406\u753B\u9762\u304C\u51FA\u307E\u3059\u3002")));
 }
+
+/* ---------- 安全網 ---------- */
+/* ★ undefined.toLocaleString() のような想定外のエラーが起きたとき、Reactは
+     画面をまるごと空にしてしまう。落合さんの手元では真っ白になるだけで、
+     何が起きたのか分からない。ここで捕まえて、そのまま画面に出す。 */
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      error: null
+    };
+  }
+  static getDerivedStateFromError(error) {
+    return {
+      error
+    };
+  }
+  componentDidCatch(error, info) {
+    console.error("ダッシュボードでエラーが発生しました:", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return /*#__PURE__*/React.createElement("div", {
+        style: {
+          padding: 24,
+          fontFamily: "monospace",
+          background: "#fff5f5",
+          color: "#7f1d1d",
+          minHeight: "100vh"
+        }
+      }, /*#__PURE__*/React.createElement("h2", {
+        style: {
+          marginTop: 0
+        }
+      }, "\u753B\u9762\u306E\u8868\u793A\u4E2D\u306B\u30A8\u30E9\u30FC\u304C\u767A\u751F\u3057\u307E\u3057\u305F"), /*#__PURE__*/React.createElement("p", null, "\u3053\u306E\u30E1\u30C3\u30BB\u30FC\u30B8\u3092\u305D\u306E\u307E\u307E\u30B3\u30D4\u30FC\u3057\u3066\u3001Claude\u306B\u4F1D\u3048\u3066\u304F\u3060\u3055\u3044\u3002"), /*#__PURE__*/React.createElement("pre", {
+        style: {
+          whiteSpace: "pre-wrap",
+          background: "#fff",
+          padding: 12,
+          borderRadius: 6,
+          border: "1px solid #fca5a5"
+        }
+      }, String(this.state.error && this.state.error.message), "\n\n", String(this.state.error && this.state.error.stack)), /*#__PURE__*/React.createElement("button", {
+        onClick: () => this.setState({
+          error: null
+        }),
+        style: {
+          marginTop: 12,
+          padding: "8px 16px",
+          borderRadius: 6,
+          border: "1px solid #7f1d1d",
+          background: "#fff",
+          cursor: "pointer"
+        }
+      }, "\u3082\u3046\u4E00\u5EA6\u8A66\u3059"));
+    }
+    return this.props.children;
+  }
+}
 function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
@@ -5132,6 +5203,20 @@ function App() {
     total: inv20,
     tone: "ok"
   }];
+
+  /* 容器種別（2K/5K/8K/10K/20K各種/30K/50K各種）ごとの在庫内訳。
+     getInventoryDashboardData の bySize（在庫照会CSVの「分類」列から集計したもの）を、
+     受注タブの「サイズ別受注本数」と同じ並び順・キーで配列にする。 */
+  let invBySize = [];
+  if (live.inventory && live.inventory.bySize) {
+    const by = live.inventory.bySize;
+    const order = ["2K", "5K", "8K", "10K", "20K_三部軽量", "20K_直付", "30K", "50K_軽量型", "50K_S"];
+    invBySize = order.map(key => by[key] ? {
+      size: key,
+      label: by[key].label,
+      count: by[key].count
+    } : null).filter(Boolean);
+  }
   let invByYear = INV_BY_YEAR_FALLBACK;
   let invOldest = OLDEST_KOKUIN_FALLBACK;
   if (live.inventory && live.inventory.sizes) {
@@ -5178,6 +5263,21 @@ function App() {
   const dispatchWeekTruckTotal = dispatchWeek.reduce((sum, d) => sum + (d.shipments ? d.shipments.length : 0), 0);
   const dispatchWeekQty20k = dispatchWeek.reduce((sum, d) => sum + (d.qty20k != null ? d.qty20k : 0), 0);
   const dispatchWeekQty50k = dispatchWeek.reduce((sum, d) => sum + (d.qty50k != null ? d.qty50k : 0), 0);
+
+  /* あと何本入れられるか。空き区画の数 × 1区画の容量で数える。
+     ★ 区画ごとの cnt は「今入っている本数」なので容量には使えない。
+       50kgは1区画100本、20kgは1区画50本の固定。
+     ★ 静的データのままだと最新の空き状況を反映しないので、マップと同じ
+       マージ処理を通してから数える。 */
+  const yard_emptyCountFor_ = sz => {
+    const capacityPerBlock = sz === "50k" ? 100 : 50;
+    const rawData = sz === "50k" ? MAP_50K : MAP_20K;
+    const merged = yard_mergeLiveBlocks_(rawData, yardLive && yardLive[sz] || {});
+    const emptyBlockCount = merged.blocks.reduce((sum, b) => sum + (b.kind === "empty" ? 1 : 0), 0);
+    return emptyBlockCount * capacityPerBlock;
+  };
+  const yardEmpty50k = yard_emptyCountFor_("50k");
+  const yardEmpty20k = yard_emptyCountFor_("20k");
   const tabKpis = {
     orders: [{
       label: `指図書 保存済(${shippingMonthLabel})`,
@@ -5217,6 +5317,18 @@ function App() {
     }, {
       label: "在庫合計",
       value: invTotal.toLocaleString(),
+      unit: "本",
+      icon: Boxes,
+      tone: "neutral"
+    }, {
+      label: "50kg 搬入可能数",
+      value: yardEmpty50k.toLocaleString(),
+      unit: "本",
+      icon: Boxes,
+      tone: "neutral"
+    }, {
+      label: "20kg 搬入可能数",
+      value: yardEmpty20k.toLocaleString(),
       unit: "本",
       icon: Boxes,
       tone: "neutral"
@@ -5421,7 +5533,8 @@ function App() {
     byYear: invByYear,
     oldest: invOldest,
     yardLive: yardLive,
-    onRefresh: () => fetchLiveData(true)
+    onRefresh: () => fetchLiveData(true),
+    bySize: invBySize
   }), tab === "actuals" && /*#__PURE__*/React.createElement(ActualsTab, {
     shipActuals: live.shipActuals,
     invTrend: live.invTrend,
@@ -5440,7 +5553,7 @@ function App() {
     className: "text-center text-[10px] text-slate-400 pt-2"
   }, "\u203B GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u5404\u30BF\u30D6\u306E\u5B9F\u30C7\u30FC\u30BF\u306F\u6700\u65B0\u306B\u81EA\u52D5\u66F4\u65B0\u3055\u308C\u307E\u3059\uFF085\u5206\u3054\u3068\uFF09\u3002\u30D8\u30C3\u30C0\u30FC\u30FBKPI\u3082\u30BF\u30D6\u3054\u3068\u306B\u5207\u308A\u66FF\u308F\u308A\u307E\u3059\u3002")));
 }
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ErrorBoundary, null, React.createElement(App)));
 </script>
 </body>
 </html>

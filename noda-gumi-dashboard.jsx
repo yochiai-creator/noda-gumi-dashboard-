@@ -355,18 +355,11 @@ function yard_formatShipDateDisplay(v) {
   return String(v);
 }
 
-function YardMap({ yardLive, onRefresh }) {
-  const [size, setSize] = useState("50k");
-  const [view, setView] = useState("map");
-  const [sel, setSel] = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ grpNo: "", rangeStart: "", rangeEnd: "", qty: "" });
-  const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "done" | "error"
-  const rawData = size === "50k" ? MAP_50K : MAP_20K;
-  const liveForSize = (yardLive && yardLive[size]) || {};
-  // 見た目（位置・建屋配置）は静的データのまま、群番号・容器番号・本数・依頼No・状態だけ
-  // 実際のスプレッドシートの最新値（あれば）で上書きする
-  const data = {
+/* 見た目（位置・建屋配置）は静的データのまま、群番号・容器番号・本数・依頼No・
+   状態・出荷希望日だけを、実際のスプレッドシートの最新値（あれば）で上書きする。
+   ★ YardMap（表示用）と App（搬入可能数のKPI用）の両方で使うので関数に切り出す。 */
+function yard_mergeLiveBlocks_(rawData, liveForSize) {
+  return {
     ...rawData,
     blocks: rawData.blocks.map((b) => {
       const liveB = liveForSize[String(b.pos)];
@@ -379,11 +372,27 @@ function YardMap({ yardLive, onRefresh }) {
         rng: (liveB.rangeStart != null && liveB.rangeEnd != null) ? `${liveB.rangeStart}〜${liveB.rangeEnd}` : b.rng,
         cnt: liveB.qty != null ? liveB.qty : b.cnt,
         kind: liveB.kind || b.kind,
-        shipDate: liveB.shipDate || b.shipDate,
+        /* ★ liveB.shipDate || b.shipDate にすると、GASが空き区画に対して
+             はっきり shipDate: null を返しても null は偽値なので静的データの
+             古い値に戻ってしまい、「空きなのに出荷希望日が出る」ことになる。
+             undefined（そもそも返ってきていない）のときだけ静的値に戻す。 */
+        shipDate: liveB.shipDate !== undefined ? liveB.shipDate : b.shipDate,
         orders,
       };
     }),
   };
+}
+
+function YardMap({ yardLive, onRefresh }) {
+  const [size, setSize] = useState("50k");
+  const [view, setView] = useState("map");
+  const [sel, setSel] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ grpNo: "", rangeStart: "", rangeEnd: "", qty: "" });
+  const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "done" | "error"
+  const rawData = size === "50k" ? MAP_50K : MAP_20K;
+  const liveForSize = (yardLive && yardLive[size]) || {};
+  const data = yard_mergeLiveBlocks_(rawData, liveForSize);
   /* ---------- 区画検索 ---------- */
   // 依頼No / 容器番号 / GNo / 位置ラベル で該当区画を探す。
   // 検索に必要な値はすべてこの時点の data.blocks に揃っているので、
@@ -909,8 +918,10 @@ function YardMap({ yardLive, onRefresh }) {
   );
 }
 
-function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh }) {
-  const maxYear = Math.max(...byYear.map((y) => y.count));
+function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, bySize }) {
+  /* ★ byYearが空配列だったり count が未定義だったりすると Math.max が
+       -Infinity / NaN になり、下の棒グラフの width が NaN% になる。 */
+  const maxYear = Math.max(1, ...byYear.map((y) => y.count || 0));
   return (
     <div className="space-y-6">
       <div>
@@ -918,13 +929,18 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh }) {
         <YardMap yardLive={yardLive} onRefresh={onRefresh} />
       </div>
       <div>
-        <SectionTitle note="在庫照会 8/6 時点">サイズ別 在庫本数</SectionTitle>
+        <SectionTitle note="在庫照会">サイズ別 在庫本数</SectionTitle>
+        {/* ★ 在庫照会CSVの「分類」列から出した9分類の内訳。
+               2K/5K/8K/10K/20K(三部軽量)/20K(直付)/30K/50K(軽量型)/50K(S)。
+               取れないときだけ 50kg/20kg の2つに落とす。 */}
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-          {inventory.map((s) => (
-            <Card key={s.size} className="p-3">
+          {(bySize && bySize.length > 0 ? bySize : inventory).map((s, i) => (
+            <Card key={s.size || s.label || i} className="p-3">
               <div className="text-[11px] text-slate-500 mb-0.5 truncate">{s.label}</div>
               <div className="flex items-baseline gap-1">
-                <span className="text-lg font-bold tabular-nums text-slate-900">{s.total.toLocaleString()}</span>
+                <span className="text-lg font-bold tabular-nums text-slate-900">
+                  {(s.count != null ? s.count : s.total).toLocaleString()}
+                </span>
                 <span className="text-[10px] text-slate-400">本{s.approx ? "※" : ""}</span>
               </div>
             </Card>
@@ -2178,6 +2194,46 @@ function YardCapacityTab({ summary, url, onRefresh }) {
   );
 }
 
+/* ---------- 安全網 ---------- */
+/* ★ undefined.toLocaleString() のような想定外のエラーが起きたとき、Reactは
+     画面をまるごと空にしてしまう。落合さんの手元では真っ白になるだけで、
+     何が起きたのか分からない。ここで捕まえて、そのまま画面に出す。 */
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("ダッシュボードでエラーが発生しました:", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, fontFamily: "monospace", background: "#fff5f5",
+                      color: "#7f1d1d", minHeight: "100vh" }}>
+          <h2 style={{ marginTop: 0 }}>画面の表示中にエラーが発生しました</h2>
+          <p>このメッセージをそのままコピーして、Claudeに伝えてください。</p>
+          <pre style={{ whiteSpace: "pre-wrap", background: "#fff", padding: 12,
+                        borderRadius: 6, border: "1px solid #fca5a5" }}>
+            {String(this.state.error && this.state.error.message)}
+            {"\n\n"}
+            {String(this.state.error && this.state.error.stack)}
+          </pre>
+          <button onClick={() => this.setState({ error: null })}
+            style={{ marginTop: 12, padding: "8px 16px", borderRadius: 6,
+                     border: "1px solid #7f1d1d", background: "#fff", cursor: "pointer" }}>
+            もう一度試す
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
@@ -2386,6 +2442,17 @@ export default function App() {
     { size: "20k", label: "20kg 容器", total: inv20, tone: "ok" },
   ];
 
+  /* 容器種別（2K/5K/8K/10K/20K各種/30K/50K各種）ごとの在庫内訳。
+     getInventoryDashboardData の bySize（在庫照会CSVの「分類」列から集計したもの）を、
+     受注タブの「サイズ別受注本数」と同じ並び順・キーで配列にする。 */
+  let invBySize = [];
+  if (live.inventory && live.inventory.bySize) {
+    const by = live.inventory.bySize;
+    const order = ["2K", "5K", "8K", "10K", "20K_三部軽量", "20K_直付", "30K", "50K_軽量型", "50K_S"];
+    invBySize = order.map((key) => (by[key] ? { size: key, label: by[key].label, count: by[key].count } : null))
+      .filter(Boolean);
+  }
+
   let invByYear = INV_BY_YEAR_FALLBACK;
   let invOldest = OLDEST_KOKUIN_FALLBACK;
   if (live.inventory && live.inventory.sizes) {
@@ -2417,6 +2484,21 @@ export default function App() {
   const dispatchWeekQty20k = dispatchWeek.reduce((sum, d) => sum + (d.qty20k != null ? d.qty20k : 0), 0);
   const dispatchWeekQty50k = dispatchWeek.reduce((sum, d) => sum + (d.qty50k != null ? d.qty50k : 0), 0);
 
+  /* あと何本入れられるか。空き区画の数 × 1区画の容量で数える。
+     ★ 区画ごとの cnt は「今入っている本数」なので容量には使えない。
+       50kgは1区画100本、20kgは1区画50本の固定。
+     ★ 静的データのままだと最新の空き状況を反映しないので、マップと同じ
+       マージ処理を通してから数える。 */
+  const yard_emptyCountFor_ = (sz) => {
+    const capacityPerBlock = sz === "50k" ? 100 : 50;
+    const rawData = sz === "50k" ? MAP_50K : MAP_20K;
+    const merged = yard_mergeLiveBlocks_(rawData, (yardLive && yardLive[sz]) || {});
+    const emptyBlockCount = merged.blocks.reduce((sum, b) => sum + (b.kind === "empty" ? 1 : 0), 0);
+    return emptyBlockCount * capacityPerBlock;
+  };
+  const yardEmpty50k = yard_emptyCountFor_("50k");
+  const yardEmpty20k = yard_emptyCountFor_("20k");
+
   const tabKpis = {
     orders: [
       { label: `指図書 保存済(${shippingMonthLabel})`, value: String(shippingTotal), unit: "件", icon: FileText, tone: "ok" },
@@ -2435,6 +2517,8 @@ export default function App() {
       { label: "50k 在庫", value: inv50.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
       { label: "20k 在庫", value: inv20.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
       { label: "在庫合計", value: invTotal.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
+      { label: "50kg 搬入可能数", value: yardEmpty50k.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
+      { label: "20kg 搬入可能数", value: yardEmpty20k.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
     ],
     // 実績・推移タブ。ほかのタブと同じ大きな数字のタイルを出す。
     // ★ 在庫は残高なので累計を出さない（4月〜9月の月末在庫を足しても意味が無い）。
@@ -2569,7 +2653,7 @@ export default function App() {
           </div>
 
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
-          {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} />}
+          {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} bySize={invBySize} />}
           {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}

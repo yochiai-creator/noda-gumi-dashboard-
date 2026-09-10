@@ -36,7 +36,7 @@ const HTML_PATH = path.join(ROOT, 'gas', 'noda_dashboard.html');
 
 // アプリコード領域の境界。この2つの文字列はHTMLと.jsxの両方に現れる必要がある。
 const START_MARK = 'const NAVY = "#0f2942";';
-const END_MARK = 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));';
+const END_MARK = 'ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(ErrorBoundary, null, React.createElement(App)));';
 
 function compileJsx(jsxSource) {
   // 引き継ぎメモの手順1・3：import文の除去と export default の変換。
