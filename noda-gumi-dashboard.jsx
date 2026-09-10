@@ -1486,7 +1486,10 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
 
   const cellW = 76;   // 1日ぶんの幅。iPhoneでは横スクロールで見る
   const nameW = 96;
-  const rowH = 48;    // 行の高さをそろえる（実測で45〜53px とバラついていた）
+  /* ★ 週表示は31台ぶん並ぶので縦に1500px以上あった。行を詰めたうえで、
+       その週にひとつも予定が無いトラックは畳む。行き先が長いときは1行で
+       打ち切る（全文は「日」表示で省略なしに読める）。 */
+  const rowH = 34;    // 行の高さをそろえる（実測で45〜53px とバラついていた）
 
   /* ★ 実測（iPhone 390px）: 表の中身は600px、見えているのは332pxで268px隠れる。
        横に送るとトラック名が x=-240 まで出て行ってしまい、どの行がどのトラック
@@ -1523,18 +1526,24 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
   const shipCount = dayRows.filter((r) => r.c.kind === "出荷").length;
   const dayTotals = g.totals[curDay.col] || {};
 
+  /* その週にひとつも予定が無いトラック。31台ぜんぶ並べると縦に長すぎるので分ける。 */
+  const weekBusy = g.trucks.filter((t) =>
+    g.days.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; }));
+  const weekIdle = g.trucks.filter((t) =>
+    !g.days.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; }));
+  const weekRows = showIdle ? g.trucks : weekBusy;
+
   const openEdit = (t, col, header) => {
     if (!g.editable) return;
     const c = t.cells[col];
     setEdit({ row: t.row, col: col, value: c ? c.text : "", truck: t.truck, day: header });
   };
-  /* ★ 行き先が長いとマスが縦に伸びて、行の高さがバラバラになり読みにくい
-       （「東京都西多摩郡瑞穂町 東京都羽村市」で3行になった）。
-       2行で打ち切って行の高さを揃える。全文はタップしたときの入力欄に出るので
-       情報は失われない。 */
-  const clamp2 = {
-    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-    overflow: "hidden", lineHeight: 1.35,
+  /* ★ 行き先が長いとマスが縦に伸びて行の高さがバラバラになる
+       （「東京都西多摩郡瑞穂町 東京都羽村市」で3行になっていた）。
+       週表示は1行で打ち切って高さをそろえる。全文は「日」表示で読める。 */
+  const clamp1 = {
+    display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical",
+    overflow: "hidden", lineHeight: 1.3,
   };
 
   return (
@@ -1719,8 +1728,27 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
             })}
           </div>
 
-          {/* トラックごとの行 */}
-          {g.trucks.map((t, i) => (
+          {/* その日の本数。★配車表では一番下にあるが、iPhoneだと予定のある
+               トラックぜんぶをスクロールしないと見えないので、日付の見出しの
+               すぐ下に移した。 */}
+          {["合計20k", "合計50k", "小口", "コンテナ"].map((k) => (
+            <div key={k} className={`flex bg-slate-50 ${k === "コンテナ" ? "border-b-2" : "border-b"} border-slate-200`}>
+              <div className="text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50"
+                style={stickyName}>{k}</div>
+              {g.days.map((d) => {
+                const t = g.totals[d.col] || {};
+                return (
+                  <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-right text-[12px] tabular-nums"
+                    style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2,
+                      background: d.date === todayKey ? "#eef2f7" : "transparent" }}>
+                    {t[k] == null ? "—" : vizComma(t[k])}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          {/* トラックごとの行（その週に予定があるトラックだけ。畳みは下のボタン） */}
+          {weekRows.map((t, i) => (
             <div key={t.row} className="flex border-b border-slate-100"
               style={{ background: i % 2 ? "#fcfdfe" : "#ffffff" }}>
               <div className="px-2" style={{ ...stickyName, background: i % 2 ? "#fcfdfe" : "#ffffff",
@@ -1752,7 +1780,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                       display: "flex", alignItems: "center",
                       cursor: g.editable ? "pointer" : "default" }}>
                     <span className="text-[11px]" style={{ color: st.fg,
-                      wordBreak: "break-all", ...clamp2 }}>
+                      wordBreak: "break-all", ...clamp1 }}>
                       {c ? c.text : "—"}
                     </span>
                   </button>
@@ -1761,33 +1789,24 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
             </div>
           ))}
 
-          {/* その日の本数（配車表の合計行そのまま） */}
-          {["合計20k", "合計50k", "小口", "コンテナ"].map((k) => (
-            <div key={k} className={`flex bg-slate-50 ${k === "合計20k" ? "border-t-2" : "border-t"} border-slate-200`}>
-              <div className="text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50"
-                style={stickyName}>{k}</div>
-              {g.days.map((d) => {
-                const t = g.totals[d.col] || {};
-                return (
-                  <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-right text-[12px] tabular-nums"
-                    style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2,
-                      background: d.date === todayKey ? "#eef2f7" : "transparent" }}>
-                    {t[k] == null ? "—" : vizComma(t[k])}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
         </div>
       </div>
 
       )}
 
       {view === "week" && (
-        <div className="text-[10px] mt-2" style={{ color: VIZ.muted }}>
-          横に指で送ると先の日が見えます（トラック名は残ります）。
-          {g.editable ? "マスをタップすると直せます。" : ""}
-          ← は引取、× は運休です。
+        <div className="mt-2">
+          {weekIdle.length > 0 && (
+            <button onClick={() => setShowIdle(!showIdle)}
+              className="text-[11px] font-semibold px-2 py-1.5 rounded-md bg-slate-100 text-slate-600 mb-2">
+              この週は予定なし {weekIdle.length}台 {showIdle ? "を隠す ▲" : "も出す ▼"}
+            </button>
+          )}
+          <div className="text-[10px]" style={{ color: VIZ.muted }}>
+            {weekBusy.length}台ぶんを出しています。横に指で送ると先の日が見えます（トラック名は残ります）。
+            {g.editable ? "マスをタップすると直せます。" : ""}
+            ← は引取、× は運休。行き先が長いときは1行で切っています（全文は「日」で読めます）。
+          </div>
         </div>
       )}
 

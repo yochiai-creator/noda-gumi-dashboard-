@@ -174,7 +174,7 @@ const REPLY = {
         はみ出し: sc.scrollWidth - Math.round(r.width) };
       const rows = [...sc.querySelectorAll(':scope > div > div.flex')];
       out.行数 = rows.length;
-      out.行 = rows.slice(0, 8).map((x) => ({ h: Math.round(x.getBoundingClientRect().height),
+      out.行 = rows.map((x) => ({ h: Math.round(x.getBoundingClientRect().height),
         先頭: x.firstElementChild ? x.firstElementChild.innerText.replace(/\n/g, '/') : '' }));
       // 右にスクロールしたときトラック名が残るか
       sc.scrollLeft = 400;
@@ -199,14 +199,33 @@ const REPLY = {
   chk('表は横スクロールする（1画面に収まらない）', m.スクローラ && m.スクローラ.はみ出し > 0, m.スクローラ);
   chk('★横に送ってもトラック名が見えている',
     m.右にスクロール後のトラック名 && m.右にスクロール後のトラック名.見える, m.右にスクロール後のトラック名);
-  const hs = m.行.slice(1, 7).map((r) => r.h);
+  const TOTAL_LABELS = ['合計20k', '合計50k', '小口', 'コンテナ'];
+  const truckRows = m.行.filter((r, i) => i > 0 && TOTAL_LABELS.indexOf(r.先頭) === -1);
+  const hs = truckRows.map((r) => r.h);
   chk('トラック行の高さがそろっている', hs.length > 0 && Math.max(...hs) - Math.min(...hs) <= 2, hs);
+  chk('トラック行を詰めた（1行36px以下）', hs.length > 0 && Math.max(...hs) <= 36, hs);
+  /* 合計行は配車表では一番下だが、iPhoneだとスクロールしないと見えないので
+     日付の見出しのすぐ下に移した。 */
+  const firstTotal = m.行.findIndex((r) => r.先頭 === '合計20k');
+  const firstTruck = m.行.findIndex((r, i) => i > 0 && TOTAL_LABELS.indexOf(r.先頭) === -1);
+  chk('合計行が日付の見出しのすぐ下にある', firstTotal === 1, { firstTotal: firstTotal, firstTruck: firstTruck });
+  chk('合計行4本がトラック行より前にある', firstTotal < firstTruck, { firstTotal: firstTotal, firstTruck: firstTruck });
   chk('トラック名が切れていない（福安が出ている）',
     m.行.some((r) => r.先頭.indexOf('福安') !== -1), m.行.map((r) => r.先頭));
   chk('自社便の会社名が切れていない',
     m.行.some((r) => r.先頭.indexOf('浅津運送 自社便') !== -1), m.行.map((r) => r.先頭));
   chk('合計行が表の中にある', m.行.some((r) => r.先頭 === '合計20k'), m.行.map((r) => r.先頭));
   chk('見出しと注記がぶつかっていない（注記を外した）', m.見出し衝突 === null, m.見出し衝突);
+  const wk = await page.evaluate(() => {
+    const t = document.body.innerText;
+    const btn = [...document.querySelectorAll('button')].find((b) => /この週は予定なし/.test(b.textContent));
+    return { 畳みボタン: btn ? btn.textContent.trim() : null, 台数の説明: /\d+台ぶんを出しています/.test(t) };
+  });
+  /* このサンプルは6台とも週に予定があるので、畳みボタンは出ないのが正しい。
+     31台のときの畳みと高さは tools/disp_week_height_test.js で見る。 */
+  chk('予定ありだけのときは畳みボタンを出さない', wk.畳みボタン === null, wk);
+  chk('何台ぶん出しているか書いてある', wk.台数の説明, wk);
+
   chk('日付ラベルが「本日」と混ざっていない',
     m.カード見出し.every((t) => !(t.indexOf('本日') !== -1 && t.indexOf('/') !== -1)), m.カード見出し);
 
