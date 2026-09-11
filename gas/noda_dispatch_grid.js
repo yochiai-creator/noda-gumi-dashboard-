@@ -500,3 +500,71 @@ function 配車表のファイルを確認する() {
   Logger.log('■ 移行時のバックアップ（触っても画面は変わりません）');
   Logger.log('  URL : ' + url(backupId));
 }
+
+// ===== 公開関数：アプリが読み書きするファイルと、バックアップを入れ替える =====
+// ★ もう一度実行すると元に戻る（入れ替えるだけなので）。
+//   切り替える前に、切り替え先の構造が読めるかを必ず確かめる。読めないものを
+//   本物にすると画面が全部止まるため。
+//   編集ログの件数も両方出す。アプリから直した内容は編集ログに残っているので、
+//   置いていくものがあるかどうかがこれで分かる。
+function 配車表の本物を入れ替える() {
+  var props = PropertiesService.getScriptProperties();
+  var cur = props.getProperty(DISP_GRID_CONFIG.PROP_SHEET_ID);
+  var bak = props.getProperty(DISP_GRID_CONFIG.PROP_BACKUP_ID);
+  var url = function (x) { return 'https://docs.google.com/spreadsheets/d/' + x + '/edit'; };
+
+  if (!cur || !bak) {
+    Logger.log('★ 入れ替えられません。本物かバックアップのIDが入っていません。');
+    Logger.log('  本物: ' + (cur || '(なし)') + ' / バックアップ: ' + (bak || '(なし)'));
+    return { ok: false, error: 'IDが揃っていません' };
+  }
+
+  var target;
+  try {
+    target = SpreadsheetApp.openById(bak);
+  } catch (err) {
+    Logger.log('★ 切り替え先を開けませんでした: ' + err);
+    return { ok: false, error: String(err) };
+  }
+
+  var check = dgrid_validate_(target);
+  if (!check.ok) {
+    Logger.log('★ 切り替え先の構造が読めません: ' + check.reason);
+    Logger.log('  入れ替えをやめました（今のままです）。');
+    return { ok: false, error: check.reason };
+  }
+
+  // 置いていくものが無いかを見るため、両方の編集ログの件数を出す
+  var logCount = function (id) {
+    try {
+      var sh = SpreadsheetApp.openById(id).getSheetByName(DISP_GRID_CONFIG.EDIT_LOG_SHEET);
+      return sh ? Math.max(0, sh.getLastRow() - 1) : 0;
+    } catch (e) { return -1; }
+  };
+  var curLog = logCount(cur), bakLog = logCount(bak);
+
+  props.setProperty(DISP_GRID_CONFIG.PROP_SHEET_ID, bak);
+  props.setProperty(DISP_GRID_CONFIG.PROP_BACKUP_ID, cur);
+  nc_forget_('dispatch');
+  nc_forget_('dispatchMonthly');
+  for (var w = -4; w <= 4; w++) nc_forget_('dispatchGrid_' + w);
+
+  Logger.log('入れ替えました。');
+  Logger.log('');
+  Logger.log('■ これからアプリが読み書きするファイル');
+  Logger.log('  名前: ' + target.getName());
+  Logger.log('  URL : ' + url(bak));
+  Logger.log('  トラック' + check.trucks + '台 / 週ブロック' + check.blocks + '個 / 日付' + check.days + '日ぶん');
+  Logger.log('  アプリからの編集ログ: ' + (bakLog < 0 ? '(読めません)' : bakLog + '件'));
+  Logger.log('');
+  Logger.log('■ これからバックアップ扱いになるファイル（触っても画面は変わりません）');
+  Logger.log('  URL : ' + url(cur));
+  Logger.log('  アプリからの編集ログ: ' + (curLog < 0 ? '(読めません)' : curLog + '件'));
+  if (curLog > bakLog) {
+    Logger.log('  ★ こちらにだけ、アプリから直した記録が ' + (curLog - bakLog) + '件あります。');
+    Logger.log('    その内容は新しい本物には入っていません。必要なら手で移してください。');
+  }
+  Logger.log('');
+  Logger.log('元に戻したいときは、この関数をもう一度実行してください。');
+  return { ok: true, sheetId: bak, backupId: cur };
+}
