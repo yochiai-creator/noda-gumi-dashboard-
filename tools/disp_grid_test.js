@@ -184,6 +184,32 @@ const REPLY = {
   chk('日表示で横にはみ出していない', over1.b <= over1.c + 1, over1);
   await page.screenshot({ path: SP + '/disp_day.png', fullPage: false });
 
+  /* ---------- 上のKPIと下の表が一致するか ---------- */
+  console.log('■ 上のKPIと下の表の連動');
+  const kpiWeek = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('main > div.grid > div')].map((c) => c.innerText.replace(/\n+/g, ' '));
+    /* ★ カードの先頭に週のラベル（9/7〜9/12）が入るので、素の「最初の数字」を
+         拾うと 9 を取ってしまう。ラベルより後ろだけを見る。 */
+    const find = (k) => {
+      const t = cards.find((x) => x.indexOf(k) !== -1);
+      if (!t) return null;
+      const m = t.slice(t.indexOf(k) + k.length).match(/([\d,]+)/);
+      return m ? Number(m[1].replace(/,/g, '')) : null;
+    };
+    return { cards: cards, 台数: find('出荷台数'), k20: find('20k'), k50: find('50k'), 総計: find('総計') };
+  });
+  console.log('   KPI:', JSON.stringify(kpiWeek.cards));
+  /* モックの合計行: 9/7 = 20k235/50k292、9/8 = 20k100/50k150、9/11 = 20k180/50k90。
+     残りの日は未設定（null）。
+     出荷のマス: 9/7 は 野村・福安・②・ワイド の4件、9/8 は 佐伯 の1件、
+     9/9 は 野村 の1件（引取・運休・お休みは数えない）。 */
+  chk('★KPIの20kが表の合計と一致する（235+100+180=515）', kpiWeek.k20 === 515, kpiWeek);
+  chk('★KPIの50kが表の合計と一致する（292+150+90=532）', kpiWeek.k50 === 532, kpiWeek);
+  chk('KPIの総計が20k+50k（1,047）', kpiWeek.総計 === 1047, kpiWeek);
+  chk('未設定の日を0として足している', kpiWeek.k20 === 515 && kpiWeek.k50 === 532, kpiWeek);
+  chk('KPIの台数が出荷のマスの数（4+1+1=6）', kpiWeek.台数 === 6, kpiWeek);
+  chk('KPIにどの週かが書いてある', kpiWeek.cards.some((t) => t.indexOf('9/7〜9/12') !== -1), kpiWeek.cards);
+
   /* ---------- 「週」表示 ---------- */
   console.log('■ 週表示');
   await page.locator('button', { hasText: /^週$/ }).first().click();

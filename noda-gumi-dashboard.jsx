@@ -2478,18 +2478,44 @@ export default function App() {
     }
   }
 
+  /* ★ 上のKPIと下の表がずれていた。
+       KPIは getDispatchTodayData（今日から平日8日ぶんのローリング）、
+       表は getDispatchGridData（配車表の週ブロック。前の週／次の週で動く）と、
+       別々の週を別々に取ってきていたため。
+       下の表と同じ週・同じ数字を出すよう、表のデータから集計する。
+       表がまだ来ていないときだけ、今までのローリング集計に落とす。 */
+  const dg = live.dispGrid;
+  const dgDays = (dg && dg.days) || [];
+  const dgOk = dgDays.length > 0 && dg.totals;
+  const dgSum = (key) => dgDays.reduce((sum, d) => {
+    const t = dg.totals[d.col];
+    const v = t ? t[key] : null;
+    return sum + (v != null ? Number(v) : 0);
+  }, 0);
+  // その週に「出荷」が入っているマスの延べ台数（日のチップの台数の合計と同じ数え方）
+  const dgTruckTotal = dgDays.reduce((sum, d) => sum + ((dg.trucks || []).filter((t) => {
+    const c = t.cells[d.col];
+    return c && c.kind === "出荷";
+  }).length), 0);
+
+  const dispatchWeekTruckTotal = dgOk ? dgTruckTotal
+    : dispatchWeek.reduce((sum, d) => sum + (d.shipments ? d.shipments.length : 0), 0);
+  const dispatchWeekQty20k = dgOk ? dgSum("合計20k")
+    : dispatchWeek.reduce((sum, d) => sum + (d.qty20k != null ? d.qty20k : 0), 0);
+  const dispatchWeekQty50k = dgOk ? dgSum("合計50k")
+    : dispatchWeek.reduce((sum, d) => sum + (d.qty50k != null ? d.qty50k : 0), 0);
+  // どの週の数字なのかが分かるようにする（前の週／次の週で動くため）
+  const dispatchWeekLabel = dgOk && dg.weekLabel ? dg.weekLabel : null;
+
   // タブごとのヘッダー見出し・KPIカードを組み立てる
   const tabHeaders = {
     orders: { title: "受注・指図書", subtitle: dateLabel },
     yard: { title: "ヤード・現場", subtitle: dateLabel },
-    dispatch: { title: "配車・当日出荷", subtitle: dispatchDateLabel + " 時点" },
+    dispatch: { title: "配車・当日出荷", subtitle: dispatchWeekLabel ? dispatchWeekLabel + " の週" : dispatchDateLabel + " 時点" },
     yardcap: { title: "野外置場", subtitle: dateLabel },
   };
   const currentHeader = tabHeaders[tab] || tabHeaders.orders;
 
-  const dispatchWeekTruckTotal = dispatchWeek.reduce((sum, d) => sum + (d.shipments ? d.shipments.length : 0), 0);
-  const dispatchWeekQty20k = dispatchWeek.reduce((sum, d) => sum + (d.qty20k != null ? d.qty20k : 0), 0);
-  const dispatchWeekQty50k = dispatchWeek.reduce((sum, d) => sum + (d.qty50k != null ? d.qty50k : 0), 0);
 
   /* あと何本入れられるか。空き区画の数 × 1区画の容量で数える。
      ★ 区画ごとの cnt は「今入っている本数」なので容量には使えない。
@@ -2559,10 +2585,10 @@ export default function App() {
       ];
     })(),
     dispatch: [
-      { label: "週の合計トラック台数", value: String(dispatchWeekTruckTotal), unit: "台", icon: Truck, tone: "ok" },
-      { label: "週の出荷合計 20k", value: dispatchWeekQty20k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
-      { label: "週の出荷合計 50k", value: dispatchWeekQty50k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
-      { label: "週の総計本数", value: (dispatchWeekQty20k + dispatchWeekQty50k).toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
+      { label: (dispatchWeekLabel || "週") + " 出荷台数", value: String(dispatchWeekTruckTotal), unit: "台", icon: Truck, tone: "ok" },
+      { label: (dispatchWeekLabel || "週") + " 20k", value: dispatchWeekQty20k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
+      { label: (dispatchWeekLabel || "週") + " 50k", value: dispatchWeekQty50k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
+      { label: (dispatchWeekLabel || "週") + " 総計", value: (dispatchWeekQty20k + dispatchWeekQty50k).toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
     ],
     yardcap: (() => {
       const y = live.yardCap;
