@@ -71,6 +71,9 @@ const REPLY = {
       // ★ 傭車（スポット）。空きでも台数に数えない
       { row: 25, company: '浅津運送 庸車便', truck: '10ｔ平 傭車1', cells: {} },
       { row: 26, company: '浅津運送 庸車便', truck: '10ｔ平 傭車2', cells: {} },
+      // ★ 実データにあった形：行き先が空で本数の列だけ入っている
+      { row: 19, company: '浅津運送 庸車便', truck: '10ｔ平 ⑤', cells: {
+        2: { kind: '', text: '', q20: 220, q50: null } } },
       { row: 18, company: '倉吉運送 自社便', truck: '10ｔ平 ②',
         cells: { 2: { kind: '出荷', text: '南港：底黒' } } },
       { row: 27, company: '', truck: '4ｔ平ﾜｲﾄﾞ ②', cells: { 2: { kind: '出荷', text: '70246→' } } },

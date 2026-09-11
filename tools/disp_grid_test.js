@@ -71,6 +71,9 @@ const REPLY = {
       // ★ 傭車（スポット）。空きでも台数に数えない
       { row: 25, company: '浅津運送 庸車便', truck: '10ｔ平 傭車1', cells: {} },
       { row: 26, company: '浅津運送 庸車便', truck: '10ｔ平 傭車2', cells: {} },
+      // ★ 実データにあった形：行き先が空で本数の列だけ入っている
+      { row: 19, company: '浅津運送 庸車便', truck: '10ｔ平 ⑤', cells: {
+        2: { kind: '', text: '', q20: 220, q50: null } } },
       { row: 18, company: '倉吉運送 自社便', truck: '10ｔ平 ②',
         cells: { 2: { kind: '出荷', text: '南港：底黒' } } },
       { row: 27, company: '', truck: '4ｔ平ﾜｲﾄﾞ ②', cells: { 2: { kind: '出荷', text: '70246→' } } },
@@ -165,8 +168,18 @@ const REPLY = {
   chk('出荷が先に並ぶ', rows && rows[0].t.indexOf('出荷') !== -1, rows && rows[0]);
   /* 種別は行ごとではなく、変わり目の見出しでまとめて出す（「出荷」が全行に
      並ぶと邪魔なため）。色だけに頼らないことは、見出しに文字があることで担保する。 */
-  const heads = rows ? rows.filter((r) => /^(出荷|引取|運休|お休み)\s*\|\s*\d+台$/.test(r.t.trim())) : [];
+  const heads = rows ? rows.filter((r) => /^(出荷|引取|本数のみ|運休|お休み)\s*\|\s*\d+台$/.test(r.t.trim())) : [];
   chk('種別の見出しが文字で出ている（色だけに頼らない）', heads.length >= 1, rows);
+  /* ★ 配車表には行き先が空で本数の列だけ入っている行がある。
+       空行として描かず、「本数のみ」としてまとめて、行き先の欄にもそう書く。 */
+  chk('★本数だけの行が一覧に出る', rows && rows.some((r) => /20k 220/.test(r.t)), rows);
+  chk('★行き先が空のときは空行にせずそう書く',
+    rows && rows.some((r) => /行き先の記入なし/.test(r.t)), rows);
+  chk('本数だけの行は「本数のみ」でまとめる',
+    rows && rows.some((r) => /^本数のみ\s*\|\s*\d+台$/.test(r.t.trim())), rows);
+  chk('本数だけの行を「出荷」に混ぜない',
+    rows && !/行き先の記入なし/.test(rows.slice(0, rows.findIndex((r) => /^本数のみ/.test(r.t.trim()))).join(' ')),
+    rows);
   chk('見出しは種別が変わるときだけ（出荷が全行に出ていない）',
     rows && rows.filter((r) => r.t.indexOf('出荷 |') === 0).length === 1, rows);
   chk('見出しの台数が中身と合っている', (() => {
@@ -174,7 +187,7 @@ const REPLY = {
     let ok = true, cur = null, n = 0;
     const flush = () => { if (cur != null && cur.n !== n) ok = false; };
     rows.forEach((r) => {
-      const m = r.t.trim().match(/^(出荷|引取|運休|お休み)\s*\|\s*(\d+)台$/);
+      const m = r.t.trim().match(/^(出荷|引取|本数のみ|運休|お休み)\s*\|\s*(\d+)台$/);
       if (m) { flush(); cur = { label: m[1], n: Number(m[2]) }; n = 0; } else { n += 1; }
     });
     flush();
@@ -204,7 +217,7 @@ const REPLY = {
     return el ? el.innerText.replace(/\n+/g, ' ') : null;
   });
   console.log('   ', JSON.stringify(idle));
-  /* モックのトラックは10台。週まるごと空なのは
+  /* モックのトラックは11台。週まるごと空なのは
      「4ｔ平ﾜｲﾄﾞ ③」（倉吉運送 自社便）、「4ｔ平標準 ③」（会社名なし）、
      「傭車1」「傭車2」（浅津運送 庸車便）の4台。
      ★ 空き台数に数えるのは自社便だけ。傭車も会社名なしも数えない → 1台。
@@ -216,9 +229,9 @@ const REPLY = {
   chk('★数えなかった内訳が出る（傭車2・社名なし1）',
     idle && /傭車2・社名なし1台は除く/.test(idle), idle);
   chk('自社便のみと書いてある', idle && /自社便のみ/.test(idle), idle);
-  chk('★会社名なしでも予定があれば数える（予定あり6）',
-    idle && /予定あり6/.test(idle), idle);
-  chk('全台数が出る（全10）', idle && /全10/.test(idle), idle);
+  chk('★会社名なしでも予定があれば数える（予定あり7）',
+    idle && /予定あり7/.test(idle), idle);
+  chk('全台数が出る（全11）', idle && /全11/.test(idle), idle);
 
   /* ---------- 金曜が2列（土着・月着）に分かれている日 ---------- */
   console.log('■ 金曜の2列を1日にまとめる');

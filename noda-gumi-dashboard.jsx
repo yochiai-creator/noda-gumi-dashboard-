@@ -1471,10 +1471,14 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
 const DGRID_KIND_BADGE = {
   "出荷": { label: "出荷", dot: "#0f2942", fg: "#0f172a" },
   "引取": { label: "引取", dot: "#7c3aed", fg: "#475569" },
+  /* ★ 配車表には、行き先が空のまま本数の列にだけ数字が入っている行がある
+       （実データで「10ｔ平 ② 浅津運送 庸車便 20k 220」を確認）。
+       行き先の行が空っぽで描かれてしまうので、種類として分けて扱う。 */
+  "": { label: "本数のみ", dot: "#94a3b8", fg: "#94a3b8" },
   "運休": { label: "運休", dot: "#cbd5e1", fg: "#94a3b8" },
   "休み": { label: "お休み", dot: "#cbd5e1", fg: "#94a3b8" },
 };
-const DGRID_KIND_ORDER = { "出荷": 0, "引取": 1, "運休": 2, "休み": 3 };
+const DGRID_KIND_ORDER = { "出荷": 0, "引取": 1, "": 2, "運休": 3, "休み": 4 };
 
 /* 傭車（スポットで頼む外部の車）。予定が入っていなくても「空いている自社の車」
    ではないので、空き台数には数えない。
@@ -1589,10 +1593,12 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
   // その日に何か入っているトラックだけを、出荷→引取→運休の順に並べる。
   // 分かれている列はまとめて出し、どちらの便かは着日で分かるようにする。
   const dayRows = [];
+  const hasSomething = (c) =>
+    !!c && (String(c.text).trim() !== "" || c.q20 || c.q50);
   curGroup.cols.forEach((d) => {
     g.trucks.forEach((t) => {
       const c = t.cells[d.col];
-      if (c && String(c.text).trim() !== "") dayRows.push({ t: t, c: c, d: d });
+      if (hasSomething(c)) dayRows.push({ t: t, c: c, d: d });
     });
   });
   dayRows.sort((a, b) => {
@@ -1602,7 +1608,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
   });
   // その日のどの列にも何も入っていないトラック
   const idleTrucks = g.trucks.filter((t) =>
-    !curGroup.cols.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; }));
+    !curGroup.cols.some((d) => hasSomething(t.cells[d.col])));
   const shipCount = dayRows.filter((r) => r.c.kind === "出荷").length;
   // 分かれている列の本数を足して、その日ぶんを1つにする
   const dayTotals = (() => {
@@ -1621,8 +1627,8 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
   })();
 
   /* その週にひとつも予定が無いトラック。31台ぜんぶ並べると縦に長すぎるので分ける。 */
-  const hasAnyPlan = (t) =>
-    g.days.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; });
+  // 行き先が空でも本数だけ入っている行があるので、同じ判定（hasSomething）を使う
+  const hasAnyPlan = (t) => g.days.some((d) => hasSomething(t.cells[d.col]));
   const weekBusy = g.trucks.filter(hasAnyPlan);
   const weekIdle = g.trucks.filter((t) => !hasAnyPlan(t));
   /* ★ 空き台数として数えるのは自社便だけ。表に出す行は今までどおり
@@ -1804,8 +1810,9 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                         )}
                       </span>
                       {/* 行き先。折り返さずに読めるよう1行目より大きく、幅いっぱいに出す */}
-                      <span className="block text-[15px] mt-0.5" style={{ color: b.fg, lineHeight: 1.35 }}>
-                        {r.c.text}
+                      <span className="block text-[15px] mt-0.5" style={{ lineHeight: 1.35,
+                        color: String(r.c.text).trim() === "" ? VIZ.muted : b.fg }}>
+                        {String(r.c.text).trim() === "" ? "（行き先の記入なし）" : r.c.text}
                       </span>
                     </button>
                   </React.Fragment>
