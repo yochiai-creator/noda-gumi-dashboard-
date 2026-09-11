@@ -459,3 +459,44 @@ function testDispatchGrid() {
   });
   return d;
 }
+
+// ===== 公開関数：アプリがどのファイルを読み書きしているかを確かめる =====
+// ★ 移行のときに「本物」と「バックアップ」の2つを作るので、どちらを触れば
+//   アプリに反映されるのかが外から見て分からなくなる（名前を付け替えると
+//   なおさら）。GASエディタからこれを実行してログのURLを開くこと。
+function 配車表のファイルを確認する() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty(DISP_GRID_CONFIG.PROP_SHEET_ID);
+  var backupId = props.getProperty(DISP_GRID_CONFIG.PROP_BACKUP_ID);
+  var url = function (x) { return x ? 'https://docs.google.com/spreadsheets/d/' + x + '/edit' : '(なし)'; };
+
+  Logger.log('■ アプリが読み書きしているファイル');
+  if (!id) {
+    Logger.log('  まだ移行していません。Excelを読んでいます（編集はできません）。');
+  } else {
+    try {
+      var ss = SpreadsheetApp.openById(id);
+      Logger.log('  名前: ' + ss.getName());
+      Logger.log('  URL : ' + url(id));
+      Logger.log('  ★ 直すならこのファイルです。');
+      var sheet = ss.getSheetByName(DISP_GRID_CONFIG.SHEET_NAME);
+      Logger.log('  シート「' + DISP_GRID_CONFIG.SHEET_NAME + '」: ' + (sheet ? 'あります' : '★ありません'));
+      if (sheet) {
+        var v = sheet.getDataRange().getValues();
+        var blocks = dgrid_findBlocks_(v);
+        var days = blocks.reduce(function (a, b) { return a + b.days.length; }, 0);
+        var withQty = 0;
+        blocks.forEach(function (b) {
+          b.days.forEach(function (d) { if (d.q20col != null) withQty++; });
+        });
+        Logger.log('  週ブロック' + blocks.length + '個 / 日付' + days + '日ぶん / '
+          + 'うち本数の列が見つかった日 ' + withQty + '日');
+      }
+    } catch (err) {
+      Logger.log('  ★開けませんでした: ' + err);
+    }
+  }
+  Logger.log('');
+  Logger.log('■ 移行時のバックアップ（触っても画面は変わりません）');
+  Logger.log('  URL : ' + url(backupId));
+}
