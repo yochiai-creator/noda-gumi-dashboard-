@@ -101,9 +101,13 @@ const REPLY = {
 
   /* ★ サイズ別在庫が9分類に戻っているか。50kg/20kgの2つだけになっていた。 */
   const sizes = await page.evaluate(() => {
-    const h = [...document.querySelectorAll('h2')].find((x) => x.textContent.indexOf('サイズ別 在庫本数') !== -1);
-    if (!h) return null;
-    const grid = h.parentElement.parentElement.querySelector('.grid');
+    /* ★ 見出しは畳めるようになって h2 ではなく button になった。
+         「たたむ ▲」を含むボタンを探して、そのすぐ下の中身を見る。 */
+    const btn = [...document.querySelectorAll('button')]
+      .find((x) => x.innerText.indexOf('サイズ別 在庫本数') !== -1);
+    if (!btn) return null;
+    const body = btn.nextElementSibling;
+    const grid = body && body.querySelector('.grid');
     return grid ? [...grid.children].map((c) => c.innerText.replace(/\n+/g, ' ')) : null;
   });
   console.log('   サイズ別:', JSON.stringify(sizes));
@@ -118,6 +122,16 @@ const REPLY = {
     return /createElement\(ErrorBoundary/.test(s) || /ErrorBoundary/.test(s);
   });
   chk('ErrorBoundaryで包んである', guarded, guarded);
+
+  /* ★ 見出しをタップして畳めること（ヤードタブも同じ作りにした） */
+  const before = await page.evaluate(() => document.body.scrollHeight);
+  await page.locator('button', { hasText: 'サイズ別 在庫本数' }).first().click();
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => document.body.scrollHeight);
+  chk('★サイズ別在庫を畳める', after < before, { before: before, after: after });
+  await page.locator('button', { hasText: 'サイズ別 在庫本数' }).first().click();
+  await page.waitForTimeout(400);
+  chk('もう一度押すと戻る', (await page.evaluate(() => document.body.scrollHeight)) === before, before);
 
   await page.screenshot({ path: SP + '/yard_kpi.png', fullPage: false });
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');

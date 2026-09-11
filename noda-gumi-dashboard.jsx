@@ -159,6 +159,32 @@ function Card({ children, className = "", style }) {
   );
 }
 
+/* 見出しをタップして中身を畳めるようにする共通の枠。
+   ★ 中身は外さずに隠す。外すと中の状態（選んでいた日・開いていた表など）が
+     消えて、開き直したときに初期状態に戻ってしまう。
+   ★ 畳んでいる間も closedNote を出す。何も見えなくなると畳んだ意味が無い。 */
+function Collapsible({ title, note, closedNote, tone, defaultOpen, children }) {
+  const [open, setOpen] = useState(defaultOpen !== false);
+  const isCard = tone === "card";
+  return (
+    <div>
+      <button onClick={() => setOpen(!open)}
+        className={`w-full text-left flex items-baseline gap-2 ${isCard ? "mb-2" : "mb-3"}`}
+        style={{ background: "none", border: "none", padding: 0 }}>
+        <span className={`text-sm font-bold shrink-0 ${isCard ? "" : "tracking-wide"}`}
+          style={{ color: isCard ? NAVY : "#1e293b" }}>{title}</span>
+        <span className={`${isCard ? "text-[10px]" : "text-xs"} text-slate-400 truncate`}>
+          {open ? note : (closedNote || note)}
+        </span>
+        <span className="text-[11px] ml-auto shrink-0" style={{ color: NAVY }}>
+          {open ? "たたむ ▲" : "ひらく ▼"}
+        </span>
+      </button>
+      <div style={{ display: open ? undefined : "none" }}>{children}</div>
+    </div>
+  );
+}
+
 function SectionTitle({ children, note }) {
   return (
     <div className="flex items-baseline justify-between mb-3">
@@ -170,9 +196,8 @@ function SectionTitle({ children, note }) {
 
 /* ---------- タブ本体 ---------- */
 function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
-  /* ★ 中身が縦に長いので、見出しをタップして畳めるようにする。
-       畳んでも週と台数だけは見えるようにしておく（畳んだ意味が無くなるため）。 */
-  const [open, setOpen] = useState(true);
+  /* 畳んだときに見出しの横に出す内容（週と出荷台数）。
+     何も見えなくなると畳んだ意味が無い。 */
   const closedNote = (() => {
     if (!grid || !grid.days || grid.days.length === 0) return "";
     const trucks = grid.trucks || [];
@@ -188,22 +213,11 @@ function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
     <div className="space-y-6">
       {/* ---- 配車表（トラック×日付）。細かく見て、その場で直せる ---- */}
       <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <button onClick={() => setOpen(!open)}
-          className="w-full text-left flex items-baseline gap-2 mb-2"
-          style={{ background: "none", border: "none", padding: 0 }}>
-          <span className="text-sm font-bold" style={{ color: NAVY }}>トラック運行スケジュール</span>
-          <span className="text-[10px] text-slate-400">
-            {open ? (grid && grid.source ? "出所：" + grid.source : "") : closedNote}
-          </span>
-          <span className="text-[11px] ml-auto shrink-0" style={{ color: NAVY }}>
-            {open ? "たたむ ▲" : "ひらく ▼"}
-          </span>
-        </button>
-        {/* ★ 畳むときに外してしまうと、選んでいた日や「週」表示が消えて
-               開き直したとき今日に戻る。中身は残したまま隠す。 */}
-        <div style={{ display: open ? undefined : "none" }}>
+        <Collapsible tone="card" title="トラック運行スケジュール"
+          note={grid && grid.source ? "出所：" + grid.source : ""}
+          closedNote={closedNote}>
           <DispatchGrid grid={grid} onSave={onSaveCell} onWeek={onWeek} saving={saving} />
-        </div>
+        </Collapsible>
       </div>
 
       {/* ★ ここにあった「日ごとの内訳」は削除した。
@@ -221,8 +235,8 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
   const planLpTotal = planBySize.reduce((sum, s) => sum + s.count, 0);
   return (
     <div className="space-y-6">
-      <div>
-        <SectionTitle note="共有ドライブ・日次自動取得">受注出荷計画表 概要</SectionTitle>
+      <Collapsible title="受注出荷計画表 概要" note="共有ドライブ・日次自動取得"
+        closedNote={"LP容器 " + planLpTotal.toLocaleString() + " 本"}>
         <Card className="p-4 mb-3" style={{ background: NAVY }}>
           <div className="text-xs text-slate-300 mb-1">LP容器 合計本数</div>
           <div className="flex items-baseline gap-1">
@@ -256,10 +270,10 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
             ))}
           </div>
         </Card>
-      </div>
+      </Collapsible>
 
-      <div>
-        <SectionTitle note={`${monthLabel}分フォルダ・GAS実データ`}>出荷作業指図書 最新</SectionTitle>
+      <Collapsible title="出荷作業指図書 最新" note={`${monthLabel}分フォルダ・GAS実データ`}
+        closedNote={orders.length + " 件"}>
         <Card className="overflow-hidden">
           <div className="divide-y divide-slate-100">
             {orders.map((o, i) => (
@@ -275,7 +289,7 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
             ))}
           </div>
         </Card>
-      </div>
+      </Collapsible>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[
@@ -947,12 +961,12 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, byS
   const maxYear = Math.max(1, ...byYear.map((y) => y.count || 0));
   return (
     <div className="space-y-6">
-      <div>
-        <SectionTitle note="入込場マップ（実配置）">構内レイアウト</SectionTitle>
+      <Collapsible title="構内レイアウト" note="入込場マップ（実配置）"
+        closedNote={"50k・20k 入込場"}>
         <YardMap yardLive={yardLive} onRefresh={onRefresh} />
-      </div>
-      <div>
-        <SectionTitle note="在庫照会">サイズ別 在庫本数</SectionTitle>
+      </Collapsible>
+      <Collapsible title="サイズ別 在庫本数" note="在庫照会"
+        closedNote={"合計 " + invTotal.toLocaleString() + " 本"}>
         {/* ★ 在庫照会CSVの「分類」列から出した9分類の内訳。
                2K/5K/8K/10K/20K(三部軽量)/20K(直付)/30K/50K(軽量型)/50K(S)。
                取れないときだけ 50kg/20kg の2つに落とす。 */}
@@ -976,11 +990,11 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, byS
             </div>
           </Card>
         </div>
-      </div>
+      </Collapsible>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <div>
-          <SectionTitle note="全在庫 実データ">製造年の内訳</SectionTitle>
+        <Collapsible title="製造年の内訳" note="全在庫 実データ"
+          closedNote={byYear.length + " 年分"}>
           <Card className="p-4 space-y-3">
             {byYear.map((y, i) => (
               <div key={i}>
@@ -995,7 +1009,7 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, byS
             ))}
             <p className="text-[11px] text-slate-400 pt-1">最古の刻印月：{oldest}（古いロットの滞留チェック用）</p>
           </Card>
-        </div>
+        </Collapsible>
       </div>
 
       <p className="text-[11px] text-slate-400">※ GAS環境で開くと在庫照会の最新データに自動更新されます（5分ごと）。</p>
@@ -2044,18 +2058,30 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
   const [showTable, setShowTable] = useState(false);
   const inv = invTrend, act = shipActuals, mc = monthly;
 
-  const Card = ({ title, note, children, extra }) => (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 mb-3">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="text-sm font-bold" style={{ color: NAVY }}>{title}</div>
-          {note && <div className="text-[10px] text-slate-400 mt-0.5">{note}</div>}
+  /* ★ グラフは縦に長いので、見出しをタップして畳めるようにする。
+       中身は外さずに隠す（外すと開き直したときタップした月などが消える）。 */
+  const Card = ({ title, note, children, extra, closedNote }) => {
+    const [open, setOpen] = useState(true);
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white p-3 mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <button onClick={() => setOpen(!open)}
+            className="text-left flex items-baseline gap-2 min-w-0 flex-1"
+            style={{ background: "none", border: "none", padding: 0 }}>
+            <span className="text-sm font-bold shrink-0" style={{ color: NAVY }}>{title}</span>
+            <span className="text-[10px] text-slate-400 truncate">
+              {open ? note : (closedNote || note)}
+            </span>
+            <span className="text-[11px] ml-auto shrink-0 mr-2" style={{ color: NAVY }}>
+              {open ? "たたむ ▲" : "ひらく ▼"}
+            </span>
+          </button>
+          {open ? extra : null}
         </div>
-        {extra}
+        <div style={{ display: open ? undefined : "none" }}>{children}</div>
       </div>
-      {children}
-    </div>
-  );
+    );
+  };
 
   const mcMonths = mc && mc.months ? mc.months : null;
 
@@ -2314,10 +2340,15 @@ function YardCapacityTab({ summary, url, onRefresh }) {
       {src ? (
         /* ★ 画面が狭いと入れ子のスクロールがつらいので、高さは広めに取って
               外側のページを送ってもらう。全画面で使いたいときは上の
-              「別画面で開く」を押す。 */
-        <Card className="p-0" style={{ overflow: "hidden" }}>
-          <iframe src={src} title="野外置場 在庫管理"
-            style={{ display: "block", width: "100%", height: "78vh", minHeight: 480, border: "none" }} />
+              「別画面で開く」を押す。長いので畳めるようにしてある。 */
+        <Card className="p-3">
+          <Collapsible title="置場の一覧・敷地レイアウト" note="この下に読み込みます"
+            closedNote={summary ? "36か所ぶん" : ""}>
+            <div style={{ overflow: "hidden", borderRadius: 8 }}>
+              <iframe src={src} title="野外置場 在庫管理"
+                style={{ display: "block", width: "100%", height: "78vh", minHeight: 480, border: "none" }} />
+            </div>
+          </Collapsible>
         </Card>
       ) : (
         <Card className="p-4">

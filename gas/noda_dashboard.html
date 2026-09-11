@@ -94,6 +94,7 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .font-normal{font-weight:400}
 .gap-x-2{column-gap:.5rem}
 .mr-1{margin-right:.25rem}
+.mr-2{margin-right:.5rem}
 </style>
 <script>
 /**
@@ -886,6 +887,47 @@ function Card({
     style: style
   }, children);
 }
+
+/* 見出しをタップして中身を畳めるようにする共通の枠。
+   ★ 中身は外さずに隠す。外すと中の状態（選んでいた日・開いていた表など）が
+     消えて、開き直したときに初期状態に戻ってしまう。
+   ★ 畳んでいる間も closedNote を出す。何も見えなくなると畳んだ意味が無い。 */
+function Collapsible({
+  title,
+  note,
+  closedNote,
+  tone,
+  defaultOpen,
+  children
+}) {
+  const [open, setOpen] = useState(defaultOpen !== false);
+  const isCard = tone === "card";
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setOpen(!open),
+    className: `w-full text-left flex items-baseline gap-2 ${isCard ? "mb-2" : "mb-3"}`,
+    style: {
+      background: "none",
+      border: "none",
+      padding: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: `text-sm font-bold shrink-0 ${isCard ? "" : "tracking-wide"}`,
+    style: {
+      color: isCard ? NAVY : "#1e293b"
+    }
+  }, title), /*#__PURE__*/React.createElement("span", {
+    className: `${isCard ? "text-[10px]" : "text-xs"} text-slate-400 truncate`
+  }, open ? note : closedNote || note), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] ml-auto shrink-0",
+    style: {
+      color: NAVY
+    }
+  }, open ? "たたむ ▲" : "ひらく ▼")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: open ? undefined : "none"
+    }
+  }, children));
+}
 function SectionTitle({
   children,
   note
@@ -906,9 +948,8 @@ function DispatchTab({
   onWeek,
   saving
 }) {
-  /* ★ 中身が縦に長いので、見出しをタップして畳めるようにする。
-       畳んでも週と台数だけは見えるようにしておく（畳んだ意味が無くなるため）。 */
-  const [open, setOpen] = useState(true);
+  /* 畳んだときに見出しの横に出す内容（週と出荷台数）。
+     何も見えなくなると畳んだ意味が無い。 */
   const closedNote = (() => {
     if (!grid || !grid.days || grid.days.length === 0) return "";
     const trucks = grid.trucks || [];
@@ -923,30 +964,11 @@ function DispatchTab({
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", {
     className: "rounded-lg border border-slate-200 bg-white p-3"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setOpen(!open),
-    className: "w-full text-left flex items-baseline gap-2 mb-2",
-    style: {
-      background: "none",
-      border: "none",
-      padding: 0
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm font-bold",
-    style: {
-      color: NAVY
-    }
-  }, "\u30C8\u30E9\u30C3\u30AF\u904B\u884C\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400"
-  }, open ? grid && grid.source ? "出所：" + grid.source : "" : closedNote), /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] ml-auto shrink-0",
-    style: {
-      color: NAVY
-    }
-  }, open ? "たたむ ▲" : "ひらく ▼")), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: open ? undefined : "none"
-    }
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    tone: "card",
+    title: "\u30C8\u30E9\u30C3\u30AF\u904B\u884C\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB",
+    note: grid && grid.source ? "出所：" + grid.source : "",
+    closedNote: closedNote
   }, /*#__PURE__*/React.createElement(DispatchGrid, {
     grid: grid,
     onSave: onSaveCell,
@@ -965,9 +987,11 @@ function OrdersTab({
   const planLpTotal = planBySize.reduce((sum, s) => sum + s.count, 0);
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "\u5171\u6709\u30C9\u30E9\u30A4\u30D6\u30FB\u65E5\u6B21\u81EA\u52D5\u53D6\u5F97"
-  }, "\u53D7\u6CE8\u51FA\u8377\u8A08\u753B\u8868 \u6982\u8981"), /*#__PURE__*/React.createElement(Card, {
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    title: "\u53D7\u6CE8\u51FA\u8377\u8A08\u753B\u8868 \u6982\u8981",
+    note: "\u5171\u6709\u30C9\u30E9\u30A4\u30D6\u30FB\u65E5\u6B21\u81EA\u52D5\u53D6\u5F97",
+    closedNote: "LP容器 " + planLpTotal.toLocaleString() + " 本"
+  }, /*#__PURE__*/React.createElement(Card, {
     className: "p-4 mb-3",
     style: {
       background: NAVY
@@ -1012,9 +1036,11 @@ function OrdersTab({
     className: "text-xs text-slate-500 truncate"
   }, "\u4F9D\u983CNo. ", o.orderNo, " \u30FB ", o.dest)), /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-bold tabular-nums text-slate-700 shrink-0"
-  }, o.qty)))))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: `${monthLabel}分フォルダ・GAS実データ`
-  }, "\u51FA\u8377\u4F5C\u696D\u6307\u56F3\u66F8 \u6700\u65B0"), /*#__PURE__*/React.createElement(Card, {
+  }, o.qty)))))), /*#__PURE__*/React.createElement(Collapsible, {
+    title: "\u51FA\u8377\u4F5C\u696D\u6307\u56F3\u66F8 \u6700\u65B0",
+    note: `${monthLabel}分フォルダ・GAS実データ`,
+    closedNote: orders.length + " 件"
+  }, /*#__PURE__*/React.createElement(Card, {
     className: "overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "divide-y divide-slate-100"
@@ -3234,14 +3260,18 @@ function YardTab({
   const maxYear = Math.max(1, ...byYear.map(y => y.count || 0));
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "\u5165\u8FBC\u5834\u30DE\u30C3\u30D7\uFF08\u5B9F\u914D\u7F6E\uFF09"
-  }, "\u69CB\u5185\u30EC\u30A4\u30A2\u30A6\u30C8"), /*#__PURE__*/React.createElement(YardMap, {
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    title: "\u69CB\u5185\u30EC\u30A4\u30A2\u30A6\u30C8",
+    note: "\u5165\u8FBC\u5834\u30DE\u30C3\u30D7\uFF08\u5B9F\u914D\u7F6E\uFF09",
+    closedNote: "50k・20k 入込場"
+  }, /*#__PURE__*/React.createElement(YardMap, {
     yardLive: yardLive,
     onRefresh: onRefresh
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "\u5728\u5EAB\u7167\u4F1A"
-  }, "\u30B5\u30A4\u30BA\u5225 \u5728\u5EAB\u672C\u6570"), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement(Collapsible, {
+    title: "\u30B5\u30A4\u30BA\u5225 \u5728\u5EAB\u672C\u6570",
+    note: "\u5728\u5EAB\u7167\u4F1A",
+    closedNote: "合計 " + invTotal.toLocaleString() + " 本"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-3 sm:grid-cols-4 gap-2"
   }, (bySize && bySize.length > 0 ? bySize : inventory).map((s, i) => /*#__PURE__*/React.createElement(Card, {
     key: s.size || s.label || i,
@@ -3269,9 +3299,11 @@ function YardTab({
     className: "text-[10px] text-slate-400"
   }, "\u672C"))))), /*#__PURE__*/React.createElement("div", {
     className: "grid grid-cols-1 sm:grid-cols-2 gap-6"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: "\u5168\u5728\u5EAB \u5B9F\u30C7\u30FC\u30BF"
-  }, "\u88FD\u9020\u5E74\u306E\u5185\u8A33"), /*#__PURE__*/React.createElement(Card, {
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    title: "\u88FD\u9020\u5E74\u306E\u5185\u8A33",
+    note: "\u5168\u5728\u5EAB \u5B9F\u30C7\u30FC\u30BF",
+    closedNote: byYear.length + " 年分"
+  }, /*#__PURE__*/React.createElement(Card, {
     className: "p-4 space-y-3"
   }, byYear.map((y, i) => /*#__PURE__*/React.createElement("div", {
     key: i
@@ -4680,23 +4712,47 @@ function ActualsTab({
   const inv = invTrend,
     act = shipActuals,
     mc = monthly;
+
+  /* ★ グラフは縦に長いので、見出しをタップして畳めるようにする。
+       中身は外さずに隠す（外すと開き直したときタップした月などが消える）。 */
   const Card = ({
     title,
     note,
     children,
-    extra
-  }) => /*#__PURE__*/React.createElement("div", {
-    className: "rounded-lg border border-slate-200 bg-white p-3 mb-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-2"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "text-sm font-bold",
-    style: {
-      color: NAVY
-    }
-  }, title), note && /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 mt-0.5"
-  }, note)), extra), children);
+    extra,
+    closedNote
+  }) => {
+    const [open, setOpen] = useState(true);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "rounded-lg border border-slate-200 bg-white p-3 mb-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between mb-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setOpen(!open),
+      className: "text-left flex items-baseline gap-2 min-w-0 flex-1",
+      style: {
+        background: "none",
+        border: "none",
+        padding: 0
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-sm font-bold shrink-0",
+      style: {
+        color: NAVY
+      }
+    }, title), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] text-slate-400 truncate"
+    }, open ? note : closedNote || note), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] ml-auto shrink-0 mr-2",
+      style: {
+        color: NAVY
+      }
+    }, open ? "たたむ ▲" : "ひらく ▼")), open ? extra : null), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: open ? undefined : "none"
+      }
+    }, children));
+  };
   const mcMonths = mc && mc.months ? mc.months : null;
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
     title: "\u5728\u5EAB\u30FB\u51FA\u8377\u30FB\u53D7\u6CE8",
@@ -4911,11 +4967,17 @@ function YardCapacityTab({
   /*#__PURE__*/
   /* ★ 画面が狭いと入れ子のスクロールがつらいので、高さは広めに取って
         外側のページを送ってもらう。全画面で使いたいときは上の
-        「別画面で開く」を押す。 */
+        「別画面で開く」を押す。長いので畳めるようにしてある。 */
   React.createElement(Card, {
-    className: "p-0",
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    title: "\u7F6E\u5834\u306E\u4E00\u89A7\u30FB\u6577\u5730\u30EC\u30A4\u30A2\u30A6\u30C8",
+    note: "\u3053\u306E\u4E0B\u306B\u8AAD\u307F\u8FBC\u307F\u307E\u3059",
+    closedNote: summary ? "36か所ぶん" : ""
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
-      overflow: "hidden"
+      overflow: "hidden",
+      borderRadius: 8
     }
   }, /*#__PURE__*/React.createElement("iframe", {
     src: src,
@@ -4927,7 +4989,7 @@ function YardCapacityTab({
       minHeight: 480,
       border: "none"
     }
-  })) : /*#__PURE__*/React.createElement(Card, {
+  })))) : /*#__PURE__*/React.createElement(Card, {
     className: "p-4"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-500"
