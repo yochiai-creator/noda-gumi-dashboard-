@@ -1485,6 +1485,14 @@ const DGRID_SPOT_RE = /傭車|庸車|用車|スポット/;
 function dgridIsSpot(truck) {
   return DGRID_SPOT_RE.test(String((truck && truck.company) || ""));
 }
+/* 空き台数として数えるのは、運送会社が書かれている自社便だけ。
+   ★ 傭車はスポットなので数えない。会社名が入っていない行も数えない
+     （配車表の枠だけ用意してあるもの）。
+   ★ 数えないだけで、行き先などが入っていれば今までどおり表示して
+     「予定あり」にも数える。 */
+function dgridCountsAsOwn(truck) {
+  return !dgridIsSpot(truck) && String((truck && truck.company) || "").trim() !== "";
+}
 
 /* その便の本数。0本は書かない（20kだけの便が「20k 50・50k 0」になると
    読みづらい）。両方無ければ空の配列を返す。 */
@@ -1617,11 +1625,16 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
     g.days.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; });
   const weekBusy = g.trucks.filter(hasAnyPlan);
   const weekIdle = g.trucks.filter((t) => !hasAnyPlan(t));
-  /* ★ 空き台数として数えるのは自社の車だけ。傭車はスポットで頼むものなので、
-       予定が入っていなくても「空いている」わけではない。
-       表に出す行は今までどおり傭車も含める（配車表にある行なので）。 */
-  const weekIdleOwn = weekIdle.filter((t) => !dgridIsSpot(t));
-  const weekIdleSpot = weekIdle.length - weekIdleOwn.length;
+  /* ★ 空き台数として数えるのは自社便だけ。表に出す行は今までどおり
+       傭車も会社名なしも含める（配車表にある行なので）。 */
+  const weekIdleOwn = weekIdle.filter(dgridCountsAsOwn);
+  const weekIdleSpot = weekIdle.filter(dgridIsSpot).length;
+  const weekIdleNoCompany = weekIdle.length - weekIdleOwn.length - weekIdleSpot;
+  // 文言が長いと欄が2行に折り返して縦に伸びるので、短く詰める
+  const weekIdleSkipped = [
+    weekIdleSpot > 0 ? "傭車" + weekIdleSpot : null,
+    weekIdleNoCompany > 0 ? "社名なし" + weekIdleNoCompany : null,
+  ].filter(Boolean).join("・");
   const weekRows = showIdle ? g.trucks : weekBusy;
 
   const openEdit = (t, col, header) => {
@@ -1674,8 +1687,8 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
         </span>
         <span className="text-[10px]" style={{ color: VIZ.muted }}>台</span>
         <span className="text-[10px]" style={{ color: VIZ.muted }}>
-          （予定あり {weekBusy.length}台 ／ 全{g.trucks.length}台
-          {weekIdleSpot > 0 ? "・傭車" + weekIdleSpot + "台は数えず" : ""}）
+          自社便のみ（予定あり{weekBusy.length}／全{g.trucks.length}
+          {weekIdleSkipped ? "／" + weekIdleSkipped + "台は除く" : ""}）
         </span>
         {/* 週の表では、この欄から空きトラックの行を出し入れする
             （同じことを別のボタンでも言わない） */}
