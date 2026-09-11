@@ -491,6 +491,34 @@ function 配車表のファイルを確認する() {
         });
         Logger.log('  週ブロック' + blocks.length + '個 / 日付' + days + '日ぶん / '
           + 'うち本数の列が見つかった日 ' + withQty + '日');
+
+        // ★ 今の週の列の並びをそのまま出す。「土着」「土積」のように1日が
+        //   2列に分かれている場合、どう書かれているかが分からないと
+        //   1つにまとめる処理が書けない。
+        var todayStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+        var bi = -1;
+        for (var i2 = 0; i2 < blocks.length; i2++) {
+          var ds = blocks[i2].days;
+          if (ds[0].date <= todayStr && todayStr <= ds[ds.length - 1].date) { bi = i2; break; }
+        }
+        if (bi < 0) bi = blocks.length - 1;
+        var blk = blocks[bi];
+        Logger.log('');
+        Logger.log('■ 今の週（' + blk.days[0].label + '〜' + blk.days[blk.days.length - 1].label + '）の列');
+        var hdr = v[DISP_GRID_CONFIG.ROW_HEADER] || [];
+        var sub2 = v[DISP_GRID_CONFIG.ROW_SUB] || [];
+        for (var c2 = blk.base; c2 < blk.base + DISP_GRID_CONFIG.BLOCK_WIDTH; c2++) {
+          var h2 = String(hdr[c2] == null ? '' : hdr[c2]).replace(/\n/g, ' ⏎ ').trim();
+          var s2 = String(sub2[c2] == null ? '' : sub2[c2]).trim();
+          if (!h2 && !s2) continue;
+          var role = '';
+          for (var d2 = 0; d2 < blk.days.length; d2++) {
+            if (blk.days[d2].col === c2) role = '←行き先の列(' + blk.days[d2].label + ')';
+            else if (blk.days[d2].q20col === c2) role = '←20kの本数(' + blk.days[d2].label + ')';
+            else if (blk.days[d2].q50col === c2) role = '←50kの本数(' + blk.days[d2].label + ')';
+          }
+          Logger.log('  列' + (c2 - blk.base) + ' 行1[' + s2 + '] 行2[' + h2 + '] ' + role);
+        }
       }
     } catch (err) {
       Logger.log('  ★開けませんでした: ' + err);
