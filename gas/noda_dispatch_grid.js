@@ -235,7 +235,9 @@ function dgrid_readTrucks_(values, block) {
   var company = '';
   for (var r = C.ROW_TRUCK_FIRST; r <= C.ROW_TRUCK_LAST; r++) {
     var row = values[r] || [];
-    var co = String(row[block.companyCol] || '').trim();
+    // ★ 会社名は「浅津運送⏎庸車便」のように改行が入っている。そのまま渡すと
+    //   画面での折り返しが読めなくなるので、空白1つに正規化する。
+    var co = String(row[block.companyCol] || '').replace(/\s*\n\s*/g, ' ').trim();
     // 運送会社はグループの先頭行にだけ入っていて、以降の行に適用される
     if (co) company = co;
     var name = String(row[block.truckCol] || '').replace(/\n/g, ' ').trim();
