@@ -1480,6 +1480,17 @@ const DGRID_KIND_BADGE = {
 };
 const DGRID_KIND_ORDER = { "出荷": 0, "引取": 1, "": 2, "運休": 3, "休み": 4 };
 
+/* 行き先の欄に地名ではなく依頼ナンバーが書かれていることがある。
+   例: 「↓60688」「10428→」「30412,30458→ 30413」「←70253, 70255,70256」
+   矢印は向き（←＝引取・→＝出荷）で、数字が依頼No。
+   ★ 地名と見分けが付かないので、画面では「依頼No」と添える。
+     種類の判定（引取／出荷）は今までどおり矢印で決めるので台数は変わらない。 */
+function dgridIsOrderNoOnly(text) {
+  const t = String(text || "").trim();
+  if (t === "" || !/\d{4,5}/.test(t)) return false;
+  return /^[\s0-9,，、.()（）\-ー–—→←↓↑]+$/.test(t);
+}
+
 /* 傭車（スポットで頼む外部の車）。予定が入っていなくても「空いている自社の車」
    ではないので、空き台数には数えない。
    ★ 配車表では表記が揺れる可能性があるので、傭車・庸車・用車・スポットの
@@ -1812,6 +1823,9 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                       {/* 行き先。折り返さずに読めるよう1行目より大きく、幅いっぱいに出す */}
                       <span className="block text-[15px] mt-0.5" style={{ lineHeight: 1.35,
                         color: String(r.c.text).trim() === "" ? VIZ.muted : b.fg }}>
+                        {dgridIsOrderNoOnly(r.c.text) && (
+                          <span className="text-[11px] mr-1" style={{ color: VIZ.muted }}>依頼No</span>
+                        )}
                         {String(r.c.text).trim() === "" ? "（行き先の記入なし）" : r.c.text}
                       </span>
                     </button>

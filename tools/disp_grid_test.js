@@ -55,11 +55,14 @@ const REPLY = {
       // ★ 金曜の2列（6=土着 / 7=月着）にも予定を入れて、まとまるかを見る
       { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: {
         3: { kind: '出荷', text: '岐阜県可児市', q20: 100, q50: null },
+        5: { kind: '引取', text: '←70253, 70255,70256', q20: null, q50: null },
         7: { kind: '出荷', text: '北海道苫小牧市', q20: null, q50: 60 } } },
       { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
         cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30 },
                  3: { kind: '引取', text: '←60665', q20: 0, q50: 20 },
                  4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 },
+                 // ★ 実データにあった形：行き先の欄が依頼ナンバー
+                 5: { kind: '出荷', text: '30412,30458→ 30413', q20: null, q50: null },
                  6: { kind: '出荷', text: '鳥取県米子市', q20: 180, q50: 30 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
         cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
@@ -173,6 +176,22 @@ const REPLY = {
   /* ★ 配車表には行き先が空で本数の列だけ入っている行がある。
        空行として描かず、「本数のみ」としてまとめて、行き先の欄にもそう書く。 */
   chk('★本数だけの行が一覧に出る', rows && rows.some((r) => /20k 220/.test(r.t)), rows);
+  /* ★ 行き先の欄に依頼ナンバーが書かれていることがある（実データで確認）。
+       地名と見分けが付かないので「依頼No」と添える。 */
+  await page.locator('button', { hasText: /^9\/10/ }).first().click();
+  await page.waitForTimeout(500);
+  const ono = await page.evaluate(() => {
+    const list = document.querySelector('.divide-y.divide-slate-100');
+    return list ? [...list.children].map((b) => b.innerText.replace(/\n/g, ' | ')) : null;
+  });
+  console.log('   9/10の行:', JSON.stringify(ono));
+  chk('★依頼ナンバーの行に「依頼No」と添える',
+    ono && ono.some((t2) => /依頼No\s*30412,30458→ 30413/.test(t2)), ono);
+  chk('地名には「依頼No」を付けない',
+    ono && !ono.some((t2) => /依頼No[^|]*県/.test(t2)), ono);
+  await page.locator('button', { hasText: /^9\/7/ }).first().click();
+  await page.waitForTimeout(500);
+
   chk('★行き先が空のときは空行にせずそう書く',
     rows && rows.some((r) => /行き先の記入なし/.test(r.t)), rows);
   chk('本数だけの行は「本数のみ」でまとめる',
@@ -282,13 +301,14 @@ const REPLY = {
   /* モックの合計行: 9/7 = 20k235/50k292、9/8 = 20k100/50k150、9/11 = 20k180/50k90。
      残りの日は未設定（null）。
      出荷のマス: 9/7 は 野村・福安・②・ワイド の4件、9/8 は 佐伯 の1件、
-     9/9 は 野村 の1件、9/11 は 土着の野村・月着の佐伯 の2件
-     （引取・運休・お休みは数えない）。金曜の2列ぶんも足す。 */
+     9/9 は 野村 の1件、9/10 は 野村（依頼No）の1件、
+     9/11 は 土着の野村・月着の佐伯 の2件
+     （引取・運休・お休み・本数のみは数えない）。金曜の2列ぶんも足す。 */
   chk('★KPIの20kが表の合計と一致する（235+100+180=515）', kpiWeek.k20 === 515, kpiWeek);
   chk('★KPIの50kが表の合計と一致する（292+150+90=532）', kpiWeek.k50 === 532, kpiWeek);
   chk('KPIの総計が20k+50k（1,047）', kpiWeek.総計 === 1047, kpiWeek);
   chk('未設定の日を0として足している', kpiWeek.k20 === 515 && kpiWeek.k50 === 532, kpiWeek);
-  chk('KPIの台数が出荷のマスの数（4+1+1+2=8。金曜の2列ぶんも足す）', kpiWeek.台数 === 8, kpiWeek);
+  chk('KPIの台数が出荷のマスの数（4+1+1+1+2=9。金曜の2列ぶんも足す）', kpiWeek.台数 === 9, kpiWeek);
   chk('KPIにどの週かが書いてある', kpiWeek.cards.some((t) => t.indexOf('9/7〜9/11') !== -1), kpiWeek.cards);
 
   /* ---------- 「週」表示 ---------- */
