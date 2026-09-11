@@ -1476,6 +1476,16 @@ const DGRID_KIND_BADGE = {
 };
 const DGRID_KIND_ORDER = { "出荷": 0, "引取": 1, "運休": 2, "休み": 3 };
 
+/* 傭車（スポットで頼む外部の車）。予定が入っていなくても「空いている自社の車」
+   ではないので、空き台数には数えない。
+   ★ 配車表では表記が揺れる可能性があるので、傭車・庸車・用車・スポットの
+     どれでも拾う。会社名の実際の書かれ方は
+     noda_dispatch_grid.gs の 配車表のファイルを確認する() のログで見られる。 */
+const DGRID_SPOT_RE = /傭車|庸車|用車|スポット/;
+function dgridIsSpot(truck) {
+  return DGRID_SPOT_RE.test(String((truck && truck.company) || ""));
+}
+
 /* その便の本数。0本は書かない（20kだけの便が「20k 50・50k 0」になると
    読みづらい）。両方無ければ空の配列を返す。 */
 function dgridQtyParts(c) {
@@ -1603,10 +1613,15 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
   })();
 
   /* その週にひとつも予定が無いトラック。31台ぜんぶ並べると縦に長すぎるので分ける。 */
-  const weekBusy = g.trucks.filter((t) =>
-    g.days.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; }));
-  const weekIdle = g.trucks.filter((t) =>
-    !g.days.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; }));
+  const hasAnyPlan = (t) =>
+    g.days.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; });
+  const weekBusy = g.trucks.filter(hasAnyPlan);
+  const weekIdle = g.trucks.filter((t) => !hasAnyPlan(t));
+  /* ★ 空き台数として数えるのは自社の車だけ。傭車はスポットで頼むものなので、
+       予定が入っていなくても「空いている」わけではない。
+       表に出す行は今までどおり傭車も含める（配車表にある行なので）。 */
+  const weekIdleOwn = weekIdle.filter((t) => !dgridIsSpot(t));
+  const weekIdleSpot = weekIdle.length - weekIdleOwn.length;
   const weekRows = showIdle ? g.trucks : weekBusy;
 
   const openEdit = (t, col, header) => {
@@ -1654,12 +1669,13 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
              日・週どちらの表示でも同じ数字を出す（週ぜんぶで見た空き）。 */}
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-2 px-2 py-1.5 rounded-md bg-slate-50">
         <span className="text-[11px]" style={{ color: VIZ.muted }}>この週の空きトラック</span>
-        <span className="text-[17px] font-bold tabular-nums" style={{ color: weekIdle.length > 0 ? NAVY : VIZ.muted }}>
-          {weekIdle.length}
+        <span className="text-[17px] font-bold tabular-nums" style={{ color: weekIdleOwn.length > 0 ? NAVY : VIZ.muted }}>
+          {weekIdleOwn.length}
         </span>
         <span className="text-[10px]" style={{ color: VIZ.muted }}>台</span>
         <span className="text-[10px]" style={{ color: VIZ.muted }}>
-          （予定あり {weekBusy.length}台 ／ 全{g.trucks.length}台）
+          （予定あり {weekBusy.length}台 ／ 全{g.trucks.length}台
+          {weekIdleSpot > 0 ? "・傭車" + weekIdleSpot + "台は数えず" : ""}）
         </span>
         {/* 週の表では、この欄から空きトラックの行を出し入れする
             （同じことを別のボタンでも言わない） */}

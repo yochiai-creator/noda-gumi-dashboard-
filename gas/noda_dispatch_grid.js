@@ -507,6 +507,20 @@ function 配車表のファイルを確認する() {
         }
         if (bi < 0) bi = blocks.length - 1;
         var blk = blocks[bi];
+        // ★ 傭車（スポット）を空き台数から外すために、会社名の書かれ方を見たい
+        var trucks2 = dgrid_readTrucks_(v, blocks[0]);
+        var seen = {};
+        trucks2.forEach(function (t) {
+          var key = t.company || '(会社名なし)';
+          seen[key] = (seen[key] || 0) + 1;
+        });
+        Logger.log('');
+        Logger.log('■ トラックの会社名（' + trucks2.length + '台）');
+        Object.keys(seen).forEach(function (k) {
+          var spot = /傭車|庸車|用車|スポット/.test(k) ? '  ←傭車として空き台数から外す' : '';
+          Logger.log('  ' + seen[k] + '台  ' + k + spot);
+        });
+
         Logger.log('');
         Logger.log('■ 今の週（' + blk.days[0].label + '〜' + blk.days[blk.days.length - 1].label + '）の列');
         var hdr = v[DISP_GRID_CONFIG.ROW_HEADER] || [];

@@ -66,6 +66,9 @@ const REPLY = {
                  4: { kind: '休み', text: 'お休み', q20: null, q50: null } } },
       // ★ 週まるごと予定が入っていないトラック（空き台数の確認用）
       { row: 16, company: '', truck: '4ｔ平標準 ③', cells: {} },
+      // ★ 傭車（スポット）。空きでも台数に数えない
+      { row: 25, company: '山陰急送 傭車便', truck: '10ｔ平 傭車1', cells: {} },
+      { row: 26, company: '山陰急送 傭車便', truck: '10ｔ平 傭車2', cells: {} },
       { row: 18, company: '倉吉運送 自社便', truck: '10ｔ平 ②',
         cells: { 2: { kind: '出荷', text: '南港：底黒' } } },
       { row: 27, company: '', truck: '4ｔ平ﾜｲﾄﾞ ②', cells: { 2: { kind: '出荷', text: '70246→' } } },

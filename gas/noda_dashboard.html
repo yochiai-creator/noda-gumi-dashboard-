@@ -3993,6 +3993,16 @@ const DGRID_KIND_ORDER = {
   "休み": 3
 };
 
+/* 傭車（スポットで頼む外部の車）。予定が入っていなくても「空いている自社の車」
+   ではないので、空き台数には数えない。
+   ★ 配車表では表記が揺れる可能性があるので、傭車・庸車・用車・スポットの
+     どれでも拾う。会社名の実際の書かれ方は
+     noda_dispatch_grid.gs の 配車表のファイルを確認する() のログで見られる。 */
+const DGRID_SPOT_RE = /傭車|庸車|用車|スポット/;
+function dgridIsSpot(truck) {
+  return DGRID_SPOT_RE.test(String(truck && truck.company || ""));
+}
+
 /* その便の本数。0本は書かない（20kだけの便が「20k 50・50k 0」になると
    読みづらい）。両方無ければ空の配列を返す。 */
 function dgridQtyParts(c) {
@@ -4154,14 +4164,17 @@ function DispatchGrid({
   })();
 
   /* その週にひとつも予定が無いトラック。31台ぜんぶ並べると縦に長すぎるので分ける。 */
-  const weekBusy = g.trucks.filter(t => g.days.some(d => {
+  const hasAnyPlan = t => g.days.some(d => {
     const c = t.cells[d.col];
     return c && String(c.text).trim() !== "";
-  }));
-  const weekIdle = g.trucks.filter(t => !g.days.some(d => {
-    const c = t.cells[d.col];
-    return c && String(c.text).trim() !== "";
-  }));
+  });
+  const weekBusy = g.trucks.filter(hasAnyPlan);
+  const weekIdle = g.trucks.filter(t => !hasAnyPlan(t));
+  /* ★ 空き台数として数えるのは自社の車だけ。傭車はスポットで頼むものなので、
+       予定が入っていなくても「空いている」わけではない。
+       表に出す行は今までどおり傭車も含める（配車表にある行なので）。 */
+  const weekIdleOwn = weekIdle.filter(t => !dgridIsSpot(t));
+  const weekIdleSpot = weekIdle.length - weekIdleOwn.length;
   const weekRows = showIdle ? g.trucks : weekBusy;
   const openEdit = (t, col, header) => {
     if (!g.editable) return;
@@ -4233,9 +4246,9 @@ function DispatchGrid({
   }, "\u3053\u306E\u9031\u306E\u7A7A\u304D\u30C8\u30E9\u30C3\u30AF"), /*#__PURE__*/React.createElement("span", {
     className: "text-[17px] font-bold tabular-nums",
     style: {
-      color: weekIdle.length > 0 ? NAVY : VIZ.muted
+      color: weekIdleOwn.length > 0 ? NAVY : VIZ.muted
     }
-  }, weekIdle.length), /*#__PURE__*/React.createElement("span", {
+  }, weekIdleOwn.length), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px]",
     style: {
       color: VIZ.muted
@@ -4245,7 +4258,7 @@ function DispatchGrid({
     style: {
       color: VIZ.muted
     }
-  }, "\uFF08\u4E88\u5B9A\u3042\u308A ", weekBusy.length, "\u53F0 \uFF0F \u5168", g.trucks.length, "\u53F0\uFF09"), view === "week" && weekIdle.length > 0 && /*#__PURE__*/React.createElement("button", {
+  }, "\uFF08\u4E88\u5B9A\u3042\u308A ", weekBusy.length, "\u53F0 \uFF0F \u5168", g.trucks.length, "\u53F0", weekIdleSpot > 0 ? "・傭車" + weekIdleSpot + "台は数えず" : "", "\uFF09"), view === "week" && weekIdle.length > 0 && /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowIdle(!showIdle),
     className: "text-[11px] font-semibold px-2 py-1 rounded-md ml-auto",
     style: {
