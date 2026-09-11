@@ -906,25 +906,53 @@ function DispatchTab({
   onWeek,
   saving
 }) {
+  /* ★ 中身が縦に長いので、見出しをタップして畳めるようにする。
+       畳んでも週と台数だけは見えるようにしておく（畳んだ意味が無くなるため）。 */
+  const [open, setOpen] = useState(true);
+  const closedNote = (() => {
+    if (!grid || !grid.days || grid.days.length === 0) return "";
+    const trucks = grid.trucks || [];
+    const days = grid.days;
+    const ship = days.reduce((sum, d) => sum + trucks.filter(t => {
+      const c = t.cells[d.col];
+      return c && c.kind === "出荷";
+    }).length, 0);
+    return (grid.weekLabel ? grid.weekLabel + "・" : "") + "出荷 " + ship + "台";
+  })();
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
   }, /*#__PURE__*/React.createElement("div", {
     className: "rounded-lg border border-slate-200 bg-white p-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "mb-2"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setOpen(!open),
+    className: "w-full text-left flex items-baseline gap-2 mb-2",
+    style: {
+      background: "none",
+      border: "none",
+      padding: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-bold",
     style: {
       color: NAVY
     }
-  }, "\u30C8\u30E9\u30C3\u30AF\u904B\u884C\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB"), /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-400 mt-0.5"
-  }, grid && grid.source ? "出所：" + grid.source : "")), /*#__PURE__*/React.createElement(DispatchGrid, {
+  }, "\u30C8\u30E9\u30C3\u30AF\u904B\u884C\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB"), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-400"
+  }, open ? grid && grid.source ? "出所：" + grid.source : "" : closedNote), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] ml-auto shrink-0",
+    style: {
+      color: NAVY
+    }
+  }, open ? "たたむ ▲" : "ひらく ▼")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: open ? undefined : "none"
+    }
+  }, /*#__PURE__*/React.createElement(DispatchGrid, {
     grid: grid,
     onSave: onSaveCell,
     onWeek: onWeek,
     saving: saving
-  })));
+  }))));
 }
 function OrdersTab({
   orders,

@@ -228,6 +228,39 @@ const REPLY = {
   chk('日表示で横にはみ出していない', over1.b <= over1.c + 1, over1);
   await page.screenshot({ path: SP + '/disp_day.png', fullPage: false });
 
+  /* ---------- 見出しをタップして畳む ---------- */
+  console.log('■ 詳細を畳む');
+  const cardH = async () => await page.evaluate(() => {
+    const c = document.querySelector('.rounded-lg.border.border-slate-200.bg-white.p-3');
+    return c ? Math.round(c.getBoundingClientRect().height) : null;
+  });
+  const openH = await cardH();
+  await page.locator('button', { hasText: 'トラック運行スケジュール' }).first().click();
+  await page.waitForTimeout(400);
+  const closedH = await cardH();
+  const closedText = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => /トラック運行スケジュール/.test(x.textContent));
+    return b ? b.innerText.replace(/\n/g, ' ') : null;
+  });
+  console.log('   ひらく:', openH, 'px / たたむ:', closedH, 'px /', JSON.stringify(closedText));
+  chk('★見出しをタップすると縮む', closedH !== null && openH !== null && closedH < openH / 3,
+    { open: openH, closed: closedH });
+  chk('畳んでも週と出荷台数は見える',
+    closedText && /9\/7〜9\/11/.test(closedText) && /出荷\s*\d+台/.test(closedText), closedText);
+  chk('「ひらく」に変わる', closedText && /ひらく/.test(closedText), closedText);
+  await page.locator('button', { hasText: 'トラック運行スケジュール' }).first().click();
+  await page.waitForTimeout(400);
+  const againH = await cardH();
+  chk('もう一度タップすると元に戻る', againH === openH, { open: openH, again: againH });
+  /* ★ 畳んでいる間に中身を外すと、選んでいた日や「週」表示が消えて
+       開き直したとき今日に戻ってしまう。選んだ日が残ることを見る。 */
+  const againDay = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => /^9\/\d+/.test(x.innerText.trim())
+      && /rgb\(15, 41, 66\)/.test(getComputedStyle(x).backgroundColor));
+    return b ? b.innerText.trim() : null;
+  });
+  chk('★開き直しても選んでいた日のまま', againDay && againDay.indexOf('9/7') === 0, againDay);
+
   /* ---------- 週の空きトラック台数 ---------- */
   console.log('■ 週の空きトラック台数');
   const idle = await page.evaluate(() => {

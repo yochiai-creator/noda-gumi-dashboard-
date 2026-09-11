@@ -170,17 +170,40 @@ function SectionTitle({ children, note }) {
 
 /* ---------- タブ本体 ---------- */
 function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
+  /* ★ 中身が縦に長いので、見出しをタップして畳めるようにする。
+       畳んでも週と台数だけは見えるようにしておく（畳んだ意味が無くなるため）。 */
+  const [open, setOpen] = useState(true);
+  const closedNote = (() => {
+    if (!grid || !grid.days || grid.days.length === 0) return "";
+    const trucks = grid.trucks || [];
+    const days = grid.days;
+    const ship = days.reduce((sum, d) => sum + trucks.filter((t) => {
+      const c = t.cells[d.col];
+      return c && c.kind === "出荷";
+    }).length, 0);
+    return (grid.weekLabel ? grid.weekLabel + "・" : "") + "出荷 " + ship + "台";
+  })();
+
   return (
     <div className="space-y-6">
       {/* ---- 配車表（トラック×日付）。細かく見て、その場で直せる ---- */}
       <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <div className="mb-2">
-          <div className="text-sm font-bold" style={{ color: NAVY }}>トラック運行スケジュール</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">
-            {grid && grid.source ? "出所：" + grid.source : ""}
-          </div>
+        <button onClick={() => setOpen(!open)}
+          className="w-full text-left flex items-baseline gap-2 mb-2"
+          style={{ background: "none", border: "none", padding: 0 }}>
+          <span className="text-sm font-bold" style={{ color: NAVY }}>トラック運行スケジュール</span>
+          <span className="text-[10px] text-slate-400">
+            {open ? (grid && grid.source ? "出所：" + grid.source : "") : closedNote}
+          </span>
+          <span className="text-[11px] ml-auto shrink-0" style={{ color: NAVY }}>
+            {open ? "たたむ ▲" : "ひらく ▼"}
+          </span>
+        </button>
+        {/* ★ 畳むときに外してしまうと、選んでいた日や「週」表示が消えて
+               開き直したとき今日に戻る。中身は残したまま隠す。 */}
+        <div style={{ display: open ? undefined : "none" }}>
+          <DispatchGrid grid={grid} onSave={onSaveCell} onWeek={onWeek} saving={saving} />
         </div>
-        <DispatchGrid grid={grid} onSave={onSaveCell} onWeek={onWeek} saving={saving} />
       </div>
 
       {/* ★ ここにあった「日ごとの内訳」は削除した。
