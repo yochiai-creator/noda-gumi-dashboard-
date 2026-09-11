@@ -1650,6 +1650,28 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
           style={{ color: NAVY }}>次の週 ▶</button>
       </div>
 
+      {/* ★ その週にひとつも予定が入っていないトラックの台数。
+             日・週どちらの表示でも同じ数字を出す（週ぜんぶで見た空き）。 */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-2 px-2 py-1.5 rounded-md bg-slate-50">
+        <span className="text-[11px]" style={{ color: VIZ.muted }}>この週の空きトラック</span>
+        <span className="text-[17px] font-bold tabular-nums" style={{ color: weekIdle.length > 0 ? NAVY : VIZ.muted }}>
+          {weekIdle.length}
+        </span>
+        <span className="text-[10px]" style={{ color: VIZ.muted }}>台</span>
+        <span className="text-[10px]" style={{ color: VIZ.muted }}>
+          （予定あり {weekBusy.length}台 ／ 全{g.trucks.length}台）
+        </span>
+        {/* 週の表では、この欄から空きトラックの行を出し入れする
+            （同じことを別のボタンでも言わない） */}
+        {view === "week" && weekIdle.length > 0 && (
+          <button onClick={() => setShowIdle(!showIdle)}
+            className="text-[11px] font-semibold px-2 py-1 rounded-md ml-auto"
+            style={{ background: showIdle ? NAVY : "#e2e8f0", color: showIdle ? "#fff" : "#475569" }}>
+            {showIdle ? "空きを隠す ▲" : "空きも表に出す ▼"}
+          </button>
+        )}
+      </div>
+
       {!g.editable && (
         <div className="text-[11px] mb-2 px-2 py-2 rounded bg-amber-50 text-amber-800">
           まだExcelを読んでいるので編集できません。GASエディタで
@@ -1906,18 +1928,10 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
       )}
 
       {view === "week" && (
-        <div className="mt-2">
-          {weekIdle.length > 0 && (
-            <button onClick={() => setShowIdle(!showIdle)}
-              className="text-[11px] font-semibold px-2 py-1.5 rounded-md bg-slate-100 text-slate-600 mb-2">
-              この週は予定なし {weekIdle.length}台 {showIdle ? "を隠す ▲" : "も出す ▼"}
-            </button>
-          )}
-          <div className="text-[10px]" style={{ color: VIZ.muted }}>
-            {weekBusy.length}台ぶんを出しています。横に指で送ると先の日が見えます（トラック名は残ります）。
-            {g.editable ? "マスをタップすると直せます。" : ""}
-            ← は引取、× は運休。行き先が長いときは1行で切っています（全文は「日」で読めます）。
-          </div>
+        <div className="text-[10px] mt-2" style={{ color: VIZ.muted }}>
+          横に指で送ると先の日が見えます（トラック名は残ります）。
+          {g.editable ? "マスをタップすると直せます。" : ""}
+          ← は引取、× は運休。行き先が長いときは1行で切っています（全文は「日」で読めます）。
         </div>
       )}
 

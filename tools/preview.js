@@ -64,6 +64,8 @@ const REPLY = {
       { row: 10, company: '', truck: '4ｔ平標準 福安',
         cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
                  4: { kind: '休み', text: 'お休み', q20: null, q50: null } } },
+      // ★ 週まるごと予定が入っていないトラック（空き台数の確認用）
+      { row: 16, company: '', truck: '4ｔ平標準 ③', cells: {} },
       { row: 18, company: '倉吉運送 自社便', truck: '10ｔ平 ②',
         cells: { 2: { kind: '出荷', text: '南港：底黒' } } },
       { row: 27, company: '', truck: '4ｔ平ﾜｲﾄﾞ ②', cells: { 2: { kind: '出荷', text: '70246→' } } },

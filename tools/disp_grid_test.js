@@ -64,6 +64,8 @@ const REPLY = {
       { row: 10, company: '', truck: '4ｔ平標準 福安',
         cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
                  4: { kind: '休み', text: 'お休み', q20: null, q50: null } } },
+      // ★ 週まるごと予定が入っていないトラック（空き台数の確認用）
+      { row: 16, company: '', truck: '4ｔ平標準 ③', cells: {} },
       { row: 18, company: '倉吉運送 自社便', truck: '10ｔ平 ②',
         cells: { 2: { kind: '出荷', text: '南港：底黒' } } },
       { row: 27, company: '', truck: '4ｔ平ﾜｲﾄﾞ ②', cells: { 2: { kind: '出荷', text: '70246→' } } },
@@ -189,6 +191,21 @@ const REPLY = {
   chk('日表示で横にはみ出していない', over1.b <= over1.c + 1, over1);
   await page.screenshot({ path: SP + '/disp_day.png', fullPage: false });
 
+  /* ---------- 週の空きトラック台数 ---------- */
+  console.log('■ 週の空きトラック台数');
+  const idle = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('div')].find((d) => d.innerText
+      && d.innerText.indexOf('この週の空きトラック') === 0 && d.innerText.length < 80);
+    return el ? el.innerText.replace(/\n+/g, ' ') : null;
+  });
+  console.log('   ', JSON.stringify(idle));
+  /* モックのトラックは7台。「4ｔ平標準 ③」だけ週まるごと空。
+     運休（×）やお休みも「予定が入っている」扱いにする（マスが埋まっているため）。 */
+  chk('空きトラックの欄が出ている', idle !== null, idle);
+  chk('★週まるごと空きの台数が出る（1台）', idle && /この週の空きトラック\s*1\s*台/.test(idle), idle);
+  chk('予定ありの台数が出る（6台）', idle && /予定あり\s*6台/.test(idle), idle);
+  chk('全台数が出る（全7台）', idle && /全7台/.test(idle), idle);
+
   /* ---------- 金曜が2列（土着・月着）に分かれている日 ---------- */
   console.log('■ 金曜の2列を1日にまとめる');
   const chipTexts = await page.evaluate(() => [...document.querySelectorAll('button')]
@@ -204,7 +221,10 @@ const REPLY = {
   const fri = await page.evaluate(() => {
     const list = document.querySelector('.divide-y.divide-slate-100');
     const rows = list ? [...list.children].map((b) => b.innerText.replace(/\n/g, ' | ')) : null;
-    const strip = document.querySelector('.rounded-md.bg-slate-50');
+    /* ★ 空きトラックの欄も .rounded-md.bg-slate-50 なので、最初の1つを取ると
+         そちらを拾ってしまう。20kと小口が入っている方を選ぶ。 */
+    const strip = [...document.querySelectorAll('.rounded-md.bg-slate-50')]
+      .find((x) => /20k/.test(x.innerText) && /小口/.test(x.innerText));
     return { rows: rows, 本数: strip ? strip.innerText.replace(/\n+/g, ' ') : null };
   });
   console.log('   9/11の行:', JSON.stringify(fri.rows));
@@ -324,13 +344,15 @@ const REPLY = {
   chk('見出しと注記がぶつかっていない（注記を外した）', m.見出し衝突 === null, m.見出し衝突);
   const wk = await page.evaluate(() => {
     const t = document.body.innerText;
-    const btn = [...document.querySelectorAll('button')].find((b) => /この週は予定なし/.test(b.textContent));
-    return { 畳みボタン: btn ? btn.textContent.trim() : null, 台数の説明: /\d+台ぶんを出しています/.test(t) };
+    const btns = [...document.querySelectorAll('button')].filter((b) => /空き(も表に出す|を隠す)/.test(b.textContent));
+    return { 畳みボタン: btns.length, 文言: btns.map((b) => b.textContent.trim()),
+      重複: (t.match(/この週は予定なし/g) || []).length };
   });
-  /* このサンプルは6台とも週に予定があるので、畳みボタンは出ないのが正しい。
+  /* モックは7台のうち1台が週まるごと空きなので、畳みボタンが出るのが正しい。
      31台のときの畳みと高さは tools/disp_week_height_test.js で見る。 */
-  chk('予定ありだけのときは畳みボタンを出さない', wk.畳みボタン === null, wk);
-  chk('何台ぶん出しているか書いてある', wk.台数の説明, wk);
+  /* ★ 同じことを「空きの欄」「畳みボタン」「注記」の3か所で言っていたので、
+       空きの欄のボタンに一本化した。 */
+  chk('空きの出し入れボタンが1つだけ', wk.畳みボタン === 1, wk);
 
   chk('日付ラベルが「本日」と混ざっていない',
     m.カード見出し.every((t) => !(t.indexOf('本日') !== -1 && t.indexOf('/') !== -1)), m.カード見出し);

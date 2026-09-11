@@ -116,12 +116,14 @@ const REPLY = {
        31*49 + 見出し + 合計4行 = 約1700px あった。行を詰めて、その週に
        予定が無いトラックを畳むことで、1画面ちょっとに収める。 */
   chk('畳んだ表が750px以下になっている', closed.表の高さ <= 750, closed);
-  chk('カード全体が900px以下になっている', closed.カード全体 <= 900, closed);
+  /* 2026/09/11 に「この週の空きトラック」の欄を足したぶん 893→932px。
+     表そのもの（653px）は変わっていない。 */
+  chk('カード全体が950px以下になっている', closed.カード全体 <= 950, closed);
   chk('行を詰めた（48px以下）', Math.max(...closed.行の高さ) <= 48, closed.行の高さ);
   /* 見出し1行＋本数1行＋予定のある12台。合計を4行に分けていたときは17行だった。 */
   chk('見出し＋本数＋予定のある12台だけ出ている', closed.行数 === 14, closed.行数);
 
-  await page.locator('button', { hasText: /この週は予定なし/ }).first().click();
+  await page.locator('button', { hasText: /空きも表に出す/ }).first().click();
   await page.waitForTimeout(500);
   const opened = await meas();
   console.log('   全部出した:', JSON.stringify(opened));
