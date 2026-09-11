@@ -1496,11 +1496,14 @@ function dgridQtyLines(c) { return dgridQtyParts(c).join("\n"); }
 
 /* その日の本数を1行にまとめる。合計20k/合計50k/小口/コンテナを別々の行に
    すると4行ぶん縦に伸びるので、1つの欄に入れる。 */
-function dgridTotalsText(t) {
-  if (!t) return "—";
-  var n = function (v) { return v == null ? "—" : Number(v).toLocaleString("ja-JP"); };
-  return "20k " + n(t["合計20k"]) + "\n50k " + n(t["合計50k"])
-    + "\n小口 " + n(t["小口"]) + "\n筒 " + n(t["コンテナ"]);
+function dgridTotalsRows(t) {
+  var n = function (v) { return (t && v != null) ? Number(v).toLocaleString("ja-JP") : "—"; };
+  return [
+    ["20k", n(t && t["合計20k"])],
+    ["50k", n(t && t["合計50k"])],
+    ["小口", n(t && t["小口"])],
+    ["筒", n(t && t["コンテナ"])],
+  ];
 }
 
 const DGRID_KIND_STYLE = {
@@ -1641,9 +1644,11 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                   className="flex flex-col items-center px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0"
                   style={active ? { background: NAVY, color: "#fff" }
                     : { background: isToday ? "#e8eef5" : "#f1f5f9", color: isToday ? NAVY : "#64748b" }}>
-                  <span>{d.label}{isToday ? "（本日）" : ""}</span>
+                  {/* ★「（本日）」を横に足すと、そのチップだけ幅が広くなって
+                         並びがガタガタになる。下の行に小さく出す。 */}
+                  <span>{d.label}</span>
                   <span className="text-[10px] mt-0.5" style={{ color: active ? "#cbd5e1" : VIZ.muted }}>
-                    {n}台
+                    {isToday ? "本日" : n + "台"}
                   </span>
                 </button>
               );
@@ -1651,7 +1656,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
           </div>
 
           {/* その日の本数。★4つのタイルに分けず1つの欄にまとめる。 */}
-          <div className="rounded-md bg-slate-50 px-3 py-2 mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <div className="rounded-md bg-slate-50 px-3 py-2 mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             {[["20k", "合計20k"], ["50k", "合計50k"], ["小口", "小口"], ["コンテナ", "コンテナ"]].map(([label, k]) => (
               <span key={k} className="inline-flex items-baseline gap-1">
                 <span className="text-[10px]" style={{ color: VIZ.muted }}>{label}</span>
@@ -1660,7 +1665,6 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                 </span>
               </span>
             ))}
-            <span className="text-[10px] ml-auto" style={{ color: VIZ.muted }}>{curDay.label} の本数</span>
           </div>
 
           {/* トラックごと */}
@@ -1690,32 +1694,29 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                         <span className="text-[10px]" style={{ color: VIZ.muted }}>{sameKind}台</span>
                       </div>
                     )}
+                    {/* ★ トラック名と行き先を横に並べると、行き先が狭い幅に押し込まれて
+                           折り返す（「東京都西多摩郡瑞穂町 東京都羽村市」が2行になっていた）。
+                           上下に分けて、行き先に幅をぜんぶ使わせる。 */}
                     <button onClick={() => openEdit(r.t, curDay.col, curDay.header)}
-                      className="w-full text-left px-3 py-2.5 flex items-start gap-2.5"
+                      className="w-full text-left px-3 py-2.5"
                       style={{ cursor: g.editable ? "pointer" : "default", background: "#fff" }}>
-                      <span className="shrink-0" style={{ width: 100 }}>
-                        <span className="block text-[12px] font-bold" style={{ color: NAVY, lineHeight: 1.25 }}>
+                      <span className="flex items-baseline gap-1.5">
+                        <span className="text-[12px] font-bold shrink-0" style={{ color: NAVY }}>
                           {r.t.truck}
                         </span>
                         {r.t.company && (
-                          <span className="block text-[10px] text-slate-400" style={{ lineHeight: 1.25 }}>
-                            {r.t.company}
-                          </span>
+                          <span className="text-[10px] text-slate-400 truncate">{r.t.company}</span>
                         )}
-                      </span>
-                      {/* ★ 行き先は省略しない。表だと「広島県東広島市 (46…」で切れていた。
-                             その便の本数も同じ欄に入れる。 */}
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[13px]" style={{ color: b.fg, lineHeight: 1.35,
-                          wordBreak: "break-all" }}>
-                          {r.c.text}
-                        </span>
                         {dgridQtyText(r.c) && (
-                          <span className="block text-[11px] tabular-nums mt-0.5"
+                          <span className="text-[11px] tabular-nums ml-auto shrink-0 whitespace-nowrap"
                             style={{ color: VIZ.ink2 }}>
                             {dgridQtyText(r.c)}
                           </span>
                         )}
+                      </span>
+                      {/* 行き先。折り返さずに読めるよう1行目より大きく、幅いっぱいに出す */}
+                      <span className="block text-[15px] mt-0.5" style={{ color: b.fg, lineHeight: 1.35 }}>
+                        {r.c.text}
                       </span>
                     </button>
                   </React.Fragment>
@@ -1789,11 +1790,17 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
             <div className="text-[11px] font-semibold text-slate-500 px-2 py-2 bg-slate-50"
               style={{ ...stickyName, display: "flex", alignItems: "center" }}>その日の本数</div>
             {g.days.map((d) => (
-              <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-right text-[11px] tabular-nums"
-                style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2, lineHeight: 1.3,
-                  whiteSpace: "pre-line",
+              <div key={d.col} className="px-2 py-2 border-l border-slate-200 text-[11px]"
+                style={{ width: cellW, flex: "0 0 auto", color: VIZ.ink2,
                   background: d.date === todayKey ? "#eef2f7" : "transparent" }}>
-                {dgridTotalsText(g.totals[d.col])}
+                {/* ★ 右に寄せただけだと数字の桁がそろわず、日どうしを見比べられない。
+                       ラベルを左・数字を右に置いて、縦に桁をそろえる。 */}
+                {dgridTotalsRows(g.totals[d.col]).map(([label, val]) => (
+                  <div key={label} className="flex items-baseline justify-between" style={{ lineHeight: 1.35 }}>
+                    <span className="text-[9px]" style={{ color: VIZ.muted }}>{label}</span>
+                    <span className="tabular-nums">{val}</span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

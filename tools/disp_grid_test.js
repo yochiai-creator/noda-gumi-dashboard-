@@ -126,8 +126,30 @@ const REPLY = {
   chk('その日のトラックが並んでいる', rows && rows.length >= 3, rows && rows.length);
   chk('行き先が省略されていない（…が無い）',
     rows && rows.every((r) => r.t.indexOf('…') === -1), rows);
+  /* ★ トラック名と行き先を横に並べると行き先が狭くなって折り返す。
+       上下に分けて、行き先が1行に収まることを実測で押さえる。 */
+  const dest = await page.evaluate(() => {
+    const bs = [...document.querySelectorAll('.divide-y.divide-slate-100 > button')];
+    return bs.map((b) => {
+      const d = b.lastElementChild, cs = getComputedStyle(d);
+      return { t: d.textContent.trim(), 行数: Math.round(d.getBoundingClientRect().height / parseFloat(cs.lineHeight)),
+        px: parseFloat(cs.fontSize), 幅: Math.round(d.getBoundingClientRect().width) };
+    });
+  });
+  console.log('   行き先:', JSON.stringify(dest));
+  chk('★行き先が折り返さず1行で出る', dest.length > 0 && dest.every((d) => d.行数 <= 1), dest);
+  chk('行き先が15pxで出ている', dest.length > 0 && dest.every((d) => d.px >= 15), dest.map((d) => d.px));
+  chk('行き先が幅いっぱいを使っている（280px以上）',
+    dest.length > 0 && dest.every((d) => d.幅 >= 280), dest.map((d) => d.幅));
+
+  // 日を選ぶチップの幅がそろっているか（「（本日）」で1つだけ広くなっていた）
+  const chips = await page.evaluate(() => [...document.querySelectorAll('button')]
+    .filter((x) => /^\d+\/\d+/.test(x.innerText.trim()))
+    .map((x) => Math.round(x.getBoundingClientRect().width)));
+  chk('日のチップの幅がそろっている（差10px以内）',
+    chips.length > 0 && Math.max(...chips) - Math.min(...chips) <= 10, chips);
   chk('長い行き先も全部出る（東京都西多摩郡瑞穂町 東京都羽村市）',
-    rows && rows.some((r) => r.t.indexOf('東京都羽村市') !== -1), rows);
+    dest.some((d) => d.t === '東京都西多摩郡瑞穂町 東京都羽村市'), dest.map((d) => d.t));
   chk('出荷が先に並ぶ', rows && rows[0].t.indexOf('出荷') !== -1, rows && rows[0]);
   /* 種別は行ごとではなく、変わり目の見出しでまとめて出す（「出荷」が全行に
      並ぶと邪魔なため）。色だけに頼らないことは、見出しに文字があることで担保する。 */

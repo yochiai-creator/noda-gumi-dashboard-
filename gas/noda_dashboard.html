@@ -89,6 +89,7 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .border-b-2{border-bottom-width:2px}
 .gap-y-1{row-gap:.25rem}
+.gap-x-4{column-gap:1rem}
 </style>
 <script>
 /**
@@ -4013,12 +4014,11 @@ function dgridQtyLines(c) {
 
 /* その日の本数を1行にまとめる。合計20k/合計50k/小口/コンテナを別々の行に
    すると4行ぶん縦に伸びるので、1つの欄に入れる。 */
-function dgridTotalsText(t) {
-  if (!t) return "—";
+function dgridTotalsRows(t) {
   var n = function (v) {
-    return v == null ? "—" : Number(v).toLocaleString("ja-JP");
+    return t && v != null ? Number(v).toLocaleString("ja-JP") : "—";
   };
-  return "20k " + n(t["合計20k"]) + "\n50k " + n(t["合計50k"]) + "\n小口 " + n(t["小口"]) + "\n筒 " + n(t["コンテナ"]);
+  return [["20k", n(t && t["合計20k"])], ["50k", n(t && t["合計50k"])], ["小口", n(t && t["小口"])], ["筒", n(t && t["コンテナ"])]];
 }
 const DGRID_KIND_STYLE = {
   "出荷": {
@@ -4207,14 +4207,14 @@ function DispatchGrid({
         background: isToday ? "#e8eef5" : "#f1f5f9",
         color: isToday ? NAVY : "#64748b"
       }
-    }, /*#__PURE__*/React.createElement("span", null, d.label, isToday ? "（本日）" : ""), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, d.label), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] mt-0.5",
       style: {
         color: active ? "#cbd5e1" : VIZ.muted
       }
-    }, n, "\u53F0"));
+    }, isToday ? "本日" : n + "台"));
   })), /*#__PURE__*/React.createElement("div", {
-    className: "rounded-md bg-slate-50 px-3 py-2 mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1"
+    className: "rounded-md bg-slate-50 px-3 py-2 mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1"
   }, [["20k", "合計20k"], ["50k", "合計50k"], ["小口", "小口"], ["コンテナ", "コンテナ"]].map(([label, k]) => /*#__PURE__*/React.createElement("span", {
     key: k,
     className: "inline-flex items-baseline gap-1"
@@ -4228,12 +4228,7 @@ function DispatchGrid({
     style: {
       color: NAVY
     }
-  }, dayTotals[k] == null ? "—" : vizComma(dayTotals[k])))), /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] ml-auto",
-    style: {
-      color: VIZ.muted
-    }
-  }, curDay.label, " \u306E\u672C\u6570")), dayRows.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, dayTotals[k] == null ? "—" : vizComma(dayTotals[k]))))), dayRows.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 py-4 text-center rounded-md bg-slate-50"
   }, curDay.label, " \u306F\u914D\u8ECA\u8868\u306B\u4F55\u3082\u5165\u3063\u3066\u3044\u307E\u305B\u3093\u3002") : /*#__PURE__*/React.createElement("div", {
     className: "rounded-md border border-slate-200 divide-y divide-slate-100"
@@ -4271,42 +4266,32 @@ function DispatchGrid({
       }
     }, sameKind, "\u53F0")), /*#__PURE__*/React.createElement("button", {
       onClick: () => openEdit(r.t, curDay.col, curDay.header),
-      className: "w-full text-left px-3 py-2.5 flex items-start gap-2.5",
+      className: "w-full text-left px-3 py-2.5",
       style: {
         cursor: g.editable ? "pointer" : "default",
         background: "#fff"
       }
     }, /*#__PURE__*/React.createElement("span", {
-      className: "shrink-0",
-      style: {
-        width: 100
-      }
+      className: "flex items-baseline gap-1.5"
     }, /*#__PURE__*/React.createElement("span", {
-      className: "block text-[12px] font-bold",
+      className: "text-[12px] font-bold shrink-0",
       style: {
-        color: NAVY,
-        lineHeight: 1.25
+        color: NAVY
       }
     }, r.t.truck), r.t.company && /*#__PURE__*/React.createElement("span", {
-      className: "block text-[10px] text-slate-400",
-      style: {
-        lineHeight: 1.25
-      }
-    }, r.t.company)), /*#__PURE__*/React.createElement("span", {
-      className: "min-w-0 flex-1"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "block text-[13px]",
-      style: {
-        color: b.fg,
-        lineHeight: 1.35,
-        wordBreak: "break-all"
-      }
-    }, r.c.text), dgridQtyText(r.c) && /*#__PURE__*/React.createElement("span", {
-      className: "block text-[11px] tabular-nums mt-0.5",
+      className: "text-[10px] text-slate-400 truncate"
+    }, r.t.company), dgridQtyText(r.c) && /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] tabular-nums ml-auto shrink-0 whitespace-nowrap",
       style: {
         color: VIZ.ink2
       }
-    }, dgridQtyText(r.c)))));
+    }, dgridQtyText(r.c))), /*#__PURE__*/React.createElement("span", {
+      className: "block text-[15px] mt-0.5",
+      style: {
+        color: b.fg,
+        lineHeight: 1.35
+      }
+    }, r.c.text)));
   })), idleTrucks.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "mt-2"
   }, /*#__PURE__*/React.createElement("button", {
@@ -4376,16 +4361,27 @@ function DispatchGrid({
     }
   }, "\u305D\u306E\u65E5\u306E\u672C\u6570"), g.days.map(d => /*#__PURE__*/React.createElement("div", {
     key: d.col,
-    className: "px-2 py-2 border-l border-slate-200 text-right text-[11px] tabular-nums",
+    className: "px-2 py-2 border-l border-slate-200 text-[11px]",
     style: {
       width: cellW,
       flex: "0 0 auto",
       color: VIZ.ink2,
-      lineHeight: 1.3,
-      whiteSpace: "pre-line",
       background: d.date === todayKey ? "#eef2f7" : "transparent"
     }
-  }, dgridTotalsText(g.totals[d.col])))), weekRows.map((t, i) => /*#__PURE__*/React.createElement("div", {
+  }, dgridTotalsRows(g.totals[d.col]).map(([label, val]) => /*#__PURE__*/React.createElement("div", {
+    key: label,
+    className: "flex items-baseline justify-between",
+    style: {
+      lineHeight: 1.35
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[9px]",
+    style: {
+      color: VIZ.muted
+    }
+  }, label), /*#__PURE__*/React.createElement("span", {
+    className: "tabular-nums"
+  }, val)))))), weekRows.map((t, i) => /*#__PURE__*/React.createElement("div", {
     key: t.row,
     className: "flex border-b border-slate-100",
     style: {
