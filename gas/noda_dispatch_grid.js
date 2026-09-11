@@ -188,12 +188,16 @@ function dgrid_findBlocks_(values) {
       var y = Number(ym[1]), mo = Number(m[1]), da = Number(m[2]);
       if (mo < 1 || mo > 12 || da < 1 || da > 31) continue;
       var p = function (n) { return n < 10 ? '0' + n : String(n); };
+      /* ★ 金曜だけ「9/11(金)出 ⏎ 9/12(土)着」と「9/11(金)出 ⏎ 9/14(月)着」の
+           2列に分かれている（土着・土積）。出発日は同じなので、見出しの
+           1行目だけでは2列を見分けられない。着日も持たせる。 */
+      var parts = h.split('\n');
       block.days.push({
         col: col,
         date: y + '-' + p(mo) + '-' + p(da),
         label: mo + '/' + da,
-        // 見出しの1行目だけを出す（2行目は到着日）
-        header: h.split('\n')[0].trim()
+        header: parts[0].trim(),
+        arrive: (parts[1] || '').trim()
       });
     }
     if (block.days.length > 0) {

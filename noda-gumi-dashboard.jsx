@@ -1550,27 +1550,57 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
     return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
   })();
 
-  // 見ている日。指定が無ければ、その週に今日があれば今日、無ければ先頭。
-  const todayPos = g.days.findIndex((d) => d.date === todayKey);
-  const curIdx = dayIdx != null ? Math.min(dayIdx, g.days.length - 1)
-    : (todayPos >= 0 ? todayPos : 0);
-  const curDay = g.days[curIdx];
+  /* ★ 金曜は「9/11(金)出 9/12(土)着」と「9/11(金)出 9/14(月)着」の2列に
+       分かれている（土着・土積）。出発日は同じなので、日ごとに見るときは
+       1つにまとめる（チップも本数も1つ）。
+       週の表は列のまま残す。マスに書き込むときは列を指定する必要があるため。 */
+  const dayGroups = [];
+  g.days.forEach((d) => {
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.date === d.date) last.cols.push(d);
+    else dayGroups.push({ date: d.date, label: d.label, cols: [d] });
+  });
 
-  // その日に何か入っているトラックだけを、出荷→引取→運休の順に並べる
-  const dayRows = g.trucks
-    .map((t) => ({ t: t, c: t.cells[curDay.col] }))
-    .filter((r) => r.c && String(r.c.text).trim() !== "");
+  // 見ている日。指定が無ければ、その週に今日があれば今日、無ければ先頭。
+  const todayPos = dayGroups.findIndex((d) => d.date === todayKey);
+  const curIdx = dayIdx != null ? Math.min(dayIdx, dayGroups.length - 1)
+    : (todayPos >= 0 ? todayPos : 0);
+  const curGroup = dayGroups[curIdx];
+  const curDay = curGroup.cols[0];
+
+  // その日に何か入っているトラックだけを、出荷→引取→運休の順に並べる。
+  // 分かれている列はまとめて出し、どちらの便かは着日で分かるようにする。
+  const dayRows = [];
+  curGroup.cols.forEach((d) => {
+    g.trucks.forEach((t) => {
+      const c = t.cells[d.col];
+      if (c && String(c.text).trim() !== "") dayRows.push({ t: t, c: c, d: d });
+    });
+  });
   dayRows.sort((a, b) => {
     const oa = DGRID_KIND_ORDER[a.c.kind] != null ? DGRID_KIND_ORDER[a.c.kind] : 9;
     const ob = DGRID_KIND_ORDER[b.c.kind] != null ? DGRID_KIND_ORDER[b.c.kind] : 9;
     return oa - ob || a.t.row - b.t.row;
   });
-  const idleTrucks = g.trucks.filter((t) => {
-    const c = t.cells[curDay.col];
-    return !c || String(c.text).trim() === "";
-  });
+  // その日のどの列にも何も入っていないトラック
+  const idleTrucks = g.trucks.filter((t) =>
+    !curGroup.cols.some((d) => { const c = t.cells[d.col]; return c && String(c.text).trim() !== ""; }));
   const shipCount = dayRows.filter((r) => r.c.kind === "出荷").length;
-  const dayTotals = g.totals[curDay.col] || {};
+  // 分かれている列の本数を足して、その日ぶんを1つにする
+  const dayTotals = (() => {
+    const keys = ["合計20k", "合計50k", "小口", "コンテナ"];
+    const out = {};
+    keys.forEach((k) => {
+      let sum = null;
+      curGroup.cols.forEach((d) => {
+        const t = g.totals[d.col];
+        const v = t ? t[k] : null;
+        if (v != null) sum = (sum || 0) + Number(v);
+      });
+      out[k] = sum;
+    });
+    return out;
+  })();
 
   /* その週にひとつも予定が無いトラック。31台ぜんぶ並べると縦に長すぎるので分ける。 */
   const weekBusy = g.trucks.filter((t) =>
@@ -1632,21 +1662,22 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
         <div>
           {/* 日を選ぶ */}
           <div className="flex gap-1 mb-3 overflow-x-auto -mx-1 px-1">
-            {g.days.map((d, i) => {
+            {dayGroups.map((gr, i) => {
               const active = i === curIdx;
-              const isToday = d.date === todayKey;
-              const n = g.trucks.filter((t) => {
+              const isToday = gr.date === todayKey;
+              // 分かれている列ぶんを足す（金曜の土着・土積）
+              const n = gr.cols.reduce((sum, d) => sum + g.trucks.filter((t) => {
                 const c = t.cells[d.col];
                 return c && c.kind === "出荷";
-              }).length;
+              }).length, 0);
               return (
-                <button key={d.col} onClick={() => { setDayIdx(i); setShowIdle(false); }}
+                <button key={gr.date} onClick={() => { setDayIdx(i); setShowIdle(false); }}
                   className="flex flex-col items-center px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0"
                   style={active ? { background: NAVY, color: "#fff" }
                     : { background: isToday ? "#e8eef5" : "#f1f5f9", color: isToday ? NAVY : "#64748b" }}>
                   {/* ★「（本日）」を横に足すと、そのチップだけ幅が広くなって
                          並びがガタガタになる。下の行に小さく出す。 */}
-                  <span>{d.label}</span>
+                  <span>{gr.label}</span>
                   <span className="text-[10px] mt-0.5" style={{ color: active ? "#cbd5e1" : VIZ.muted }}>
                     {isToday ? "本日" : n + "台"}
                   </span>
@@ -1697,7 +1728,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                     {/* ★ トラック名と行き先を横に並べると、行き先が狭い幅に押し込まれて
                            折り返す（「東京都西多摩郡瑞穂町 東京都羽村市」が2行になっていた）。
                            上下に分けて、行き先に幅をぜんぶ使わせる。 */}
-                    <button onClick={() => openEdit(r.t, curDay.col, curDay.header)}
+                    <button onClick={() => openEdit(r.t, r.d.col, r.d.header + (r.d.arrive ? " " + r.d.arrive : ""))}
                       className="w-full text-left px-3 py-2.5"
                       style={{ cursor: g.editable ? "pointer" : "default", background: "#fff" }}>
                       <span className="flex items-baseline gap-1.5">
@@ -1706,6 +1737,13 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                         </span>
                         {r.t.company && (
                           <span className="text-[10px] text-slate-400 truncate">{r.t.company}</span>
+                        )}
+                        {/* 金曜のように1日が2列に分かれている日だけ、どちらの便かを出す */}
+                        {curGroup.cols.length > 1 && r.d.arrive && (
+                          <span className="text-[10px] px-1.5 rounded shrink-0"
+                            style={{ background: "#eef2f7", color: VIZ.ink2 }}>
+                            {r.d.arrive}
+                          </span>
                         )}
                         {dgridQtyText(r.c) && (
                           <span className="text-[11px] tabular-nums ml-auto shrink-0 whitespace-nowrap"
@@ -1735,7 +1773,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
               {showIdle && (
                 <div className="mt-2 rounded-md border border-slate-200 divide-y divide-slate-100">
                   {idleTrucks.map((t) => (
-                    <button key={t.row} onClick={() => openEdit(t, curDay.col, curDay.header)}
+                    <button key={t.row} onClick={() => openEdit(t, curDay.col, curDay.header)}   /* 分かれている日は最初の列（着日が早い方）に入れる */
                       className="w-full text-left px-3 py-2 flex items-baseline gap-2"
                       style={{ cursor: g.editable ? "pointer" : "default", background: "#fcfdfe" }}>
                       <span className="text-[12px] font-semibold" style={{ color: NAVY }}>{t.truck}</span>
@@ -1776,7 +1814,11 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                     background: isToday ? "#e8eef5" : "#f8fafc",
                     color: isToday ? NAVY : "#475569",
                     boxShadow: isToday ? "inset 0 2px 0 " + NAVY : "none" }}>
-                  {d.header}
+                  <div>{d.header}</div>
+                  {/* ★ 金曜は「9/11(金)出」の列が2つある。着日を出さないと見分けられない */}
+                  {d.arrive && (
+                    <div className="text-[9px] font-normal" style={{ color: VIZ.muted }}>{d.arrive}</div>
+                  )}
                 </div>
               );
             })}

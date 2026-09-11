@@ -90,6 +90,8 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .border-b-2{border-bottom-width:2px}
 .gap-y-1{row-gap:.25rem}
 .gap-x-4{column-gap:1rem}
+.px-1\.5{padding-left:.375rem;padding-right:.375rem}
+.font-normal{font-weight:400}
 </style>
 <script>
 /**
@@ -4090,27 +4092,65 @@ function DispatchGrid({
     return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0");
   })();
 
-  // 見ている日。指定が無ければ、その週に今日があれば今日、無ければ先頭。
-  const todayPos = g.days.findIndex(d => d.date === todayKey);
-  const curIdx = dayIdx != null ? Math.min(dayIdx, g.days.length - 1) : todayPos >= 0 ? todayPos : 0;
-  const curDay = g.days[curIdx];
+  /* ★ 金曜は「9/11(金)出 9/12(土)着」と「9/11(金)出 9/14(月)着」の2列に
+       分かれている（土着・土積）。出発日は同じなので、日ごとに見るときは
+       1つにまとめる（チップも本数も1つ）。
+       週の表は列のまま残す。マスに書き込むときは列を指定する必要があるため。 */
+  const dayGroups = [];
+  g.days.forEach(d => {
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.date === d.date) last.cols.push(d);else dayGroups.push({
+      date: d.date,
+      label: d.label,
+      cols: [d]
+    });
+  });
 
-  // その日に何か入っているトラックだけを、出荷→引取→運休の順に並べる
-  const dayRows = g.trucks.map(t => ({
-    t: t,
-    c: t.cells[curDay.col]
-  })).filter(r => r.c && String(r.c.text).trim() !== "");
+  // 見ている日。指定が無ければ、その週に今日があれば今日、無ければ先頭。
+  const todayPos = dayGroups.findIndex(d => d.date === todayKey);
+  const curIdx = dayIdx != null ? Math.min(dayIdx, dayGroups.length - 1) : todayPos >= 0 ? todayPos : 0;
+  const curGroup = dayGroups[curIdx];
+  const curDay = curGroup.cols[0];
+
+  // その日に何か入っているトラックだけを、出荷→引取→運休の順に並べる。
+  // 分かれている列はまとめて出し、どちらの便かは着日で分かるようにする。
+  const dayRows = [];
+  curGroup.cols.forEach(d => {
+    g.trucks.forEach(t => {
+      const c = t.cells[d.col];
+      if (c && String(c.text).trim() !== "") dayRows.push({
+        t: t,
+        c: c,
+        d: d
+      });
+    });
+  });
   dayRows.sort((a, b) => {
     const oa = DGRID_KIND_ORDER[a.c.kind] != null ? DGRID_KIND_ORDER[a.c.kind] : 9;
     const ob = DGRID_KIND_ORDER[b.c.kind] != null ? DGRID_KIND_ORDER[b.c.kind] : 9;
     return oa - ob || a.t.row - b.t.row;
   });
-  const idleTrucks = g.trucks.filter(t => {
-    const c = t.cells[curDay.col];
-    return !c || String(c.text).trim() === "";
-  });
+  // その日のどの列にも何も入っていないトラック
+  const idleTrucks = g.trucks.filter(t => !curGroup.cols.some(d => {
+    const c = t.cells[d.col];
+    return c && String(c.text).trim() !== "";
+  }));
   const shipCount = dayRows.filter(r => r.c.kind === "出荷").length;
-  const dayTotals = g.totals[curDay.col] || {};
+  // 分かれている列の本数を足して、その日ぶんを1つにする
+  const dayTotals = (() => {
+    const keys = ["合計20k", "合計50k", "小口", "コンテナ"];
+    const out = {};
+    keys.forEach(k => {
+      let sum = null;
+      curGroup.cols.forEach(d => {
+        const t = g.totals[d.col];
+        const v = t ? t[k] : null;
+        if (v != null) sum = (sum || 0) + Number(v);
+      });
+      out[k] = sum;
+    });
+    return out;
+  })();
 
   /* その週にひとつも予定が無いトラック。31台ぜんぶ並べると縦に長すぎるので分ける。 */
   const weekBusy = g.trucks.filter(t => g.days.some(d => {
@@ -4186,15 +4226,16 @@ function DispatchGrid({
     className: "text-[11px] mb-2 px-2 py-2 rounded bg-amber-50 text-amber-800"
   }, "\u307E\u3060Excel\u3092\u8AAD\u3093\u3067\u3044\u308B\u306E\u3067\u7DE8\u96C6\u3067\u304D\u307E\u305B\u3093\u3002GAS\u30A8\u30C7\u30A3\u30BF\u3067 \u300C\u914D\u8ECA\u8868\u3092\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8\u306B\u79FB\u3059\u300D\u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002"), view === "day" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "flex gap-1 mb-3 overflow-x-auto -mx-1 px-1"
-  }, g.days.map((d, i) => {
+  }, dayGroups.map((gr, i) => {
     const active = i === curIdx;
-    const isToday = d.date === todayKey;
-    const n = g.trucks.filter(t => {
+    const isToday = gr.date === todayKey;
+    // 分かれている列ぶんを足す（金曜の土着・土積）
+    const n = gr.cols.reduce((sum, d) => sum + g.trucks.filter(t => {
       const c = t.cells[d.col];
       return c && c.kind === "出荷";
-    }).length;
+    }).length, 0);
     return /*#__PURE__*/React.createElement("button", {
-      key: d.col,
+      key: gr.date,
       onClick: () => {
         setDayIdx(i);
         setShowIdle(false);
@@ -4207,7 +4248,7 @@ function DispatchGrid({
         background: isToday ? "#e8eef5" : "#f1f5f9",
         color: isToday ? NAVY : "#64748b"
       }
-    }, /*#__PURE__*/React.createElement("span", null, d.label), /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, gr.label), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] mt-0.5",
       style: {
         color: active ? "#cbd5e1" : VIZ.muted
@@ -4265,7 +4306,7 @@ function DispatchGrid({
         color: VIZ.muted
       }
     }, sameKind, "\u53F0")), /*#__PURE__*/React.createElement("button", {
-      onClick: () => openEdit(r.t, curDay.col, curDay.header),
+      onClick: () => openEdit(r.t, r.d.col, r.d.header + (r.d.arrive ? " " + r.d.arrive : "")),
       className: "w-full text-left px-3 py-2.5",
       style: {
         cursor: g.editable ? "pointer" : "default",
@@ -4280,7 +4321,13 @@ function DispatchGrid({
       }
     }, r.t.truck), r.t.company && /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] text-slate-400 truncate"
-    }, r.t.company), dgridQtyText(r.c) && /*#__PURE__*/React.createElement("span", {
+    }, r.t.company), curGroup.cols.length > 1 && r.d.arrive && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] px-1.5 rounded shrink-0",
+      style: {
+        background: "#eef2f7",
+        color: VIZ.ink2
+      }
+    }, r.d.arrive), dgridQtyText(r.c) && /*#__PURE__*/React.createElement("span", {
       className: "text-[11px] tabular-nums ml-auto shrink-0 whitespace-nowrap",
       style: {
         color: VIZ.ink2
@@ -4301,7 +4348,7 @@ function DispatchGrid({
     className: "mt-2 rounded-md border border-slate-200 divide-y divide-slate-100"
   }, idleTrucks.map(t => /*#__PURE__*/React.createElement("button", {
     key: t.row,
-    onClick: () => openEdit(t, curDay.col, curDay.header),
+    onClick: () => openEdit(t, curDay.col, curDay.header) /* 分かれている日は最初の列（着日が早い方）に入れる */,
     className: "w-full text-left px-3 py-2 flex items-baseline gap-2",
     style: {
       cursor: g.editable ? "pointer" : "default",
@@ -4349,7 +4396,12 @@ function DispatchGrid({
         color: isToday ? NAVY : "#475569",
         boxShadow: isToday ? "inset 0 2px 0 " + NAVY : "none"
       }
-    }, d.header);
+    }, /*#__PURE__*/React.createElement("div", null, d.header), d.arrive && /*#__PURE__*/React.createElement("div", {
+      className: "text-[9px] font-normal",
+      style: {
+        color: VIZ.muted
+      }
+    }, d.arrive));
   })), /*#__PURE__*/React.createElement("div", {
     className: "flex bg-slate-50 border-b-2 border-slate-200"
   }, /*#__PURE__*/React.createElement("div", {

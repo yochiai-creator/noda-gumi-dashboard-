@@ -40,22 +40,27 @@ const REPLY = {
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
   getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
-    sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/12', hasPrev: true, hasNext: true,
+    sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/11', hasPrev: true, hasNext: true,
     days: [
-      { col: 2, date: '2026-09-07', label: '9/7', header: '9/7(月)出' },
-      { col: 3, date: '2026-09-08', label: '9/8', header: '9/8(火)出' },
-      { col: 4, date: '2026-09-09', label: '9/9', header: '9/9(水)出' },
-      { col: 5, date: '2026-09-10', label: '9/10', header: '9/10(木)出' },
-      { col: 6, date: '2026-09-11', label: '9/11', header: '9/11(金)出' },
-      { col: 7, date: '2026-09-12', label: '9/12', header: '9/12(土)出' },
+      { col: 2, date: '2026-09-07', label: '9/7', header: '9/7(月)出', arrive: '9/8(火)着' },
+      { col: 3, date: '2026-09-08', label: '9/8', header: '9/8(火)出', arrive: '9/9(水)着' },
+      { col: 4, date: '2026-09-09', label: '9/9', header: '9/9(水)出', arrive: '9/10(木)着' },
+      { col: 5, date: '2026-09-10', label: '9/10', header: '9/10(木)出', arrive: '9/11(金)着' },
+      // ★ 実データどおり、金曜だけ出発日が同じ2列に分かれている（土着・月着）
+      { col: 6, date: '2026-09-11', label: '9/11', header: '9/11(金)出', arrive: '9/12(土)着' },
+      { col: 7, date: '2026-09-11', label: '9/11', header: '9/11(金)出', arrive: '9/14(月)着' },
     ],
     trucks: [
       { row: 3, company: '', truck: '10ｔ箱', cells: { 2: { kind: '運休', text: '×', q20: null, q50: null } } },
-      { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: { 3: { kind: '出荷', text: '岐阜県可児市', q20: 100, q50: null } } },
+      // ★ 金曜の2列（6=土着 / 7=月着）にも予定を入れて、まとまるかを見る
+      { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: {
+        3: { kind: '出荷', text: '岐阜県可児市', q20: 100, q50: null },
+        7: { kind: '出荷', text: '北海道苫小牧市', q20: null, q50: 60 } } },
       { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
         cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30 },
                  3: { kind: '引取', text: '←60665', q20: 0, q50: 20 },
-                 4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 } } },
+                 4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 },
+                 6: { kind: '出荷', text: '鳥取県米子市', q20: 180, q50: 30 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
         cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
                  4: { kind: '休み', text: 'お休み', q20: null, q50: null } } },
@@ -184,6 +189,34 @@ const REPLY = {
   chk('日表示で横にはみ出していない', over1.b <= over1.c + 1, over1);
   await page.screenshot({ path: SP + '/disp_day.png', fullPage: false });
 
+  /* ---------- 金曜が2列（土着・月着）に分かれている日 ---------- */
+  console.log('■ 金曜の2列を1日にまとめる');
+  const chipTexts = await page.evaluate(() => [...document.querySelectorAll('button')]
+    .filter((x) => /^\d+\/\d+/.test(x.innerText.trim()))
+    .map((x) => x.innerText.replace(/\n/g, '/')));
+  console.log('   チップ:', JSON.stringify(chipTexts));
+  chk('★日のチップが5つ（9/11が2つに割れていない）', chipTexts.length === 5, chipTexts);
+  chk('9/11のチップが1つだけ',
+    chipTexts.filter((t) => t.indexOf('9/11') === 0).length === 1, chipTexts);
+
+  await page.locator('button', { hasText: /^9\/11/ }).first().click();
+  await page.waitForTimeout(500);
+  const fri = await page.evaluate(() => {
+    const list = document.querySelector('.divide-y.divide-slate-100');
+    const rows = list ? [...list.children].map((b) => b.innerText.replace(/\n/g, ' | ')) : null;
+    const strip = document.querySelector('.rounded-md.bg-slate-50');
+    return { rows: rows, 本数: strip ? strip.innerText.replace(/\n+/g, ' ') : null };
+  });
+  console.log('   9/11の行:', JSON.stringify(fri.rows));
+  console.log('   9/11の本数:', JSON.stringify(fri.本数));
+  chk('★2つの列のトラックがまとめて出る',
+    fri.rows && fri.rows.some((t) => t.indexOf('9/12(土)着') !== -1)
+      && fri.rows.some((t) => t.indexOf('9/14(月)着') !== -1), fri.rows);
+  chk('どちらの便かが着日で分かる',
+    fri.rows && fri.rows.filter((t) => /\d+\/\d+\(.\)着/.test(t)).length >= 2, fri.rows);
+  chk('★その日の本数が2列ぶんの合計（20k 180 / 50k 90）',
+    fri.本数 && /20k\s*180/.test(fri.本数) && /50k\s*90/.test(fri.本数), fri.本数);
+
   /* ---------- 上のKPIと下の表が一致するか ---------- */
   console.log('■ 上のKPIと下の表の連動');
   const kpiWeek = await page.evaluate(() => {
@@ -202,13 +235,14 @@ const REPLY = {
   /* モックの合計行: 9/7 = 20k235/50k292、9/8 = 20k100/50k150、9/11 = 20k180/50k90。
      残りの日は未設定（null）。
      出荷のマス: 9/7 は 野村・福安・②・ワイド の4件、9/8 は 佐伯 の1件、
-     9/9 は 野村 の1件（引取・運休・お休みは数えない）。 */
+     9/9 は 野村 の1件、9/11 は 土着の野村・月着の佐伯 の2件
+     （引取・運休・お休みは数えない）。金曜の2列ぶんも足す。 */
   chk('★KPIの20kが表の合計と一致する（235+100+180=515）', kpiWeek.k20 === 515, kpiWeek);
   chk('★KPIの50kが表の合計と一致する（292+150+90=532）', kpiWeek.k50 === 532, kpiWeek);
   chk('KPIの総計が20k+50k（1,047）', kpiWeek.総計 === 1047, kpiWeek);
   chk('未設定の日を0として足している', kpiWeek.k20 === 515 && kpiWeek.k50 === 532, kpiWeek);
-  chk('KPIの台数が出荷のマスの数（4+1+1=6）', kpiWeek.台数 === 6, kpiWeek);
-  chk('KPIにどの週かが書いてある', kpiWeek.cards.some((t) => t.indexOf('9/7〜9/12') !== -1), kpiWeek.cards);
+  chk('KPIの台数が出荷のマスの数（4+1+1+2=8。金曜の2列ぶんも足す）', kpiWeek.台数 === 8, kpiWeek);
+  chk('KPIにどの週かが書いてある', kpiWeek.cards.some((t) => t.indexOf('9/7〜9/11') !== -1), kpiWeek.cards);
 
   /* ---------- 「週」表示 ---------- */
   console.log('■ 週表示');
