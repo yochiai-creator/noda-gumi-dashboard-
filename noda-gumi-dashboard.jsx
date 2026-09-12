@@ -631,6 +631,18 @@ function YardMap({ yardLive, onRefresh }) {
     if (withUrl.length === 1) {
       try { window.open(withUrl[0].url, "_blank", "noopener"); } catch (err) { /* 開けなくても選択は続ける */ }
     }
+
+    /* ★ タップのたびに「指図書PDFを検索中…」が出るのをやめる。
+         マップを読み込むときの一括取得（getYardMapUpdatesBothWithOrderText）で
+         全区画ぶんの依頼NoとPDFリンクまで解決済みなので、その区画の結果が
+         手元にあるなら取り直す必要がない。Drive検索は重く、押すたびに
+         待たされていた。
+         最新にしたいときは上の「更新」で一括取得からやり直す。 */
+    if (liveForSize[String(b.pos)]) {
+      setOrderLookupStatus(null);
+      return;
+    }
+
     if (typeof google !== "undefined" && google.script && google.script.run) {
       setOrderLookupStatus("loading");
       google.script.run
@@ -2584,7 +2596,7 @@ export default function App() {
         }
       })
       .withFailureHandler(() => markLoaded())
-      .getYardMapUpdatesBothWithOrderText(q50k, q20k);
+      .getYardMapUpdatesBothWithOrderText(q50k, q20k, force === true);
   };
 
   useEffect(() => {

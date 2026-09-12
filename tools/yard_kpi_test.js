@@ -62,7 +62,15 @@ const REPLY = {
       const o = { withSuccessHandler(f) { ok = f; return o; }, withFailureHandler() { return o; } };
       Object.keys(d).forEach((fn) => { o[fn] = () => { setTimeout(() => { if (ok) ok(d[fn]); }, 0); return o; }; });
       return o; }
-    window.google = { script: { get run() { return mk(); }, host: {} } };
+    // ★ タップのたびにDriveを検索し直していないかを数える
+    window.__calls = [];
+    function mk2() { let ok = null;
+      const o = { withSuccessHandler(f) { ok = f; return o; }, withFailureHandler() { return o; } };
+      Object.keys(d).forEach((fn) => { o[fn] = () => {
+        window.__calls.push(fn);
+        setTimeout(() => { if (ok) ok(d[fn]); }, 0); return o; }; });
+      return o; }
+    window.google = { script: { get run() { return mk2(); }, host: {} } };
     // ★ タップでPDFが開くかを見るため window.open を記録に差し替える
     window.__opened = [];
     window.open = (u) => { window.__opened.push(u); return null; };
@@ -214,6 +222,33 @@ const REPLY = {
     return window.__opened;
   });
   chk('指図書が無い区画では開かない', none.length === 0, none);
+
+  /* ★ タップのたびに「指図書PDFを検索中…」が出て待たされていた。
+       一括取得で全区画ぶん解決済みなので、取り直さない。 */
+  const lookup = await page.evaluate(() => {
+    window.__calls = [];
+    ['<6>', '<4>', '<1>', '<7>'].forEach((label) => {
+      const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === label);
+      if (t) t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    return { 検索: window.__calls.filter((c) => c === 'getYardBlockDetailWithPdf').length,
+             すべて: window.__calls };
+  });
+  console.log('   4区画タップしたときのDrive検索:', JSON.stringify(lookup));
+  chk('★タップのたびに検索し直さない（0回）', lookup.検索 === 0, lookup);
+  const spinner = await page.evaluate(() => /指図書PDFを検索中/.test(document.body.innerText));
+  chk('「検索中…」が出ない', spinner === false, spinner);
+
+  /* 一括取得に入っていなかった区画（このモックでは位置9）は、
+     今までどおりその場で取りに行く。取りこぼしを作らないこと。 */
+  const fallback = await page.evaluate(() => {
+    window.__calls = [];
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<9>');
+    if (!t) return { ok: false };
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return { ok: true, 検索: window.__calls.filter((c) => c === 'getYardBlockDetailWithPdf').length };
+  });
+  chk('一括取得に無い区画は今までどおり取りに行く', fallback.ok && fallback.検索 === 1, fallback);
 
   await page.screenshot({ path: SP + '/yard_kpi.png', fullPage: false });
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');

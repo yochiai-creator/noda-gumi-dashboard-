@@ -519,6 +519,8 @@ function updateYardBlock(payload) {
       result.visualDebug = { error: String(visualErr) };
       Logger.log('見た目のヤードマップへの反映でエラー: ' + String(visualErr));
     }
+    // ★ 直した内容がすぐマップに出るように、一括取得のキャッシュを捨てる
+    nc_forget_('yardMapBoth');
     result.success = true;
   } catch (err) {
     result.error = String(err);
@@ -939,7 +941,18 @@ function getYardBlockDetailWithPdf(sizeKey, pos) {
 // ===== マップ全体表示時に呼ぶ：依頼NoからPDFリンクまで全部まとめて取得する =====
 // ★ 読み込みに時間がかかっても、開いた瞬間から全ブロックのPDFリンクが
 //   出ている状態にしたいという要望のため、一括取得の時点で全件のPDF検索を行う。
-function getYardMapUpdatesBothWithOrderText(queries50k, queries20k) {
+function getYardMapUpdatesBothWithOrderText(queries50k, queries20k, force) {
+  /* ★ 依頼NoごとにDriveを検索するので重い。今まで毎回やっていたため、
+       ヤードタブを開くたびに待たされていた。5分ぶんキャッシュする。
+       ★ 引数（位置の一覧）は静的データから作る固定のものなので、
+         キャッシュのキーには入れない。
+       ★ アプリから区画を直したときは updateYardBlock で消している。 */
+  return nc_cached_('yardMapBoth', force === true, 300, function () {
+    return getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k);
+  });
+}
+
+function getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k) {
   var base = JSON.parse(getYardMapUpdatesBoth(queries50k, queries20k));
   var pdfCache = {}; // 同じ依頼Noを何度も検索しないためのキャッシュ
 
