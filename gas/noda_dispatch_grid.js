@@ -247,6 +247,35 @@ function dgrid_readTrucks_(values, block) {
   return out;
 }
 
+/* マスの中身が依頼ナンバーだけかどうか。
+   ★ 地名の入ったマスから数字を拾ってはいけない。「広島県東広島市 (4600L×1)」の
+     4600 を依頼Noと間違える。数字と矢印・記号だけのマスに限る。
+   例: 「↓60688」「10428→」「30412,30458→ 30413」「←70253, 70255,70256」 */
+function dgrid_isOrderNoOnly_(text) {
+  var t = String(text || '').trim();
+  if (t === '' || !/\d{4,6}/.test(t)) return false;
+  return /^[\s0-9,，、.()（）\-ー–—→←↓↑]+$/.test(t);
+}
+
+/* マスから依頼Noを拾って、指図書PDFのリンクまで解決する。
+   ★ 依頼No→PDFの検索はヤードマップと同じ関数を使う（6時間キャッシュ付き）。
+     同じプロジェクトなので、そのまま呼べる。
+   ★ cache は1週ぶんの呼び出しで使い回す入れもの（同じ番号を何度も引かない）。 */
+function dgrid_cellOrders_(text, cache) {
+  if (!dgrid_isOrderNoOnly_(text)) return null;
+  var nos = yard_extractOrderNumbers_(text);
+  if (!nos || nos.length === 0) return null;
+  var out = [];
+  for (var i = 0; i < nos.length; i++) {
+    var no = nos[i];
+    if (!(no in cache)) {
+      cache[no] = yard_findOrderPdf_(no);
+    }
+    out.push({ no: no, url: cache[no].url, date: cache[no].date });
+  }
+  return out;
+}
+
 // ===== 内部：セルの中身を種類に分ける =====
 function dgrid_cellKind_(text) {
   var t = String(text || '').trim();
@@ -315,6 +344,7 @@ function getDispatchGridData_uncached_(weekOffset) {
     data.weekLabel = block.days[0].label + '〜' + block.days[block.days.length - 1].label;
 
     var trucks = dgrid_readTrucks_(values, block);
+    var pdfCache = {};   // 同じ依頼Noを週のあいだで何度も検索しない
     data.trucks = trucks.map(function (t) {
       var cells = {};
       block.days.forEach(function (d) {
@@ -325,7 +355,11 @@ function getDispatchGridData_uncached_(weekOffset) {
         var q20 = d.q20col == null ? null : dgrid_qty_(row[d.q20col]);
         var q50 = d.q50col == null ? null : dgrid_qty_(row[d.q50col]);
         if (k.text || q20 || q50) {
-          cells[d.col] = { kind: k.kind, text: k.text, q20: q20, q50: q50 };
+          var cell = { kind: k.kind, text: k.text, q20: q20, q50: q50 };
+          // マスが依頼ナンバーなら、指図書PDFまで引いておく
+          var orders = dgrid_cellOrders_(k.text, pdfCache);
+          if (orders) cell.orders = orders;
+          cells[d.col] = cell;
         }
       });
       return { row: t.row, company: t.company, truck: t.truck, cells: cells };

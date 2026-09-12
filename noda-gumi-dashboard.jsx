@@ -1914,6 +1914,27 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                         )}
                         {String(r.c.text).trim() === "" ? "（行き先の記入なし）" : r.c.text}
                       </span>
+                      {/* ★ どのトラックがどの指図書のものかを出す。
+                             マスに依頼ナンバーが書いてあるときだけ引ける。 */}
+                      {r.c.orders && r.c.orders.length > 0 && (
+                        <span className="flex flex-wrap gap-1.5 mt-1">
+                          {r.c.orders.map((o, oi) => (
+                            o.url ? (
+                              <a key={oi} href={o.url} target="_blank" rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white"
+                                style={{ background: "#2563eb", textDecoration: "none" }}>
+                                <FileText size={11} />指図書 {o.no}{o.date ? "（" + o.date + "）" : ""}
+                              </a>
+                            ) : (
+                              <span key={oi} className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] bg-slate-100"
+                                style={{ color: VIZ.muted }}>
+                                指図書 {o.no}（未検出）
+                              </span>
+                            )
+                          ))}
+                        </span>
+                      )}
                     </button>
                   </React.Fragment>
                 );
@@ -2049,6 +2070,12 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                         <span className="block text-[10px] tabular-nums" style={{ color: VIZ.ink2,
                           lineHeight: 1.25, whiteSpace: "pre-line" }}>
                           {qty}
+                        </span>
+                      )}
+                      {/* 指図書が引けるマスに印。開くのは「日」表示から */}
+                      {c && c.orders && c.orders.some((o) => o.url) && (
+                        <span className="block text-[9px]" style={{ color: "#2563eb", lineHeight: 1.2 }}>
+                          指図書あり
                         </span>
                       )}
                     </span>

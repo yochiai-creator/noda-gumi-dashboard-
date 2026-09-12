@@ -55,14 +55,18 @@ const REPLY = {
       // ★ 金曜の2列（6=土着 / 7=月着）にも予定を入れて、まとまるかを見る
       { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: {
         3: { kind: '出荷', text: '岐阜県可児市', q20: 100, q50: null },
-        5: { kind: '引取', text: '←70253, 70255,70256', q20: null, q50: null },
+        5: { kind: '引取', text: '←70253, 70255,70256', q20: null, q50: null,
+             orders: [{ no: '70253', url: 'https://drive.google.com/file/d/d/view', date: '9/9' }] },
         7: { kind: '出荷', text: '北海道苫小牧市', q20: null, q50: 60 } } },
       { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
         cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30 },
                  3: { kind: '引取', text: '←60665', q20: 0, q50: 20 },
                  4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 },
                  // ★ 実データにあった形：行き先の欄が依頼ナンバー
-                 5: { kind: '出荷', text: '30412,30458→ 30413', q20: null, q50: null },
+                 5: { kind: '出荷', text: '30412,30458→ 30413', q20: null, q50: null,
+                      orders: [{ no: '30412', url: 'https://drive.google.com/file/d/a/view', date: '9/10' },
+                               { no: '30458', url: null, date: null },
+                               { no: '30413', url: 'https://drive.google.com/file/d/c/view', date: '9/10' }] },
                  6: { kind: '出荷', text: '鳥取県米子市', q20: 180, q50: 30 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
         cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
@@ -187,6 +191,26 @@ const REPLY = {
   console.log('   9/10の行:', JSON.stringify(ono));
   chk('★依頼ナンバーの行に「依頼No」と添える',
     ono && ono.some((t2) => /依頼No\s*30412,30458→ 30413/.test(t2)), ono);
+  /* ★ どのトラックがどの指図書のものかを出す */
+  const shiji = await page.evaluate(() => {
+    const list = document.querySelector('.divide-y.divide-slate-100');
+    const links = list ? [...list.querySelectorAll('a')].map((a) => ({ t: a.textContent.trim(), href: a.getAttribute('href') })) : [];
+    // 入れ子の親も引っかかるので、中に要素を持たないものだけを見る
+    const dim = list ? [...list.querySelectorAll('span')]
+      .filter((x) => x.children.length === 0 && /未検出/.test(x.textContent))
+      .map((x) => x.textContent.trim()) : [];
+    return { links: links, dim: dim };
+  });
+  console.log('   指図書リンク:', JSON.stringify(shiji));
+  /* 9/10には出荷（30412,30458→30413）と引取（←70253…）の2行がある。
+     PDFが見つかったのは 30412・30413・70253 の3件。 */
+  chk('★指図書のリンクが出る（3件）', shiji.links.length === 3, shiji.links);
+  chk('引取の行からも指図書が出る',
+    shiji.links.some((l) => /70253/.test(l.t)), shiji.links);
+  chk('リンクにPDFのURLが入っている',
+    shiji.links.every((l) => /drive\.google\.com/.test(l.href)), shiji.links);
+  chk('依頼Noと日付が出る', /指図書 30412（9\/10）/.test(shiji.links[0].t), shiji.links[0]);
+  chk('PDFが見つからない依頼Noはそう書く', shiji.dim.length === 1 && /30458/.test(shiji.dim[0]), shiji.dim);
   chk('地名には「依頼No」を付けない',
     ono && !ono.some((t2) => /依頼No[^|]*県/.test(t2)), ono);
   await page.locator('button', { hasText: /^9\/7/ }).first().click();

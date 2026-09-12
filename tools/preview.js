@@ -55,14 +55,18 @@ const REPLY = {
       // ★ 金曜の2列（6=土着 / 7=月着）にも予定を入れて、まとまるかを見る
       { row: 4, company: '', truck: '10ｔ箱 佐伯', cells: {
         3: { kind: '出荷', text: '岐阜県可児市', q20: 100, q50: null },
-        5: { kind: '引取', text: '←70253, 70255,70256', q20: null, q50: null },
+        5: { kind: '引取', text: '←70253, 70255,70256', q20: null, q50: null,
+             orders: [{ no: '70253', url: 'https://drive.google.com/file/d/d/view', date: '9/9' }] },
         7: { kind: '出荷', text: '北海道苫小牧市', q20: null, q50: 60 } } },
       { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
         cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30 },
                  3: { kind: '引取', text: '←60665', q20: 0, q50: 20 },
                  4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 },
                  // ★ 実データにあった形：行き先の欄が依頼ナンバー
-                 5: { kind: '出荷', text: '30412,30458→ 30413', q20: null, q50: null },
+                 5: { kind: '出荷', text: '30412,30458→ 30413', q20: null, q50: null,
+                      orders: [{ no: '30412', url: 'https://drive.google.com/file/d/a/view', date: '9/10' },
+                               { no: '30458', url: null, date: null },
+                               { no: '30413', url: 'https://drive.google.com/file/d/c/view', date: '9/10' }] },
                  6: { kind: '出荷', text: '鳥取県米子市', q20: 180, q50: 30 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
         cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
