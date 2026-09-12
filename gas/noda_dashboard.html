@@ -2536,6 +2536,8 @@ function YardMap({
   const rawData = size === "50k" ? MAP_50K : MAP_20K;
   const liveForSize = yardLive && yardLive[size] || {};
   const data = yard_mergeLiveBlocks_(rawData, liveForSize);
+  // 指図書が付いている区画の数（どこをタップすればよいかの手がかり）
+  const ordersOnMap = data.blocks.filter(b => b.orders && b.orders.length > 0).length;
   /* ---------- 区画検索 ---------- */
   // 依頼No / 容器番号 / GNo / 位置ラベル で該当区画を探す。
   // 検索に必要な値はすべてこの時点の data.blocks に揃っているので、
@@ -2766,6 +2768,18 @@ function YardMap({
   const selectBlock = b => {
     setSel(b);
     setEditing(false);
+    /* ★ 指図書が1件だけ付いている区画は、タップした流れでそのままPDFを開く。
+         URLはマップの一括取得のときに解決済みなので、ここで開けば
+         「タップの中で開く」形になりポップアップブロックに掛からない。
+         （あとから非同期で開こうとするとiPhoneでは止められる）
+         2件以上あるときはどれを開くか決められないので、今までどおり
+         下のボタンから選んでもらう。 */
+    const withUrl = (b.orders || []).filter(o => o && o.url);
+    if (withUrl.length === 1) {
+      try {
+        window.open(withUrl[0].url, "_blank", "noopener");
+      } catch (err) {/* 開けなくても選択は続ける */}
+    }
     if (typeof google !== "undefined" && google.script && google.script.run) {
       setOrderLookupStatus("loading");
       google.script.run.withSuccessHandler(detail => {
@@ -3033,7 +3047,39 @@ function YardMap({
       marginLeft: "auto",
       textAlign: "right"
     }
-  }, zoom ? "1本指で移動・2本指でズーム" : "2本指でズームできます"))), view === "list" && /*#__PURE__*/React.createElement("div", {
+  }, zoom ? "1本指で移動・2本指でズーム" : "2本指でズームできます")), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px]",
+    style: {
+      color: VIZ.muted
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "inline-flex items-center gap-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 10,
+      height: 10,
+      borderRadius: 2,
+      background: "#ffe4c7",
+      border: "1.5px solid #ea7a17",
+      display: "inline-block"
+    }
+  }), "\u6307\u56F3\u66F8\u3042\u308A\uFF08\u4E38\u6570\u5B57\u306F\u4EF6\u6570\uFF09"), /*#__PURE__*/React.createElement("span", {
+    className: "inline-flex items-center gap-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 10,
+      height: 10,
+      borderRadius: 2,
+      background: "#f8fafc",
+      border: "1.5px dashed #cbd5e1",
+      display: "inline-block"
+    }
+  }), "\u7A7A\u304D"), /*#__PURE__*/React.createElement("span", null, "\u533A\u753B\u3092\u30BF\u30C3\u30D7\u3067\u660E\u7D30\u3002\u6307\u56F3\u66F81\u4EF6\u306E\u533A\u753B\u306FPDF\u304C\u305D\u306E\u307E\u307E\u958B\u304D\u307E\u3059"), ordersOnMap > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "ml-auto font-semibold",
+    style: {
+      color: "#9a4b06"
+    }
+  }, "\u3053\u306E\u56F3\u306B\u6307\u56F3\u66F8 ", ordersOnMap, " \u533A\u753B"))), view === "list" && /*#__PURE__*/React.createElement("div", {
     className: "rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-96 overflow-y-auto"
   }, (q !== "" && hitCount > 0 ? blocksSorted.filter(isHit) : blocksSorted).map((b, i) => /*#__PURE__*/React.createElement("button", {
     key: i,

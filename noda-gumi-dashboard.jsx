@@ -430,6 +430,8 @@ function YardMap({ yardLive, onRefresh }) {
   const rawData = size === "50k" ? MAP_50K : MAP_20K;
   const liveForSize = (yardLive && yardLive[size]) || {};
   const data = yard_mergeLiveBlocks_(rawData, liveForSize);
+  // 指図書が付いている区画の数（どこをタップすればよいかの手がかり）
+  const ordersOnMap = data.blocks.filter((b) => b.orders && b.orders.length > 0).length;
   /* ---------- 区画検索 ---------- */
   // 依頼No / 容器番号 / GNo / 位置ラベル で該当区画を探す。
   // 検索に必要な値はすべてこの時点の data.blocks に揃っているので、
@@ -619,6 +621,16 @@ function YardMap({ yardLive, onRefresh }) {
   const selectBlock = (b) => {
     setSel(b);
     setEditing(false);
+    /* ★ 指図書が1件だけ付いている区画は、タップした流れでそのままPDFを開く。
+         URLはマップの一括取得のときに解決済みなので、ここで開けば
+         「タップの中で開く」形になりポップアップブロックに掛からない。
+         （あとから非同期で開こうとするとiPhoneでは止められる）
+         2件以上あるときはどれを開くか決められないので、今までどおり
+         下のボタンから選んでもらう。 */
+    const withUrl = (b.orders || []).filter((o) => o && o.url);
+    if (withUrl.length === 1) {
+      try { window.open(withUrl[0].url, "_blank", "noopener"); } catch (err) { /* 開けなくても選択は続ける */ }
+    }
     if (typeof google !== "undefined" && google.script && google.script.run) {
       setOrderLookupStatus("loading");
       google.script.run
@@ -802,6 +814,28 @@ function YardMap({ yardLive, onRefresh }) {
             <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto", textAlign: "right" }}>
               {zoom ? "1本指で移動・2本指でズーム" : "2本指でズームできます"}
             </span>
+          </div>
+
+          {/* ★ 指図書PDFはタップすれば前から開けたが、どの区画にあるのかが
+                 分からず気づけなかった。何を見ればよいかをここに書く。 */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px]"
+            style={{ color: VIZ.muted }}>
+            <span className="inline-flex items-center gap-1">
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: "#ffe4c7",
+                             border: "1.5px solid #ea7a17", display: "inline-block" }} />
+              指図書あり（丸数字は件数）
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: "#f8fafc",
+                             border: "1.5px dashed #cbd5e1", display: "inline-block" }} />
+              空き
+            </span>
+            <span>区画をタップで明細。指図書1件の区画はPDFがそのまま開きます</span>
+            {ordersOnMap > 0 && (
+              <span className="ml-auto font-semibold" style={{ color: "#9a4b06" }}>
+                この図に指図書 {ordersOnMap} 区画
+              </span>
+            )}
           </div>
         </div>
       )}

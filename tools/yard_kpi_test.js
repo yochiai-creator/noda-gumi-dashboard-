@@ -28,6 +28,17 @@ const REPLY = {
     '50k': [
       { pos: '1', found: true, kind: 'empty', shipDate: null, orders: [] },
       { pos: '2', found: true, kind: 'empty', shipDate: null, orders: [] },
+      // ★ 指図書つきの区画（タップするとPDFのボタンが出る）
+      { pos: '4', found: true, kind: 'fill', groupNo: 465, rangeStart: 46401, rangeEnd: 46500, qty: 100,
+        orders: [{ no: '30425', url: 'https://drive.google.com/file/d/x/view' },
+                 { no: '30426', url: null }] },
+      // ★ 指図書が1件だけの区画。タップでそのままPDFが開く
+      { pos: '6', found: true, kind: 'fill', groupNo: 456, rangeStart: 45501, rangeEnd: 45600, qty: 100,
+        orders: [{ no: '60639', url: 'https://drive.google.com/file/d/one/view' }] },
+      // ★ PDFが2つある区画。どれを開くか決められないので勝手には開かない
+      { pos: '7', found: true, kind: 'fill', groupNo: 457, rangeStart: 45601, rangeEnd: 45700, qty: 100,
+        orders: [{ no: '60640', url: 'https://drive.google.com/file/d/a/view' },
+                 { no: '60641', url: 'https://drive.google.com/file/d/b/view' }] },
     ],
     '20k': [] }),
   getYardBlockDetailWithPdf: () => ({ found: false, orders: [] }),
@@ -52,6 +63,9 @@ const REPLY = {
       Object.keys(d).forEach((fn) => { o[fn] = () => { setTimeout(() => { if (ok) ok(d[fn]); }, 0); return o; }; });
       return o; }
     window.google = { script: { get run() { return mk(); }, host: {} } };
+    // ★ タップでPDFが開くかを見るため window.open を記録に差し替える
+    window.__opened = [];
+    window.open = (u) => { window.__opened.push(u); return null; };
   }, data);
   const tmp = SP + '/yardkpi.html';
   fs.writeFileSync(tmp, html);
@@ -132,6 +146,74 @@ const REPLY = {
   await page.locator('button', { hasText: 'サイズ別 在庫本数' }).first().click();
   await page.waitForTimeout(400);
   chk('もう一度押すと戻る', (await page.evaluate(() => document.body.scrollHeight)) === before, before);
+
+  /* ★ 指図書PDFはタップすれば前から開けたが、どこにあるか分からなかった。
+       凡例と件数を出して、何を見ればよいか分かるようにした。 */
+  const legend = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('div')].find((d) => d.innerText
+      && d.innerText.indexOf('指図書あり') === 0 && d.innerText.length < 200);
+    return el ? el.innerText.replace(/\n+/g, ' / ') : null;
+  });
+  console.log('   凡例:', JSON.stringify(legend));
+  chk('★指図書の凡例が出ている', legend && /指図書あり/.test(legend), legend);
+  chk('タップすれば出ることが書いてある', legend && /タップ/.test(legend), legend);
+  chk('この図に何区画あるか出る（3区画）', legend && /指図書 3 区画/.test(legend), legend);
+
+  // 指図書つきの区画をタップするとPDFのボタンが出る
+  const tapped = await page.evaluate(() => {
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<4>');
+    if (!t) return { ok: false };
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return { ok: true };
+  });
+  await page.waitForTimeout(600);
+  const pdf = await page.evaluate(() => {
+    const links = [...document.querySelectorAll('a')].filter((a) => /を開く/.test(a.textContent));
+    const dim = [...document.querySelectorAll('span')].filter((x) => /PDF未検出/.test(x.textContent));
+    return { 開くボタン: links.map((a) => a.textContent.trim()), href: links[0] ? links[0].getAttribute('href') : null,
+      未検出: dim.map((x) => x.textContent.trim()) };
+  });
+  console.log('   指図書:', JSON.stringify(pdf));
+  chk('区画をタップすると指図書のボタンが出る', tapped.ok && pdf.開くボタン.length === 1, pdf);
+  chk('ボタンにPDFのリンクが入っている', pdf.href && /drive\.google\.com/.test(pdf.href), pdf.href);
+  chk('PDFが見つからない依頼Noはそう書く', pdf.未検出.length === 1 && /30426/.test(pdf.未検出[0]), pdf.未検出);
+
+  /* ★ 指図書が1件だけの区画は、タップした流れでそのままPDFを開く */
+  const one = await page.evaluate(() => {
+    window.__opened = [];
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<6>');
+    if (!t) return { ok: false };
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return { ok: true, opened: window.__opened };
+  });
+  console.log('   1件の区画をタップ:', JSON.stringify(one));
+  chk('★指図書1件の区画はタップでPDFが開く',
+    one.ok && one.opened.length === 1 && /file\/d\/one/.test(one.opened[0]), one);
+
+  /* 開けるPDFが1つに決まるときだけ開く。2つあるとどれを開くか決められない。 */
+  const many = await page.evaluate(() => {
+    window.__opened = [];
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<7>');
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return window.__opened;
+  });
+  chk('★PDFが2つあるときは勝手に開かない（ボタンで選んでもらう）', many.length === 0, many);
+
+  const oneOfTwo = await page.evaluate(() => {
+    window.__opened = [];
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<4>');
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return window.__opened;
+  });
+  chk('依頼Noが2件でもPDFが1つなら開く', oneOfTwo.length === 1, oneOfTwo);
+
+  const none = await page.evaluate(() => {
+    window.__opened = [];
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<1>');
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return window.__opened;
+  });
+  chk('指図書が無い区画では開かない', none.length === 0, none);
 
   await page.screenshot({ path: SP + '/yard_kpi.png', fullPage: false });
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
