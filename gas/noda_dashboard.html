@@ -5135,13 +5135,23 @@ function App() {
     "50k": {},
     "20k": {}
   });
-  const [loadedCount, setLoadedCount] = useState(0);
+  /* ★ 読み込み完了の判定。以前は「9件そろったら」と件数で見ていたが、
+       あとから取得を足したとき（野外置場で10件になった）に数を直し忘れ、
+       9件そろった時点で画面を出してしまい、最後の1件が間に合わず
+       古い値（起動時の仮データ）が一瞬見えていた。
+       名前で管理して、足し忘れが起きないようにする。 */
+  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals", "invTrend", "monthly", "dispGrid", "yardMap", "yardCap"];
+  const [loadedKeys, setLoadedKeys] = useState({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const isGasEnv = typeof google !== "undefined" && google.script && google.script.run;
-  const markLoaded = () => {
-    setLoadedCount(prev => {
-      const next = prev + 1;
-      if (next >= 9) setInitialLoadDone(true); // 4集計 + ヤード + 出荷実績 + 在庫推移 + 月次まとめ + 配車グリッド
+  const markLoaded = key => {
+    setLoadedKeys(prev => {
+      if (prev[key]) return prev;
+      const next = {
+        ...prev,
+        [key]: true
+      };
+      if (LOAD_KEYS.every(k => next[k])) setInitialLoadDone(true);
       return next;
     });
   };
@@ -5239,53 +5249,53 @@ function App() {
         inventory: inv,
         loading: false
       }));
-      markLoaded();
+      markLoaded("inventory");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
         error: String(err),
         loading: false
       }));
-      markLoaded();
+      markLoaded("inventory");
     }).getInventoryDashboardData(force === true);
     google.script.run.withSuccessHandler(sh => {
       setLive(prev => ({
         ...prev,
         shipping: sh
       }));
-      markLoaded();
+      markLoaded("shipping");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
         error: String(err)
       }));
-      markLoaded();
+      markLoaded("shipping");
     }).getShippingDashboardData(force === true);
     google.script.run.withSuccessHandler(op => {
       setLive(prev => ({
         ...prev,
         orderPlan: op
       }));
-      markLoaded();
+      markLoaded("orderPlan");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
         error: String(err)
       }));
-      markLoaded();
+      markLoaded("orderPlan");
     }).getOrderPlanDashboardData(force === true);
     google.script.run.withSuccessHandler(d => {
       setLive(prev => ({
         ...prev,
         dispatch: d
       }));
-      markLoaded();
+      markLoaded("dispatch");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
         error: String(err)
       }));
-      markLoaded();
+      markLoaded("dispatch");
     }).getDispatchTodayData(force === true);
 
     // 蓄積シートから月次出荷実績を取得（シートを読むだけなので軽い）
@@ -5294,7 +5304,7 @@ function App() {
         ...prev,
         shipActuals: sa
       }));
-      markLoaded();
+      markLoaded("shipActuals");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
@@ -5302,7 +5312,7 @@ function App() {
           error: String(err)
         }
       }));
-      markLoaded();
+      markLoaded("shipActuals");
     }).getShippingActualsSummary(force === true);
 
     // 蓄積シートから在庫推移を取得
@@ -5311,7 +5321,7 @@ function App() {
         ...prev,
         invTrend: it
       }));
-      markLoaded();
+      markLoaded("invTrend");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
@@ -5319,7 +5329,7 @@ function App() {
           error: String(err)
         }
       }));
-      markLoaded();
+      markLoaded("invTrend");
     }).getInventoryTrendData(force === true);
 
     // 在庫・出荷・受注を月でそろえたまとめ
@@ -5328,7 +5338,7 @@ function App() {
         ...prev,
         monthly: mc
       }));
-      markLoaded();
+      markLoaded("monthly");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
@@ -5336,11 +5346,11 @@ function App() {
           error: String(err)
         }
       }));
-      markLoaded();
+      markLoaded("monthly");
     }).getMonthlyCombinedData(force === true);
 
     // 配車表のトラック×日付グリッド
-    fetchDispatchGrid(gridWeek, force === true, markLoaded);
+    fetchDispatchGrid(gridWeek, force === true, () => markLoaded("dispGrid"));
 
     // 野外置場（置場容量）の合計と、埋め込むURL。
     // URLは変わらないので1回取れれば取り直さない。
@@ -5349,7 +5359,7 @@ function App() {
         ...prev,
         yardCap: yc
       }));
-      markLoaded();
+      markLoaded("yardCap");
     }).withFailureHandler(err => {
       setLive(prev => ({
         ...prev,
@@ -5357,7 +5367,7 @@ function App() {
           error: String(err)
         }
       }));
-      markLoaded();
+      markLoaded("yardCap");
     }).getYardCapacitySummary();
     google.script.run.withSuccessHandler(u => {
       setLive(prev => ({
@@ -5381,7 +5391,7 @@ function App() {
       pos: String(b.pos)
     }));
     google.script.run.withSuccessHandler(json => {
-      markLoaded();
+      markLoaded("yardMap");
       try {
         const parsed = JSON.parse(json);
         const toMap = arr => {
@@ -5398,7 +5408,7 @@ function App() {
       } catch (e) {
         // パース失敗時は静的データのまま（何もしない）
       }
-    }).withFailureHandler(() => markLoaded()).getYardMapUpdatesBothWithOrderText(q50k, q20k, force === true);
+    }).withFailureHandler(() => markLoaded("yardMap")).getYardMapUpdatesBothWithOrderText(q50k, q20k, force === true);
   };
   useEffect(() => {
     fetchLiveData();

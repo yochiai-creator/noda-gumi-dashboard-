@@ -2458,15 +2458,23 @@ export default function App() {
   const [gridWeek, setGridWeek] = useState(0);
   const [gridSaving, setGridSaving] = useState(false);
   const [yardLive, setYardLive] = useState({ "50k": {}, "20k": {} });
-  const [loadedCount, setLoadedCount] = useState(0);
+  /* ★ 読み込み完了の判定。以前は「9件そろったら」と件数で見ていたが、
+       あとから取得を足したとき（野外置場で10件になった）に数を直し忘れ、
+       9件そろった時点で画面を出してしまい、最後の1件が間に合わず
+       古い値（起動時の仮データ）が一瞬見えていた。
+       名前で管理して、足し忘れが起きないようにする。 */
+  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals",
+                     "invTrend", "monthly", "dispGrid", "yardMap", "yardCap"];
+  const [loadedKeys, setLoadedKeys] = useState({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   const isGasEnv = typeof google !== "undefined" && google.script && google.script.run;
 
-  const markLoaded = () => {
-    setLoadedCount((prev) => {
-      const next = prev + 1;
-      if (next >= 9) setInitialLoadDone(true);   // 4集計 + ヤード + 出荷実績 + 在庫推移 + 月次まとめ + 配車グリッド
+  const markLoaded = (key) => {
+    setLoadedKeys((prev) => {
+      if (prev[key]) return prev;
+      const next = { ...prev, [key]: true };
+      if (LOAD_KEYS.every((k) => next[k])) setInitialLoadDone(true);
       return next;
     });
   };
@@ -2528,51 +2536,51 @@ export default function App() {
     setLive((prev) => ({ ...prev, loading: true, error: null }));
 
     google.script.run
-      .withSuccessHandler((inv) => { setLive((prev) => ({ ...prev, inventory: inv, loading: false })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err), loading: false })); markLoaded(); })
+      .withSuccessHandler((inv) => { setLive((prev) => ({ ...prev, inventory: inv, loading: false })); markLoaded("inventory"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err), loading: false })); markLoaded("inventory"); })
       .getInventoryDashboardData(force === true);
 
     google.script.run
-      .withSuccessHandler((sh) => { setLive((prev) => ({ ...prev, shipping: sh })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded(); })
+      .withSuccessHandler((sh) => { setLive((prev) => ({ ...prev, shipping: sh })); markLoaded("shipping"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded("shipping"); })
       .getShippingDashboardData(force === true);
 
     google.script.run
-      .withSuccessHandler((op) => { setLive((prev) => ({ ...prev, orderPlan: op })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded(); })
+      .withSuccessHandler((op) => { setLive((prev) => ({ ...prev, orderPlan: op })); markLoaded("orderPlan"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded("orderPlan"); })
       .getOrderPlanDashboardData(force === true);
 
     google.script.run
-      .withSuccessHandler((d) => { setLive((prev) => ({ ...prev, dispatch: d })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded(); })
+      .withSuccessHandler((d) => { setLive((prev) => ({ ...prev, dispatch: d })); markLoaded("dispatch"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded("dispatch"); })
       .getDispatchTodayData(force === true);
 
     // 蓄積シートから月次出荷実績を取得（シートを読むだけなので軽い）
     google.script.run
-      .withSuccessHandler((sa) => { setLive((prev) => ({ ...prev, shipActuals: sa })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, shipActuals: { error: String(err) } })); markLoaded(); })
+      .withSuccessHandler((sa) => { setLive((prev) => ({ ...prev, shipActuals: sa })); markLoaded("shipActuals"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, shipActuals: { error: String(err) } })); markLoaded("shipActuals"); })
       .getShippingActualsSummary(force === true);
 
     // 蓄積シートから在庫推移を取得
     google.script.run
-      .withSuccessHandler((it) => { setLive((prev) => ({ ...prev, invTrend: it })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, invTrend: { error: String(err) } })); markLoaded(); })
+      .withSuccessHandler((it) => { setLive((prev) => ({ ...prev, invTrend: it })); markLoaded("invTrend"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, invTrend: { error: String(err) } })); markLoaded("invTrend"); })
       .getInventoryTrendData(force === true);
 
     // 在庫・出荷・受注を月でそろえたまとめ
     google.script.run
-      .withSuccessHandler((mc) => { setLive((prev) => ({ ...prev, monthly: mc })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, monthly: { error: String(err) } })); markLoaded(); })
+      .withSuccessHandler((mc) => { setLive((prev) => ({ ...prev, monthly: mc })); markLoaded("monthly"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, monthly: { error: String(err) } })); markLoaded("monthly"); })
       .getMonthlyCombinedData(force === true);
 
     // 配車表のトラック×日付グリッド
-    fetchDispatchGrid(gridWeek, force === true, markLoaded);
+    fetchDispatchGrid(gridWeek, force === true, () => markLoaded("dispGrid"));
 
     // 野外置場（置場容量）の合計と、埋め込むURL。
     // URLは変わらないので1回取れれば取り直さない。
     google.script.run
-      .withSuccessHandler((yc) => { setLive((prev) => ({ ...prev, yardCap: yc })); markLoaded(); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, yardCap: { error: String(err) } })); markLoaded(); })
+      .withSuccessHandler((yc) => { setLive((prev) => ({ ...prev, yardCap: yc })); markLoaded("yardCap"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, yardCap: { error: String(err) } })); markLoaded("yardCap"); })
       .getYardCapacitySummary();
 
     google.script.run
@@ -2585,7 +2593,7 @@ export default function App() {
     const q20k = MAP_20K.blocks.map((b) => ({ pos: String(b.pos) }));
     google.script.run
       .withSuccessHandler((json) => {
-        markLoaded();
+        markLoaded("yardMap");
         try {
           const parsed = JSON.parse(json);
           const toMap = (arr) => {
@@ -2598,7 +2606,7 @@ export default function App() {
           // パース失敗時は静的データのまま（何もしない）
         }
       })
-      .withFailureHandler(() => markLoaded())
+      .withFailureHandler(() => markLoaded("yardMap"))
       .getYardMapUpdatesBothWithOrderText(q50k, q20k, force === true);
   };
 

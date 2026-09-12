@@ -90,6 +90,7 @@ function main() {
   if (next === before) {
     console.log('差分なし（gas/noda_dashboard.html は .jsx と同期しています）');
     warnUndefinedClasses(next, fs.readFileSync(JSX_PATH, 'utf8'));
+    warnLoadKeys(fs.readFileSync(JSX_PATH, 'utf8'));
     return 0;
   }
   if (checkOnly) {
@@ -100,10 +101,35 @@ function main() {
   fs.writeFileSync(HTML_PATH, next);
   console.log('gas/noda_dashboard.html を更新しました（' + before.length + ' → ' + next.length + ' 文字）');
   warnUndefinedClasses(next, fs.readFileSync(JSX_PATH, 'utf8'));
+    warnLoadKeys(fs.readFileSync(JSX_PATH, 'utf8'));
   return 0;
 }
 
 // 未定義クラスがあれば名指しで警告する（ビルドは止めない）
+/* 読み込み完了の判定に使う名前が、宣言と実際の呼び出しでずれていないかを見る。
+   ★ 以前は「9件そろったら画面を出す」と件数で数えていて、あとから取得を
+     足したときに数を直し忘れ、最後の1件が間に合わないまま画面が出て
+     古い値が見えていた。同じことが起きないようにビルドで弾く。 */
+function warnLoadKeys(jsx) {
+  const decl = jsx.match(/const LOAD_KEYS = \[([\s\S]*?)\];/);
+  if (!decl) {
+    console.log('');
+    console.log('⚠ LOAD_KEYS の宣言が見つかりません（読み込み完了の判定）。');
+    return;
+  }
+  const declared = (decl[1].match(/"([A-Za-z]+)"/g) || []).map((x) => x.replace(/"/g, ''));
+  const used = [...new Set([...jsx.matchAll(/markLoaded\("([A-Za-z]+)"\)/g)].map((m) => m[1]))];
+  const notCalled = declared.filter((k) => used.indexOf(k) === -1);
+  const notDeclared = used.filter((k) => declared.indexOf(k) === -1);
+  if (notCalled.length === 0 && notDeclared.length === 0) return;
+  console.log('');
+  console.log('⚠ 読み込み完了の判定（LOAD_KEYS）がずれています:');
+  if (notCalled.length) console.log('   宣言したのに markLoaded が呼ばれない: ' + notCalled.join(', ')
+    + '  → 画面がいつまでも「読み込み中」のままになります');
+  if (notDeclared.length) console.log('   markLoaded が呼ぶのに宣言が無い: ' + notDeclared.join(', ')
+    + '  → そのデータを待たずに画面を出してしまいます');
+}
+
 function warnUndefinedClasses(html, jsx) {
   const missing = findUndefinedClasses(html, jsx);
   if (missing.length === 0) return;
