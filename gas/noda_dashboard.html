@@ -4532,16 +4532,29 @@ function DispatchGrid({
         color: VIZ.muted
       }
     }, "\u4F9D\u983CNo"), String(r.c.text).trim() === "" ? "（行き先の記入なし）" : r.c.text), r.c.orders && r.c.orders.length > 0 && /*#__PURE__*/React.createElement("span", {
-      className: "flex flex-wrap gap-1.5 mt-1"
+      className: "block mt-1"
+    }, r.c.orders.some(o => o.guess) && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px]",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u884C\u304D\u5148\u3068\u51FA\u8377\u65E5\u304B\u3089\u63A8\u5B9A"), /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap gap-1.5 mt-0.5"
     }, r.c.orders.map((o, oi) => o.url ? /*#__PURE__*/React.createElement("a", {
       key: oi,
       href: o.url,
       target: "_blank",
       rel: "noopener noreferrer",
       onClick: e => e.stopPropagation(),
-      className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white",
-      style: {
+      className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold",
+      style: o.guess ? {
+        background: "#fff",
+        color: "#2563eb",
+        border: "1px solid #93c5fd",
+        textDecoration: "none"
+      } : {
         background: "#2563eb",
+        color: "#fff",
         textDecoration: "none"
       }
     }, /*#__PURE__*/React.createElement(FileText, {
@@ -4552,7 +4565,7 @@ function DispatchGrid({
       style: {
         color: VIZ.muted
       }
-    }, "\u6307\u56F3\u66F8 ", o.no, "\uFF08\u672A\u691C\u51FA\uFF09")))));
+    }, "\u6307\u56F3\u66F8 ", o.no, "\uFF08\u672A\u691C\u51FA\uFF09"))))));
   })), idleTrucks.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "mt-2"
   }, /*#__PURE__*/React.createElement("button", {
@@ -4734,7 +4747,7 @@ function DispatchGrid({
         color: "#2563eb",
         lineHeight: 1.2
       }
-    }, "\u6307\u56F3\u66F8\u3042\u308A")));
+    }, c.orders.every(o => o.guess) ? "指図書?" : "指図書あり")));
   }))))), view === "week" && /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] mt-2",
     style: {

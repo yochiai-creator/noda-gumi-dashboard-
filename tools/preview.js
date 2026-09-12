@@ -59,7 +59,10 @@ const REPLY = {
              orders: [{ no: '70253', url: 'https://drive.google.com/file/d/d/view', date: '9/9' }] },
         7: { kind: '出荷', text: '北海道苫小牧市', q20: null, q50: 60 } } },
       { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
-        cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30 },
+        // ★ 行き先の住所と出荷希望日から拾ったもの（推定）
+        cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30,
+                      orders: [{ no: '30412', url: 'https://drive.google.com/file/d/e/view',
+                                 date: '9/7', guess: true }] },
                  3: { kind: '引取', text: '←60665', q20: 0, q50: 20 },
                  4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 },
                  // ★ 実データにあった形：行き先の欄が依頼ナンバー
@@ -69,7 +72,10 @@ const REPLY = {
                                { no: '30413', url: 'https://drive.google.com/file/d/c/view', date: '9/10' }] },
                  6: { kind: '出荷', text: '鳥取県米子市', q20: 180, q50: 30 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
-        cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
+        // ★ 1つのマスに行き先が2か所 → 推定でも2件とも出す
+        cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0,
+                      orders: [{ no: '30414', url: 'https://drive.google.com/file/d/f/view', date: '9/7', guess: true },
+                               { no: '30415', url: 'https://drive.google.com/file/d/g/view', date: '9/7', guess: true }] },
                  4: { kind: '休み', text: 'お休み', q20: null, q50: null } } },
       // ★ 週まるごと予定が入っていないトラック（空き台数の確認用）
       { row: 16, company: '', truck: '4ｔ平標準 ③', cells: {} },

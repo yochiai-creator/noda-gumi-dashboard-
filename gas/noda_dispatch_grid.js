@@ -261,7 +261,7 @@ function dgrid_isOrderNoOnly_(text) {
    ★ 依頼No→PDFの検索はヤードマップと同じ関数を使う（6時間キャッシュ付き）。
      同じプロジェクトなので、そのまま呼べる。
    ★ cache は1週ぶんの呼び出しで使い回す入れもの（同じ番号を何度も引かない）。 */
-function dgrid_cellOrders_(text, cache) {
+function dgrid_cellOrders_(text, cache, index) {
   if (!dgrid_isOrderNoOnly_(text)) return null;
   var nos = yard_extractOrderNumbers_(text);
   if (!nos || nos.length === 0) return null;
@@ -269,11 +269,93 @@ function dgrid_cellOrders_(text, cache) {
   for (var i = 0; i < nos.length; i++) {
     var no = nos[i];
     if (!(no in cache)) {
-      cache[no] = yard_findOrderPdf_(no);
+      // ★ まず出荷実績の索引を引く。シートを読むだけなので一瞬で済む。
+      //   まだ取り込まれていない指図書だけ Drive を検索する（数秒かかる）。
+      var e = index && index.byOrder ? index.byOrder[no] : null;
+      cache[no] = e
+        ? { url: shipact_fileUrl_(e.fileId), date: shipact_shortDate_(e.date) }
+        : yard_findOrderPdf_(no);
     }
     out.push({ no: no, url: cache[no].url, date: cache[no].date });
   }
   return out;
+}
+
+/* 行き先の住所だけが書いてあるマスを、出荷実績の指図書と突き合わせる。
+   ★ 配車表には依頼ナンバーが書いていない便のほうが多い（「熊本県山鹿市」など）。
+     指図書の側は住所と出荷希望日を持っているので、
+     「出荷希望日が同じ」＋「市区町村が一致」で拾える。
+   ★ あくまで推定なので、画面では依頼ナンバー入りのマスと見分けが付くようにする。 */
+function dgrid_destOrders_(text, dateKey, index) {
+  if (!index || !index.byDate || !dateKey) return null;
+  var t = String(text || '').trim();
+  // 住所らしくないマス（「お休み」「×」など）は相手にしない
+  if (!t || !/[都道府県市区町村]/.test(t)) return null;
+
+  var hits = dgrid_matchOnDates_([dateKey], t, index);
+  if (hits.length === 0) {
+    // 出荷希望日が1日ずれて入っていることがあるので前後1日も見る
+    hits = dgrid_matchOnDates_([dgrid_shiftDate_(dateKey, -1), dgrid_shiftDate_(dateKey, 1)], t, index);
+  }
+  if (hits.length === 0) return null;
+
+  var seen = {}, out = [];
+  for (var i = 0; i < hits.length && out.length < 8; i++) {
+    var e = hits[i];
+    var no = e.no.replace(/^\d{2}-/, '');
+    if (seen[no]) continue;
+    seen[no] = true;
+    out.push({ no: no, url: shipact_fileUrl_(e.fileId), date: shipact_shortDate_(e.date), guess: true });
+  }
+  return out.length > 0 ? out : null;
+}
+
+function dgrid_matchOnDates_(dates, text, index) {
+  var out = [];
+  for (var i = 0; i < dates.length; i++) {
+    var list = index.byDate[dates[i]];
+    if (!list) continue;
+    for (var j = 0; j < list.length; j++) {
+      var a = index.addrByCode[list[j].code];
+      if (a && dgrid_addrMatches_(text, a.pref, a.city)) out.push(list[j]);
+    }
+  }
+  return out;
+}
+
+/* 配車表の行き先の文字列が、指図書の住所と同じ市区町村を指しているか。
+   ★ 「東京都西多摩郡瑞穂町 東京都羽村市」のように2か所書いてあることがある。
+   ★ 郡を省いて「瑞穂町」とだけ書いてあることもある。
+   ★ 「府中市」のように同じ市名が別の県にもあるので、
+     マスに都道府県が書いてあるときは一致を必須にする。 */
+function dgrid_addrMatches_(cellText, pref, city) {
+  var t = String(cellText || '').replace(/[\s\u3000]/g, '');
+  if (!t || !city) return false;
+
+  var ok = t.indexOf(city) !== -1;
+  if (!ok) {
+    var g = city.indexOf('郡');
+    var town = g >= 0 ? city.substring(g + 1) : '';
+    // 「瑞穂町」のような短すぎる手がかりで拾いすぎないよう2文字以上を要求する
+    ok = town.length >= 2 && t.indexOf(town) !== -1;
+  }
+  if (!ok) return false;
+
+  if (pref) {
+    var found = t.match(new RegExp(SHIPACT_PREFS, 'g'));
+    if (found && found.indexOf(pref) === -1) return false;
+  }
+  return true;
+}
+
+// 'yyyy-MM-dd' を n 日ずらす
+function dgrid_shiftDate_(key, n) {
+  var m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  var d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  d.setUTCDate(d.getUTCDate() + n);
+  var p = function (x) { return x < 10 ? '0' + x : String(x); };
+  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
 }
 
 // ===== 内部：セルの中身を種類に分ける =====
@@ -345,6 +427,7 @@ function getDispatchGridData_uncached_(weekOffset) {
 
     var trucks = dgrid_readTrucks_(values, block);
     var pdfCache = {};   // 同じ依頼Noを週のあいだで何度も検索しない
+    var shipIndex = shipact_index_();   // 出荷実績シートの索引（1回の実行で使い回す）
     data.trucks = trucks.map(function (t) {
       var cells = {};
       block.days.forEach(function (d) {
@@ -357,7 +440,10 @@ function getDispatchGridData_uncached_(weekOffset) {
         if (k.text || q20 || q50) {
           var cell = { kind: k.kind, text: k.text, q20: q20, q50: q50 };
           // マスが依頼ナンバーなら、指図書PDFまで引いておく
-          var orders = dgrid_cellOrders_(k.text, pdfCache);
+          var orders = dgrid_cellOrders_(k.text, pdfCache, shipIndex);
+          // 行き先が住所だけのマスは、出荷希望日と市区町村から推定する。
+          // 引取（←）は出荷の指図書ではないので住所からは引かない。
+          if (!orders && k.kind === '出荷') orders = dgrid_destOrders_(k.text, d.date, shipIndex);
           if (orders) cell.orders = orders;
           cells[d.col] = cell;
         }

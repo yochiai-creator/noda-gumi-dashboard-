@@ -59,7 +59,10 @@ var SHIP_ACT_CONFIG = {
   HEADERS: ['fileId', 'ファイル名', '処理日', '依頼No', '枝番', 'バージョン',
             '出荷希望日', '年月', '品名', 'サイズ', '数量', 'レンジ本数', '検算',
             'GNo開始', 'GNo終了', '容器接頭辞', '容器No開始', '容器No終了',
-            '出荷先コード', '出荷先名', '刻印月', '取込日時']
+            '出荷先コード', '出荷先名', '刻印月', '取込日時',
+            // ★ 配車表の行き先（「熊本県山鹿市」のような住所）と指図書を突き合わせる
+            //   ために後から足した3列。出荷先コードごとに1回だけ入れれば足りる。
+            '住所', '都道府県', '市区町村']
 };
 
 // ===== 公開関数：未取込の指図書PDFを時間の許す範囲だけ読んでシートに貯める =====
@@ -106,7 +109,7 @@ function harvestShippingActuals() {
     for (var i = 0; i < months.length; i++) {
       var m = months[i];
       // 取り込み済みの月は丸ごと飛ばす（今月だけは毎回見る＝新しいPDFが増えるため）
-      if (doneMonths.indexOf(m.key) !== -1 && m.key !== currentMonthKey) continue;
+      if (doneMonths.indexOf(m.key) !== -1 && m.key < currentMonthKey) continue;
 
       result.scannedMonths.push(m.key);
       var monthComplete = true;
@@ -141,7 +144,9 @@ function harvestShippingActuals() {
       if (buffer.length > 0) { shipact_appendRows_(sheet, buffer); buffer = []; }
 
       // 過去月を最後まで読み切れたら「完了」に記録して次回から飛ばす
-      if (monthComplete && m.key !== currentMonthKey && doneMonths.indexOf(m.key) === -1) {
+      // ★ 先の月（来月ぶんの指図書）を「完了」にしてはいけない。後から増えるのに
+      //   二度と見に行かなくなり、配車表の来週ぶんが紐づかなくなる。
+      if (monthComplete && m.key < currentMonthKey && doneMonths.indexOf(m.key) === -1) {
         doneMonths.push(m.key);
         props.setProperty(SHIP_ACT_CONFIG.PROP_DONE_MONTHS, JSON.stringify(doneMonths));
       }
@@ -261,6 +266,7 @@ function getShippingActualsSummary_uncached_() {
 // 在庫推移を先にやるのは、こちらが軽い（初回15件・以降1日1件）ため。
 // 出荷実績は重いので、残り時間で進むところまで進める。
 function harvestDailyData() {
+  var dailyStarted = Date.now();
   var out = { inventory: null, orders: null, shipping: null, repair: null };
 
   // ★ 古い判定で入った行を直す。シートを読んで判定し直すだけなので軽い
@@ -293,6 +299,19 @@ function harvestDailyData() {
   } catch (err) {
     out.shipping = { error: String(err) };
     Logger.log('出荷実績の取込で例外: ' + String(err));
+  }
+  // ★ 配車表の行き先（住所）と指図書を突き合わせるための住所を貯める。
+  //   出荷先コード1つにつき1回PDFを読めば足りるので、日を追うごとに揃う。
+  //   ★ ここまでで既に4分近く使っていることがある。GASの実行上限は6分なので、
+  //     残り時間の中でだけ進める（足りなければ今日は何もしない）。
+  try {
+    var left = 5 * 60 * 1000 - (Date.now() - dailyStarted);
+    out.destAddr = left > 20 * 1000
+      ? shipact_fillDestAddresses_(Math.min(left, 60 * 1000))
+      : { skipped: true };
+  } catch (err) {
+    out.destAddr = { error: String(err) };
+    Logger.log('出荷先住所の取込で例外: ' + String(err));
   }
   return out;
 }
@@ -368,6 +387,15 @@ function shipact_getSheet_() {
     sheet.getRange(1, 1, 1, SHIP_ACT_CONFIG.HEADERS.length).setValues([SHIP_ACT_CONFIG.HEADERS]);
     sheet.getRange(1, 1, 1, SHIP_ACT_CONFIG.HEADERS.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < SHIP_ACT_CONFIG.HEADERS.length) {
+    // ★ 列を後から足したとき（住所など）。既存の行はそのまま、見出しだけ書き足す。
+    //   足りない列は空欄のまま残り、後から shipact_fillDestAddresses_ が埋める。
+    if (sheet.getMaxColumns() < SHIP_ACT_CONFIG.HEADERS.length) {
+      sheet.insertColumnsAfter(sheet.getMaxColumns(),
+                               SHIP_ACT_CONFIG.HEADERS.length - sheet.getMaxColumns());
+    }
+    sheet.getRange(1, 1, 1, SHIP_ACT_CONFIG.HEADERS.length).setValues([SHIP_ACT_CONFIG.HEADERS]);
+    sheet.getRange(1, 1, 1, SHIP_ACT_CONFIG.HEADERS.length).setFontWeight('bold');
   }
   return sheet;
 }
@@ -465,7 +493,8 @@ function shipact_buildRow_(file, nameMatch) {
       f.gnoStart == null ? '' : f.gnoStart, f.gnoEnd == null ? '' : f.gnoEnd,
       f.prefix || '', f.cnoStart == null ? '' : f.cnoStart, f.cnoEnd == null ? '' : f.cnoEnd,
       f.destCode || '', f.destName || '', f.stampMonth || '',
-      Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss')
+      Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
+      f.addr || '', f.pref || '', f.city || ''
     ];
   } catch (err) {
     Logger.log('指図書の取込に失敗(' + fileName + '): ' + String(err));
@@ -534,7 +563,8 @@ function shipact_parseText_(text) {
     procDate: null, orderNo: null, shipDate: null, itemName: null, size: null,
     qty: null, rangeQty: null, gnoStart: null, gnoEnd: null,
     prefix: null, cnoStart: null, cnoEnd: null,
-    destCode: null, destName: null, stampMonth: null
+    destCode: null, destName: null, stampMonth: null,
+    addr: null, pref: null, city: null
   };
   var m;
 
@@ -603,7 +633,66 @@ function shipact_parseText_(text) {
     out.rangeQty = list[list.length - 1] - list[0] + 1;
   }
 
+  var ad = shipact_parseAddress_(text);
+  if (ad) { out.addr = ad.addr; out.pref = ad.pref; out.city = ad.city; }
+
   return out;
+}
+
+/**
+ * 指図書の本文から出荷先の住所（都道府県＋市区町村）を取り出す（純関数）。
+ *
+ * ★ なぜ要るのか
+ *   配車表の行き先の欄は「熊本県山鹿市」のような住所で、依頼ナンバーが
+ *   書いていない便が多い。指図書側も住所を持っているので、
+ *   「出荷希望日が同じ」＋「市区町村が一致」で突き合わせられる。
+ *
+ * ★ 一番最初に出てくる住所を採らない
+ *   PDFのテキスト化は行の順番が崩れるうえ、倉吉（自社）の住所が先に
+ *   出ることもある。出荷先の住所は表紙と別紙の2か所に出るので、
+ *   同じ「都道府県＋市区町村」が何回出たかを数えて最頻のものを採る。
+ *
+ * ★ 町・村は必ず郡の下にある
+ *   「東京都羽村市」を欲張らずに読むと「羽村」で切れてしまう。
+ *   郡が付いているときだけ町村で終わらせ、付いていなければ市か区で
+ *   終わらせる、という順で見る。
+ *
+ * @param {string} text 指図書の本文テキスト
+ * @return {{addr: string, pref: string, city: string}|null}
+ */
+var SHIPACT_PREFS = ('北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|' +
+  '埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|' +
+  '愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|' +
+  '山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県');
+
+function shipact_parseAddress_(text) {
+  var t = String(text || '');
+  if (!t) return null;
+
+  // 市区町村に使えない文字（数字・記号・空白）。ここで切れば番地を巻き込まない。
+  var NG = '\\s0-9０-９,，、.。()（）:：;；/／\\-ー–—~〜～&\\[\\]「」『』*＊#＃|｜\\\\';
+  var C = '[^' + NG + ']';
+  var re = new RegExp('(' + SHIPACT_PREFS + ')(' +
+      C + '{1,6}郡' + C + '{1,6}?[町村]' + '|' +   // 郡があるときだけ町村で終わる
+      C + '{1,8}?市' + '|' +
+      C + '{1,8}?区' + ')', 'g');
+
+  var counts = {}, first = {}, m;
+  while ((m = re.exec(t)) !== null) {
+    var key = m[1] + '\u0000' + m[2];
+    counts[key] = (counts[key] || 0) + 1;
+    if (!(key in first)) first[key] = m.index;
+  }
+  var bestKey = null, bestN = -1;
+  Object.keys(counts).forEach(function (k) {
+    // 回数が同じなら先に出てきたほうを採る
+    if (counts[k] > bestN || (counts[k] === bestN && first[k] < first[bestKey])) {
+      bestN = counts[k]; bestKey = k;
+    }
+  });
+  if (!bestKey) return null;
+  var parts = bestKey.split('\u0000');
+  return { addr: parts[0] + parts[1], pref: parts[0], city: parts[1] };
 }
 
 // ===== 公開関数：蓄積を空にして最初から取り直す =====
@@ -892,4 +981,176 @@ function shipact_logTriggers_() {
   });
   if (ts.length === 0) { Logger.log('  （定期実行はありません）'); return; }
   ts.forEach(function (t) { Logger.log('  ' + t.getHandlerFunction() + ' を定期実行'); });
+}
+
+// ===== 内部：住所がまだ入っていない出荷先コードを、PDFを読んで埋める =====
+/**
+ * ★ 出荷先コードと住所は1対1なので、コード1つにつき1件だけPDFを読めば足りる。
+ *   全行を読み直すと1000件超×3秒で何日もかかるが、コード単位なら数十件で済む。
+ * ★ 読めなかったコードは印を付けて二度と読み直さない。毎晩同じPDFを読み続けて
+ *   後ろのコードに永久に順番が回らなくなるのを防ぐ。
+ * @param {number} budgetMs この呼び出しで使ってよい時間
+ */
+function shipact_fillDestAddresses_(budgetMs) {
+  var started = Date.now();
+  var out = { filled: 0, failed: 0, remaining: 0, done: false };
+  var sheet = shipact_getSheet_();
+  var last = sheet.getLastRow();
+  if (last < 2) { out.done = true; return out; }
+
+  var H = {};
+  SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+  var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+
+  // すでに住所が分かっているコードと、読んでも取れなかったコード
+  var known = {};
+  var giveUp = shipact_readGiveUpCodes_();
+  var todo = {};   // コード → 最初に見つかった行（1始まり・シート上の行番号）
+  for (var i = 0; i < values.length; i++) {
+    var code = values[i][H['出荷先コード']];
+    if (!code) continue;
+    code = String(code);
+    if (String(values[i][H['市区町村']] || '').trim() !== '') { known[code] = true; continue; }
+    if (!(code in todo)) todo[code] = i + 2;
+  }
+
+  var codes = Object.keys(todo).filter(function (c) { return !known[c] && !giveUp[c]; });
+  out.remaining = codes.length;
+
+  for (var j = 0; j < codes.length; j++) {
+    if (Date.now() - started > budgetMs) return out;
+    var rowNo = todo[codes[j]];
+    var fileId = String(values[rowNo - 2][H['fileId']] || '');
+    if (!fileId) { out.failed++; giveUp[codes[j]] = true; continue; }
+    var ad = null;
+    try {
+      var text = shipact_pdfToText_(DriveApp.getFileById(fileId));
+      ad = text ? shipact_parseAddress_(text) : null;
+    } catch (err) {
+      Logger.log('出荷先住所の読み取りに失敗(' + fileId + '): ' + String(err));
+    }
+    if (ad) {
+      sheet.getRange(rowNo, H['住所'] + 1, 1, 3).setValues([[ad.addr, ad.pref, ad.city]]);
+      out.filled++;
+    } else {
+      out.failed++;
+      giveUp[codes[j]] = true;
+    }
+    out.remaining--;
+  }
+  shipact_writeGiveUpCodes_(giveUp);
+  out.done = out.remaining === 0;
+  return out;
+}
+
+var SHIPACT_PROP_GIVEUP = 'shipActuals.addrGiveUp';
+
+function shipact_readGiveUpCodes_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(SHIPACT_PROP_GIVEUP);
+  if (!raw) return {};
+  try { return JSON.parse(raw) || {}; } catch (err) { return {}; }
+}
+
+function shipact_writeGiveUpCodes_(map) {
+  try {
+    PropertiesService.getScriptProperties().setProperty(SHIPACT_PROP_GIVEUP, JSON.stringify(map));
+  } catch (err) { /* 記録できなくても動作に支障はない */ }
+}
+
+// ===== 公開関数：出荷先の住所を今すぐ貯める（手動用） =====
+// 夜間の取込でも少しずつ進むが、配車の紐づけを早く効かせたいときに使う。
+function 出荷先の住所を集める() {
+  var r = shipact_fillDestAddresses_(4 * 60 * 1000);
+  Logger.log('出荷先の住所: 追加' + r.filled + '件 / 読めず' + r.failed + '件 / 残り' +
+             r.remaining + '件' + (r.done ? '（全部そろいました）' : '（続きは次回）'));
+  return r;
+}
+
+// ===== 内部：日付を 'yyyy-MM-dd' に揃える =====
+// シートは '2026-09-14' の文字列で返すことも Date で返すこともある。
+function shipact_dateKey_(v) {
+  var t = nc_dateText_(v, 'yyyy-MM-dd');
+  if (!t) return '';
+  var m = String(t).match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if (!m) return '';
+  var p = function (n) { return Number(n) < 10 ? '0' + Number(n) : String(Number(n)); };
+  return m[1] + '-' + p(m[2]) + '-' + p(m[3]);
+}
+
+/**
+ * 蓄積シートから「依頼No→指図書」「出荷希望日→指図書」「出荷先コード→住所」の
+ * 索引を作る。配車表と指図書を突き合わせるために使う。
+ *
+ * ★ 1回の実行の中では作り直さない（配車グリッドは週ごとに何度も呼ばれる）。
+ * ★ 同じ依頼No・枝番でバージョン違いがあるときは、番号の大きいものが正。
+ */
+var SHIPACT_INDEX_MEMO_ = null;
+
+function shipact_index_() {
+  if (SHIPACT_INDEX_MEMO_) return SHIPACT_INDEX_MEMO_;
+  var idx = { byOrder: {}, byDate: {}, addrByCode: {}, rows: 0, error: null };
+  try {
+    var sheet = shipact_getSheet_();
+    var last = sheet.getLastRow();
+    if (last >= 2) {
+      var H = {};
+      SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+      var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+      var best = {};   // 依頼No_枝番 → 最新バージョンの1件
+      values.forEach(function (r) {
+        var fileId = String(r[H['fileId']] || '');
+        if (!fileId) return;
+        var no = String(r[H['依頼No']] || '').trim();
+        if (!no) return;
+        var key = no + '_' + String(r[H['枝番']]);
+        var ver = Number(r[H['バージョン']]) || 0;
+        if (best[key] && best[key].ver >= ver) return;
+        best[key] = {
+          no: no, ver: ver, fileId: fileId,
+          date: shipact_dateKey_(r[H['出荷希望日']]),
+          code: r[H['出荷先コード']] ? String(r[H['出荷先コード']]) : '',
+          size: String(r[H['サイズ']] || ''),
+          qty: Number(r[H['数量']]) || 0
+        };
+        var code = best[key].code;
+        var city = String(r[H['市区町村']] || '').trim();
+        if (code && city && !idx.addrByCode[code]) {
+          idx.addrByCode[code] = { pref: String(r[H['都道府県']] || '').trim(), city: city };
+        }
+      });
+      Object.keys(best).forEach(function (k) {
+        var e = best[k];
+        idx.rows++;
+        // 依頼Noは年度付き（26-10660）で入っている。年度を外した形でも引けるようにする。
+        shipact_putOrder_(idx.byOrder, e.no, e);
+        var bare = e.no.replace(/^\d{2}-/, '');
+        if (bare !== e.no) shipact_putOrder_(idx.byOrder, bare, e);
+        if (e.date) {
+          if (!idx.byDate[e.date]) idx.byDate[e.date] = [];
+          idx.byDate[e.date].push(e);
+        }
+      });
+    }
+  } catch (err) {
+    idx.error = String(err);
+    Logger.log('出荷実績の索引づくりでエラー: ' + String(err));
+  }
+  SHIPACT_INDEX_MEMO_ = idx;
+  return idx;
+}
+
+// 年度を外した番号は年をまたぐと重なる。新しい出荷希望日のほうを残す。
+function shipact_putOrder_(map, key, e) {
+  var prev = map[key];
+  if (!prev || String(e.date) > String(prev.date)) map[key] = e;
+}
+
+function shipact_fileUrl_(fileId) {
+  return 'https://drive.google.com/file/d/' + fileId + '/view';
+}
+
+// 'yyyy-MM-dd' → 'M/D'（画面に出す短い形）
+function shipact_shortDate_(key) {
+  var m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? Number(m[2]) + '/' + Number(m[3]) : null;
 }

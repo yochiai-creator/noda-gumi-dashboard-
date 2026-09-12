@@ -59,7 +59,10 @@ const REPLY = {
              orders: [{ no: '70253', url: 'https://drive.google.com/file/d/d/view', date: '9/9' }] },
         7: { kind: '出荷', text: '北海道苫小牧市', q20: null, q50: 60 } } },
       { row: 7, company: '浅津運送 自社便', truck: '10ｔ平 野村',
-        cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30 },
+        // ★ 行き先の住所と出荷希望日から拾ったもの（推定）
+        cells: { 2: { kind: '出荷', text: '熊本県山鹿市', q20: 50, q50: 30,
+                      orders: [{ no: '30412', url: 'https://drive.google.com/file/d/e/view',
+                                 date: '9/7', guess: true }] },
                  3: { kind: '引取', text: '←60665', q20: 0, q50: 20 },
                  4: { kind: '出荷', text: '広島県東広島市 (4600L×1)', q20: null, q50: 46 },
                  // ★ 実データにあった形：行き先の欄が依頼ナンバー
@@ -69,7 +72,10 @@ const REPLY = {
                                { no: '30413', url: 'https://drive.google.com/file/d/c/view', date: '9/10' }] },
                  6: { kind: '出荷', text: '鳥取県米子市', q20: 180, q50: 30 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
-        cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0 },
+        // ★ 1つのマスに行き先が2か所 → 推定でも2件とも出す
+        cells: { 2: { kind: '出荷', text: '東京都西多摩郡瑞穂町 東京都羽村市', q20: 40, q50: 0,
+                      orders: [{ no: '30414', url: 'https://drive.google.com/file/d/f/view', date: '9/7', guess: true },
+                               { no: '30415', url: 'https://drive.google.com/file/d/g/view', date: '9/7', guess: true }] },
                  4: { kind: '休み', text: 'お休み', q20: null, q50: null } } },
       // ★ 週まるごと予定が入っていないトラック（空き台数の確認用）
       { row: 16, company: '', truck: '4ｔ平標準 ③', cells: {} },
@@ -152,11 +158,14 @@ const REPLY = {
        上下に分けて、行き先が1行に収まることを実測で押さえる。 */
   const dest = await page.evaluate(() => {
     const bs = [...document.querySelectorAll('.divide-y.divide-slate-100 > button')];
+    // ★ 行き先は15pxの行。指図書のリンクが下に付くので「最後の子」では取れない。
     return bs.map((b) => {
-      const d = b.lastElementChild, cs = getComputedStyle(d);
+      const d = b.querySelector('span[class*="text-[15px]"]');
+      if (!d) return null;
+      const cs = getComputedStyle(d);
       return { t: d.textContent.trim(), 行数: Math.round(d.getBoundingClientRect().height / parseFloat(cs.lineHeight)),
         px: parseFloat(cs.fontSize), 幅: Math.round(d.getBoundingClientRect().width) };
-    });
+    }).filter(Boolean);
   });
   console.log('   行き先:', JSON.stringify(dest));
   chk('★行き先が折り返さず1行で出る', dest.length > 0 && dest.every((d) => d.行数 <= 1), dest);
@@ -215,6 +224,29 @@ const REPLY = {
     ono && !ono.some((t2) => /依頼No[^|]*県/.test(t2)), ono);
   await page.locator('button', { hasText: /^9\/7/ }).first().click();
   await page.waitForTimeout(500);
+
+  /* ★ 行き先の住所から拾った指図書（推定）。依頼ナンバー入りと見分けが付くこと。 */
+  const guess = await page.evaluate(() => {
+    const list = document.querySelector('.divide-y.divide-slate-100');
+    if (!list) return null;
+    const links = [...list.querySelectorAll('a')].map((a) => ({
+      t: a.textContent.trim(), href: a.getAttribute('href'),
+      bg: a.style.background, border: a.style.border,
+    }));
+    const notes = [...list.querySelectorAll('span')]
+      .filter((x) => x.children.length === 0 && /推定/.test(x.textContent))
+      .map((x) => x.textContent.trim());
+    return { links: links, notes: notes };
+  });
+  console.log('   推定の指図書:', JSON.stringify(guess));
+  chk('★住所のマスにも指図書のリンクが出る（3件）', guess && guess.links.length === 3, guess);
+  chk('1つのマスに2か所書いてあれば2件とも出る',
+    guess && guess.links.some((l) => /30414/.test(l.t)) && guess.links.some((l) => /30415/.test(l.t)),
+    guess);
+  chk('★推定であることを添える（2マスぶん）',
+    guess && guess.notes.length === 2 && /行き先と出荷日から推定/.test(guess.notes[0]), guess);
+  chk('★推定は青ベタでなく枠線にして見分けられる',
+    guess && guess.links.length === 3 && guess.links.every((l) => /1px solid/.test(l.border)), guess);
 
   chk('★行き先が空のときは空行にせずそう書く',
     rows && rows.some((r) => /行き先の記入なし/.test(r.t)), rows);
@@ -372,6 +404,21 @@ const REPLY = {
   console.log('■ 週表示');
   await page.locator('button', { hasText: /^週$/ }).first().click();
   await page.waitForTimeout(500);
+
+  /* ★ 週表示は狭いので印だけ。依頼ナンバー入りは「指図書あり」、
+       住所から拾った推定は「指図書?」で見分けられること。 */
+  const marks = await page.evaluate(() => {
+    const sc = document.querySelector('.overflow-x-auto.rounded-md');
+    if (!sc) return null;
+    return [...sc.querySelectorAll('span')]
+      .filter((x) => x.children.length === 0 && /^指図書/.test(x.textContent.trim()))
+      .map((x) => x.textContent.trim());
+  });
+  console.log('   週表示の指図書の印:', JSON.stringify(marks));
+  chk('★依頼ナンバー入りのマスは「指図書あり」',
+    marks && marks.indexOf('指図書あり') !== -1, marks);
+  chk('★住所から拾ったマスは「指図書?」で見分けられる',
+    marks && marks.filter((x) => x === '指図書?').length === 2, marks);
 
   const m = await page.evaluate(() => {
     const sc = document.querySelector('.overflow-x-auto.rounded-md');
