@@ -79,5 +79,36 @@ console.log('■ 一括取得のキャッシュ');
     r.success === false && s.__calls === before, { r: r.error, calls: s.__calls });
 }
 
+console.log('■ 依頼Noの拾い方');
+{
+  const s = build();
+  const ex = s.yard_extractOrderNumbers_;
+  /* ★ 年度の頭（26-）を落としていたので、画面では一律「26-」を付けて表示し、
+       PDF検索も数字だけで探していた（別の年度の同じ番号を拾える）。 */
+  chk('年度の頭を付けたまま拾う', JSON.stringify(ex('依頼No.26-30425(10)')) === '["26-30425"]',
+    JSON.stringify(ex('依頼No.26-30425(10)')));
+  chk('24年度の区画は24-のまま', JSON.stringify(ex('依頼No.24-10555')) === '["24-10555"]',
+    JSON.stringify(ex('依頼No.24-10555')));
+  chk('★2件目の年度が省かれていたら引き継ぐ',
+    JSON.stringify(ex('依頼No.26-70261，60683')) === '["26-70261","26-60683"]',
+    JSON.stringify(ex('依頼No.26-70261，60683')));
+  chk('番号が入っていない行は空', JSON.stringify(ex('依頼No.26-')) === '[]', JSON.stringify(ex('依頼No.26-')));
+  chk('同じ番号は1つにまとめる',
+    JSON.stringify(ex('26-30425 26-30425')) === '["26-30425"]', JSON.stringify(ex('26-30425 26-30425')));
+  chk('括弧の中の小さい数字は拾わない',
+    JSON.stringify(ex('依頼No.26-60639(3/13)')) === '["26-60639"]', JSON.stringify(ex('依頼No.26-60639(3/13)')));
+  chk('空文字でも落ちない', JSON.stringify(ex('')) === '[]', JSON.stringify(ex('')));
+}
+
+console.log('■ PDFの日付');
+{
+  const s = build();
+  const d = s.yard_pdfDateFromName_;
+  chk('ファイル名から日付を取る', d('出荷作業指図書_26.08.21_26-30425-0(1).pdf') === '8/21',
+    d('出荷作業指図書_26.08.21_26-30425-0(1).pdf'));
+  chk('1桁の月日も取れる', d('出荷作業指図書_26.9.3_26-1.pdf') === '9/3', d('出荷作業指図書_26.9.3_26-1.pdf'));
+  chk('日付が無い名前は null', d('指図書.pdf') === null, d('指図書.pdf'));
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

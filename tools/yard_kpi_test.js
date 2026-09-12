@@ -30,15 +30,15 @@ const REPLY = {
       { pos: '2', found: true, kind: 'empty', shipDate: null, orders: [] },
       // ★ 指図書つきの区画（タップするとPDFのボタンが出る）
       { pos: '4', found: true, kind: 'fill', groupNo: 465, rangeStart: 46401, rangeEnd: 46500, qty: 100,
-        orders: [{ no: '30425', url: 'https://drive.google.com/file/d/x/view' },
-                 { no: '30426', url: null }] },
+        orders: [{ no: '26-30425', url: 'https://drive.google.com/file/d/x/view', date: '8/21' },
+                 { no: '24-30426', url: null, date: null }] },
       // ★ 指図書が1件だけの区画。タップでそのままPDFが開く
       { pos: '6', found: true, kind: 'fill', groupNo: 456, rangeStart: 45501, rangeEnd: 45600, qty: 100,
-        orders: [{ no: '60639', url: 'https://drive.google.com/file/d/one/view' }] },
+        orders: [{ no: '26-60639', url: 'https://drive.google.com/file/d/one/view', date: '9/10' }] },
       // ★ PDFが2つある区画。どれを開くか決められないので勝手には開かない
       { pos: '7', found: true, kind: 'fill', groupNo: 457, rangeStart: 45601, rangeEnd: 45700, qty: 100,
-        orders: [{ no: '60640', url: 'https://drive.google.com/file/d/a/view' },
-                 { no: '60641', url: 'https://drive.google.com/file/d/b/view' }] },
+        orders: [{ no: '26-60640', url: 'https://drive.google.com/file/d/a/view', date: '9/1' },
+                 { no: '26-60641', url: 'https://drive.google.com/file/d/b/view', date: '9/2' }] },
     ],
     '20k': [] }),
   getYardBlockDetailWithPdf: () => ({ found: false, orders: [] }),
@@ -185,6 +185,11 @@ const REPLY = {
   chk('区画をタップすると指図書のボタンが出る', tapped.ok && pdf.開くボタン.length === 1, pdf);
   chk('ボタンにPDFのリンクが入っている', pdf.href && /drive\.google\.com/.test(pdf.href), pdf.href);
   chk('PDFが見つからない依頼Noはそう書く', pdf.未検出.length === 1 && /30426/.test(pdf.未検出[0]), pdf.未検出);
+  /* ★ 一律「26-」を付けて表示していたので、24年度の区画も26-と出ていた。
+       PDFの日付も出して、古い月のものかどうかを見分けられるようにした。 */
+  chk('★年度の頭をそのまま出す（26-30425）', /26-30425/.test(pdf.開くボタン[0]), pdf.開くボタン);
+  chk('★PDFの日付が出る（8/21）', /8\/21/.test(pdf.開くボタン[0]), pdf.開くボタン);
+  chk('★24年度の区画に26-を付けない', /24-30426/.test(pdf.未検出[0]), pdf.未検出);
 
   /* ★ 指図書が1件だけの区画は、タップした流れでそのままPDFを開く */
   const one = await page.evaluate(() => {

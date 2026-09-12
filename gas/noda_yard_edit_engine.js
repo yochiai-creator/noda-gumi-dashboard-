@@ -902,12 +902,25 @@ function testGetYardMapUpdatesBoth() {
 // ★ 枝番号（末尾の-0、-1など）は、同じ依頼No内でも容器番号が異なる別々の
 //   指図書を区別する大事な情報なので、消さずに依頼Noの一部として残す
 //   （例："60556-0" と "60047-1" は別物として扱う）。
+/* 依頼Noを拾う。年度の頭（26-）が付いていればそれも一緒に返す。
+   ★ 今までは数字だけを返していたので、
+     ・画面では一律「26-」を付けて表示していた（マスタには 24- の区画もある）
+     ・PDF検索も数字だけで探すので、別の年度の同じ番号を拾えてしまう
+   ★ 「依頼No.26-70261，60683」のように、2件目以降は年度が省かれることが
+     あるので、直前に出てきた年度を引き継ぐ。 */
 function yard_extractOrderNumbers_(text) {
   var nos = [];
-  var re = /(?:20\d{2}-)?(\d{4,6}(?:-\d+)?)/g;
+  var used = {};
+  var re = /(?:(\d{2})-)?(\d{4,6})/g;
+  var lastPrefix = null;
   var m;
-  while ((m = re.exec(text)) !== null) {
-    nos.push(m[1]);
+  while ((m = re.exec(String(text || ''))) !== null) {
+    if (m[1]) lastPrefix = m[1];
+    var prefix = m[1] || lastPrefix;
+    var full = prefix ? (prefix + '-' + m[2]) : m[2];
+    if (used[full]) continue;
+    used[full] = true;
+    nos.push(full);
   }
   return nos;
 }
@@ -929,7 +942,8 @@ function getYardBlockDetailWithPdf(sizeKey, pos) {
         var no = nos[i];
         if (seen[no]) continue;
         seen[no] = true;
-        result.orders.push({ no: no, url: yard_findOrderPdfUrl_(no) });
+        var pdf = yard_findOrderPdf_(no);
+        result.orders.push({ no: no, url: pdf.url, date: pdf.date });
       }
     }
   } catch (err) {
@@ -989,9 +1003,9 @@ function getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k) {
             if (seen[no]) continue;
             seen[no] = true;
             if (!(no in pdfCache)) {
-              pdfCache[no] = yard_findOrderPdfUrl_(no);
+              pdfCache[no] = yard_findOrderPdf_(no);
             }
-            result.orders.push({ no: no, url: pdfCache[no] });
+            result.orders.push({ no: no, url: pdfCache[no].url, date: pdfCache[no].date });
           }
         } else {
           result.orderNoText = '';
@@ -1016,21 +1030,32 @@ function getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k) {
 // ラグの主因になっていた。→ CacheService で検索結果をキャッシュし、同じ依頼No なら
 // 次回以降は検索せずキャッシュから即座に返すようにする（依頼Noと実際のPDFの対応は
 // 基本的に変わらないため、6時間キャッシュしても実用上問題ない）。
-function yard_findOrderPdfUrl_(orderNo) {
+/* 依頼No→PDF。URLだけでなく、ファイル名から取れる日付も返す。
+   ★「8月のPDFが出る」という指摘があったため。古い月のものが出ているのか、
+     それが正しいのかを画面で見分けられるようにする。 */
+function yard_findOrderPdf_(orderNo) {
   var cache = CacheService.getScriptCache();
-  var cacheKey = 'yardPdfUrl_' + orderNo;
+  var cacheKey = 'yardPdf2_' + orderNo;   // 形が変わったのでキーも変える
   var cached = cache.get(cacheKey);
   if (cached !== null) {
-    return cached === '__NONE__' ? null : cached;
+    if (cached === '__NONE__') return { url: null, date: null };
+    try { return JSON.parse(cached); } catch (e) { /* 壊れていたら取り直す */ }
   }
 
-  var url = yard_findOrderPdfUrl_uncached_(orderNo);
+  var found = yard_findOrderPdf_uncached_(orderNo);
   try {
-    cache.put(cacheKey, url === null ? '__NONE__' : url, 21600); // 6時間（秒）
+    cache.put(cacheKey, found && found.url ? JSON.stringify(found) : '__NONE__', 21600); // 6時間
   } catch (cacheErr) {
     Logger.log('PDF検索結果のキャッシュ保存でエラー(依頼No' + orderNo + '): ' + String(cacheErr));
   }
-  return url;
+  return found;
+}
+
+// ファイル名「出荷作業指図書_26.08.21_26-30425-0(1).pdf」から 8/21 を取る
+function yard_pdfDateFromName_(name) {
+  var m = String(name || '').match(/(\d{2})\.(\d{1,2})\.(\d{1,2})/);
+  if (!m) return null;
+  return Number(m[2]) + '/' + Number(m[3]);
 }
 
 // ===== 内部：出荷作業指図書PDFの保存フォルダ構成（ルート→年→月）から、
@@ -1081,7 +1106,7 @@ function yard_getCurrentMonthPdfFolderId_() {
 // （念のため取りこぼしを防ぐため）。
 // ★ 複数候補が残った場合はOCR確認ではなく「最終更新日時が一番新しいファイル」を選ぶ
 //   （メタデータだけを見るので高速。再発行された指図書は通常、最新のものが正しい版）。
-function yard_findOrderPdfUrl_uncached_(orderNo) {
+function yard_findOrderPdf_uncached_(orderNo) {
   try {
     var monthFolderId = yard_getCurrentMonthPdfFolderId_();
     var candidates = [];
@@ -1112,8 +1137,11 @@ function yard_findOrderPdfUrl_uncached_(orderNo) {
         candidates.push(files2.next());
       }
     }
-    if (candidates.length === 0) return null;
-    if (candidates.length === 1) return candidates[0].getUrl();
+    var wrap = function (f) {
+      return { url: f.getUrl(), date: yard_pdfDateFromName_(f.getName()) };
+    };
+    if (candidates.length === 0) return { url: null, date: null };
+    if (candidates.length === 1) return wrap(candidates[0]);
 
     // 複数候補があれば、最終更新日時が一番新しいものを選ぶ（メタデータ比較のみ、高速）
     var best = candidates[0];
@@ -1125,11 +1153,11 @@ function yard_findOrderPdfUrl_uncached_(orderNo) {
         bestTime = t;
       }
     }
-    return best.getUrl();
+    return wrap(best);
   } catch (err) {
     Logger.log('PDF検索エラー(依頼No' + orderNo + '): ' + String(err));
   }
-  return null;
+  return { url: null, date: null };
 }
 
 // ===== 公開関数：依頼No→PDFリンクのキャッシュを手動でクリアする =====

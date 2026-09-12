@@ -974,11 +974,14 @@ function YardMap({ yardLive, onRefresh }) {
                     <a key={i} href={o.url} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
                       style={{ background: "#2563eb" }}>
-                      <FileText size={12} />26-{o.no} を開く
+                      {/* ★ 一律「26-」を付けていたが、マスタには 24- の区画もある。
+                             年度は依頼Noに含めて返すようにしたのでそのまま出す。
+                             日付も出す（古い月のPDFが出ているのか判断できるように）。 */}
+                      <FileText size={12} />{o.no}{o.date ? "（" + o.date + "）" : ""} を開く
                     </a>
                   ) : (
                     <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-400 bg-slate-100">
-                      26-{o.no}（PDF未検出）
+                      {o.no}（PDF未検出）
                     </span>
                   )
                 )}
