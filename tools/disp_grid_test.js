@@ -568,7 +568,12 @@ const REPLY = {
   chk('★月の途中だと分かるように書く', /13日まで/.test(armHead.本文), armHead.本文);
   chk('★今月の予定こみの合計も出る（実績95 → 予定こみ140）',
     /9月 予定こみ 合計 \| 140 \| 台/.test(armHead.本文), armHead.本文);
-  chk('★今月のうち13tonが出る', /9月 うち 13ton \| 25 \| 台/.test(armHead.本文), armHead.本文);
+  chk('★13tonも「どの数字の一部か」を見出しに書ききる',
+    /9月 13ton（13日まで） \| 25 \| 台/.test(armHead.本文), armHead.本文);
+  chk('★「うち」だけの見出しにしない', !/うち 13ton/.test(armHead.本文), armHead.本文);
+  chk('13tonは実績のすぐ次に置く',
+    armHead.本文.indexOf('9月 13ton') > armHead.本文.indexOf('9月 出荷（13日まで）') &&
+    armHead.本文.indexOf('9月 13ton') < armHead.本文.indexOf('9月 予定こみ'), armHead.本文);
   chk('★前月（8月）の数字は出さない', !/8月 出荷/.test(armHead.本文), armHead.本文);
   chk('★「7日以内」は出さない', !/7日以内/.test(armHead.本文), armHead.本文);
   chk('★「直近1か月」はKPIに出さない', !/直近1か月 \|/.test(armHead.本文), armHead.本文);

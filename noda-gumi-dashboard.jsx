@@ -2889,6 +2889,8 @@ export default function App() {
   const armCur13 = armCur && armCur.区分別 ? (armCur.区分別["13ton"] || 0) : null;
   /* 今月まるごと（これから出る予定も入れた数）。実績との差が「あと何台」。 */
   const armCurAll = (live.armMonthly && live.armMonthly.currentAll) || null;
+  /* 「（13日まで）」。実績の数字にはこれを必ず付ける（月まるごとと読み違えるため）。 */
+  const armCurUntil = armToday ? "（" + vizArmDayLabel(armToday).split("/")[1] + "日まで）" : "";
   /* 年度はじめからの範囲（「4月〜9月」）。実績・推移のKPIの見出しに使う。 */
   const armRange = (() => {
     const ms = (live.armMonthly && live.armMonthly.months) || [];
@@ -2993,12 +2995,14 @@ export default function App() {
         value: armNext ? String(armNext.count) : "—", unit: "台", icon: Truck, tone: "ok" },
       /* ★ 月の途中なので「◯日まで」と添える。添えないと月まるごとの数と
              読み間違える（9月の合計だと思われる）。 */
-      { label: armCurLabel + " 出荷" + (armToday ? "（" + vizArmDayLabel(armToday).split("/")[1] + "日まで）" : ""),
+      { label: armCurLabel + " 出荷" + armCurUntil,
         value: armCur ? String(armCur.台数) : "—", unit: "台", icon: Package, tone: "ok" },
+      /* ★ 「うち 13ton」だと何の内訳か分からない（2列に並ぶので、すぐ上の
+             カードとは限らない）。どの数字の一部なのかを見出しに書ききる。 */
+      { label: armCurLabel + " 13ton" + armCurUntil, value: armCur13 == null ? "—" : String(armCur13),
+        unit: "台", icon: Boxes, tone: "neutral" },
       { label: armCurLabel + " 予定こみ 合計", value: armCurAll ? String(armCurAll.台数) : "—",
         unit: "台", icon: Package, tone: "neutral" },
-      { label: armCurLabel + " うち 13ton", value: armCur13 == null ? "—" : String(armCur13),
-        unit: "台", icon: Boxes, tone: "neutral" },
     ],
     yardcap: (() => {
       const y = live.yardCap;
