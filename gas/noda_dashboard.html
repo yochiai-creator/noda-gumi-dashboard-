@@ -5739,6 +5739,12 @@ function App() {
   const armCur13 = armCur && armCur.区分別 ? armCur.区分別["13ton"] || 0 : null;
   /* 今月まるごと（これから出る予定も入れた数）。実績との差が「あと何台」。 */
   const armCurAll = live.armMonthly && live.armMonthly.currentAll || null;
+  /* 年度はじめからの範囲（「4月〜9月」）。実績・推移のKPIの見出しに使う。 */
+  const armRange = (() => {
+    const ms = live.armMonthly && live.armMonthly.months || [];
+    if (ms.length === 0) return "";
+    return vizMonthLabel(ms[0].年月) + "〜" + vizMonthLabel(ms[ms.length - 1].年月);
+  })();
 
   // タブごとのヘッダー見出し・KPIカードを組み立てる
   const tabHeaders = {
@@ -5872,6 +5878,15 @@ function App() {
         icon: Boxes,
         tone: "neutral",
         sub: invDiff != null ? (invDiff > 0 ? "+" : "") + vizComma(invDiff) + " 本（" + invBase + "）" : undefined
+      },
+      /* ★ アームは容器と単位が違う（台）。同じ並びに置くが、単位を「台」に
+             しておけば取り違えない。中身は実績だけ（先の予定は入っていない）。 */
+      {
+        label: "アーム 累計" + (armRange ? "（" + armRange + "）" : ""),
+        value: live.armMonthly && live.armMonthly.total != null ? vizComma(live.armMonthly.total) : "—",
+        unit: "台",
+        icon: Truck,
+        tone: "neutral"
       }];
     })(),
     dispatch: [{

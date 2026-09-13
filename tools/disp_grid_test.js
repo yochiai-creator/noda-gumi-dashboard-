@@ -625,6 +625,14 @@ const REPLY = {
     return { 本文: card.innerText.replace(/\n/g, ' | '), 棒の数: bars, 行: rows };
   });
   console.log('   アーム月別:', JSON.stringify(armM));
+  /* ★ 上のKPIにも4月からのアーム累計を出す（容器の「本」と混ざらないよう単位は台）。 */
+  const actKpi = await page.evaluate(() => document.body.innerText.slice(0, 300).replace(/\n/g, ' | '));
+  console.log('   実績タブのKPI:', JSON.stringify(actKpi));
+  chk('★実績・推移のKPIにアームの累計が出る',
+    /アーム 累計（4月〜9月） \| 650 \| 台/.test(actKpi), actKpi);
+  chk('アームの単位は「台」（容器の「本」と混ぜない）',
+    !/アーム 累計[^|]*\| \d+ \| 本/.test(actKpi), actKpi);
+
   chk('★実績・推移タブにアームの月別出荷が出る', armM !== null, armM);
   chk('4月からの棒が出ている（4本）', armM && armM.棒の数 === 4, armM && armM.棒の数);
   chk('★容器の「本」と混ぜず「台」で出す',
