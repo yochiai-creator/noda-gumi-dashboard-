@@ -172,17 +172,34 @@ function arm_readSnapshot_() {
 }
 
 // ===== 内部：一番新しい「日程表変更」.xlsm =====
-// ★ ファイル名の日付ではなく更新日時で見る。名前の日付は「その週の版」を表していて、
-//   同じ名前のまま中身だけ差し替わることがあるため。
+/* ★ 更新日時ではなく「ファイル名の日付」で選ぶ。
+     どちらで選ぶかで答えが変わる。実際にこうなっていた：
+       出荷予定　日程表変更A(26年9月4日).xlsm   更新 9/13 06:49
+       出荷予定　日程表変更A(26年9月10日).xlsm  更新 9/11 23:31
+     新しい版は「9月10日」のほうなのに、更新日時で見ると「9月4日」が勝ってしまう
+     （古い版を後から開き直しただけで更新日時は新しくなる）。
+   ★ PDF生成側（アーム出荷明細pdf生成）も名前の日付で選んでいる。
+     ここが食い違うと、画面に出す「出所」が実際に使われたファイルと別物になる。
+   ★ 名前から日付が読めないものしか無いときだけ、更新日時で代用する。 */
 function arm_latestSource_() {
   var folder = DriveApp.getFolderById(ARM_CONFIG.SRC_FOLDER_ID);
-  var it = folder.getFiles(), best = null;
+  var it = folder.getFiles(), best = null, bestKey = -1, fallback = null;
   while (it.hasNext()) {
     var f = it.next();
     if (f.getName().indexOf(ARM_CONFIG.SRC_KEYWORD) < 0) continue;
-    if (!best || f.getLastUpdated().getTime() > best.getLastUpdated().getTime()) best = f;
+    if (!fallback || f.getLastUpdated().getTime() > fallback.getLastUpdated().getTime()) fallback = f;
+    var k = arm_dateKeyFromName_(f.getName());
+    if (k > bestKey) { bestKey = k; best = f; }
   }
-  return best ? { name: best.getName(), updatedAt: best.getLastUpdated() } : null;
+  var pick = bestKey >= 0 ? best : fallback;
+  return pick ? { name: pick.getName(), updatedAt: pick.getLastUpdated() } : null;
+}
+
+// 「…A(26年9月10日).xlsm」→ 20260910。読めなければ -1。
+function arm_dateKeyFromName_(name) {
+  var m = String(name || '').match(/\((\d{2})年(\d{1,2})月(\d{1,2})日\)/);
+  if (!m) return -1;
+  return (2000 + Number(m[1])) * 10000 + Number(m[2]) * 100 + Number(m[3]);
 }
 
 // ===== 内部：一番新しいアーム出荷明細PDF =====

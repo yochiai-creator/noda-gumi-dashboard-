@@ -42,7 +42,7 @@ const REPLY = {
   // アームの出荷予定（別プロジェクトのJSONを読んだ結果）
   getArmShipPlan: () => ({
     updated: '2026-09-13 07:00', error: null, total: 5,
-    sourceName: '出荷予定　日程表変更A(26年9月4日).xlsm',
+    sourceName: '出荷予定　日程表変更A(26年9月10日).xlsm',
     snapshotAt: '2026-09-13 06:33', stale: false,
     pdfUrl: 'https://drive.google.com/file/d/armpdf/view',
     pdfName: 'アーム機種別出荷明細_2026-09-13.pdf',

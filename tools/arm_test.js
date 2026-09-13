@@ -27,7 +27,7 @@ function build(snap, opt) {
     // 紛らわしい別ファイル。接頭辞で弾けているかを見る
     outFiles.push({ name: '発注書.pdf', updated: new Date('2026-09-20T00:00:00+09:00'), url: 'https://drive/x' });
   }
-  const srcFiles = [
+  const srcFiles = o.srcFiles || [
     { name: o.srcName || '出荷予定　日程表変更A(26年9月4日).xlsm',
       updated: o.srcAt || new Date('2026-09-11T23:33:00+09:00') },
     { name: 'よその資料.xlsx', updated: new Date('2026-12-01T00:00:00+09:00') },
@@ -137,6 +137,42 @@ console.log('■ まとめて取る');
   chk('★接頭辞の違うPDFは拾わない', !/発注書/.test(String(d.pdfName)), d.pdfName);
   chk('予定の作成日時を返す', /2026-09-13/.test(d.snapshotAt), d.snapshotAt);
   chk('元Excelのほうが古いので stale でない', d.stale === false, d.stale);
+}
+
+console.log('■ どの .xlsm を元にしたかを正しく出す');
+{
+  /* ★ 実データでこうなっていた：
+       「9月4日」の版を後から開き直したせいで更新日時だけ新しくなっていて、
+       更新日時で選ぶと古い版を「出所」として出してしまう。
+       PDF生成側は名前の日付で選んでいるので、こちらも合わせる。 */
+  const s = build(SNAP, { srcFiles: [
+    { name: '出荷予定　日程表変更A(26年9月4日).xlsm', updated: new Date('2026-09-13T06:49:00+09:00') },
+    { name: '出荷予定　日程表変更A(26年9月10日).xlsm', updated: new Date('2026-09-11T23:31:00+09:00') },
+    { name: 'よその資料.xlsx', updated: new Date('2026-12-01T00:00:00+09:00') },
+  ] });
+  const d = s.getArmShipPlan_uncached_();
+  chk('★名前の日付が一番新しいものを元ファイルにする',
+    /9月10日/.test(d.sourceName), d.sourceName);
+  chk('★更新日時だけ新しい古い版に引きずられない',
+    !/9月4日/.test(d.sourceName), d.sourceName);
+  chk('その版は予定より古いので stale にしない', d.stale === false, d.stale);
+}
+{
+  // 名前から日付が読めないものしか無いときは更新日時で代用する
+  const s = build(SNAP, { srcFiles: [
+    { name: '出荷予定　日程表変更A.xlsm', updated: new Date('2026-09-01T00:00:00+09:00') },
+    { name: '出荷予定　日程表変更A（最新）.xlsm', updated: new Date('2026-09-11T00:00:00+09:00') },
+  ] });
+  const d = s.getArmShipPlan_uncached_();
+  chk('名前に日付が無ければ更新日時で選ぶ', /最新/.test(d.sourceName), d.sourceName);
+}
+{
+  const s = build(SNAP);
+  chk('日付キー', s.arm_dateKeyFromName_('出荷予定　日程表変更A(26年9月10日).xlsm') === 20260910,
+    s.arm_dateKeyFromName_('出荷予定　日程表変更A(26年9月10日).xlsm'));
+  chk('1桁の月日も読める', s.arm_dateKeyFromName_('A(26年9月4日).xlsm') === 20260904,
+    s.arm_dateKeyFromName_('A(26年9月4日).xlsm'));
+  chk('読めなければ -1', s.arm_dateKeyFromName_('A.xlsm') === -1);
 }
 
 console.log('■ 古いまま出さない');
