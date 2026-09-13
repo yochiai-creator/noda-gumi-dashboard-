@@ -296,6 +296,19 @@ console.log('■ 先の予定は実績に混ぜない');
   chk("先頭の ' が付いていても読める", c.months.length === 1 && c.months[0].年月 === '2026-04', c.months);
 }
 
+console.log('■ 予定の機種別');
+{
+  const s = build(SNAP);
+  const d = s.getArmShipPlan_uncached_();
+  const by = {}; d.byKind.forEach((k) => { by[k.名] = k.台数; });
+  chk('★13tonは実績と同じまとめ方（13ton仕上げ → 13ton）', by['13ton'] === 1, d.byKind);
+  // SNAP の範囲内5件は SK300 4台 + 13ton仕上げ 1台
+  chk('SK300は4台', by['SK300'] === 4, d.byKind);
+  chk('台数の多い順', d.byKind[0].台数 >= d.byKind[d.byKind.length - 1].台数, d.byKind);
+  chk('合計と機種別の合計が合う',
+    d.byKind.reduce((a, k) => a + k.台数, 0) === d.total, { byKind: d.byKind, total: d.total });
+}
+
 console.log('■ 今月の「予定こみ」も返す');
 {
   /* ★ グラフと表は実績だけだが、KPIの1つだけは「今月あと何台出るのか」を

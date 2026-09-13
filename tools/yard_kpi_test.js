@@ -50,7 +50,7 @@ const REPLY = {
     total: 31680, max: 39408, nearFull: 3, over: 1,
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
   getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
-  getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [],
+  getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [], byKind: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
     startMonth: null, today: null, currentAll: null, sourceName: null, harvestedAt: null }),

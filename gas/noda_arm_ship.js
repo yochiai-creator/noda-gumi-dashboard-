@@ -67,6 +67,7 @@ function getArmShipPlan_uncached_() {
   var data = {
     updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
     days: [],          // [{ date, label, weekday, count, byDest, rows }] 出荷日の古い順
+    byKind: [],        // [{ 名, 台数 }] この期間ぶんの機種別。台数の多い順
     total: 0,
     pdfUrl: null,
     pdfName: null,
@@ -96,7 +97,18 @@ function getArmShipPlan_uncached_() {
     if (pdf) { data.pdfUrl = pdf.url; data.pdfName = pdf.name; }
 
     data.days = arm_buildDays_(snap.map, new Date());
-    for (var i = 0; i < data.days.length; i++) data.total += data.days[i].count;
+    var kind = {};
+    for (var i = 0; i < data.days.length; i++) {
+      data.total += data.days[i].count;
+      data.days[i].rows.forEach(function (r) {
+        // ★ 機種のまとめ方は月別出荷と同じ（13ton仕上げ・13ton ｼｮｰﾄ → 13ton）。
+        //   同じ言葉で数えないと、予定と実績を見比べたときに合わない。
+        var k = arm_kindOf_(r.kiki);
+        kind[k] = (kind[k] || 0) + 1;
+      });
+    }
+    data.byKind = Object.keys(kind).map(function (k) { return { 名: k, 台数: kind[k] }; })
+      .sort(function (a, b) { return b.台数 - a.台数; });
   } catch (err) {
     data.error = String(err);
     Logger.log('アーム出荷予定の取得でエラー: ' + String(err));
@@ -232,6 +244,7 @@ function アームの出荷予定を確認する() {
   Logger.log('予定の作成日時: ' + d.snapshotAt + (d.stale ? '（元のExcelのほうが新しい）' : ''));
   Logger.log('PDF: ' + d.pdfName);
   Logger.log('合計 ' + d.total + '台 / ' + d.days.length + '日');
+  Logger.log('機種別: ' + d.byKind.map(function (x) { return x.名 + ' ' + x.台数; }).join(' / '));
   d.days.slice(0, 8).forEach(function (g) {
     Logger.log('  ' + g.label + '(' + g.weekday + ') ' + g.count + '台  ' +
                g.byDest.map(function (x) { return x.名 + ' ' + x.台数; }).join(' / '));

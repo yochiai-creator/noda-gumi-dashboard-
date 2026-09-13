@@ -57,7 +57,7 @@ const REPLY = {
   getMonthlyCombinedData: () => ({ ...E, sheetUrl: 'x', months: [], hasOrders: false, hasPlan: false, partialMonth: null, startMonth: null }),
   getYardCapacitySummary: () => ({ ...E, locations: 36, a20: 0, a50: 0, total: 0, max: 0, nearFull: 0, over: 0, sheetUrl: 'x' }),
   getYardCapacityUrl: () => ({ url: null, error: null }),
-  getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [],
+  getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [], byKind: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
     startMonth: null, today: null, currentAll: null, sourceName: null, harvestedAt: null }),

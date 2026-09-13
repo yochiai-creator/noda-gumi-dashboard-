@@ -219,6 +219,19 @@ function ArmPlan({ plan }) {
           元のExcel（{plan.sourceName}）のほうが新しいので、この予定は1つ前の版かもしれません。
         </p>
       )}
+      {/* ★ 機種別の内訳。どの機種が何台あるのかは日をひとつずつ開かないと
+             分からなかったので、まとめてここに出す。数え方は実績（アーム
+             月別出荷）と同じで、13ton仕上げ・13ton ｼｮｰﾄ は 13ton にまとめる。 */}
+      {plan.byKind && plan.byKind.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {plan.byKind.map((k) => (
+            <span key={k.名} className="inline-flex items-baseline gap-1 px-2 py-0.5 rounded-md bg-slate-100">
+              <span className="text-[11px]" style={{ color: VIZ.ink2 }}>{k.名}</span>
+              <span className="text-[12px] font-bold tabular-nums" style={{ color: NAVY }}>{k.台数}</span>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-2">
         <span className="text-[11px] text-slate-400">
           {plan.snapshotAt ? plan.snapshotAt + " 時点" : ""}
@@ -2886,7 +2899,6 @@ export default function App() {
     return ms.filter((m) => m.年月 === ym)[0] || { 年月: ym, 台数: 0, 区分別: {} };
   })();
   const armCurLabel = armCur ? vizMonthLabel(armCur.年月) : "今月";
-  const armCur13 = armCur && armCur.区分別 ? (armCur.区分別["13ton"] || 0) : null;
   /* 今月まるごと（これから出る予定も入れた数）。実績との差が「あと何台」。 */
   const armCurAll = (live.armMonthly && live.armMonthly.currentAll) || null;
   /* 「（13日まで）」。実績の数字にはこれを必ず付ける（月まるごとと読み違えるため）。 */
@@ -2997,10 +3009,8 @@ export default function App() {
              読み間違える（9月の合計だと思われる）。 */
       { label: armCurLabel + " 出荷" + armCurUntil,
         value: armCur ? String(armCur.台数) : "—", unit: "台", icon: Package, tone: "ok" },
-      /* ★ 「うち 13ton」だと何の内訳か分からない（2列に並ぶので、すぐ上の
-             カードとは限らない）。どの数字の一部なのかを見出しに書ききる。 */
-      { label: armCurLabel + " 13ton" + armCurUntil, value: armCur13 == null ? "—" : String(armCur13),
-        unit: "台", icon: Boxes, tone: "neutral" },
+      /* ★ 13tonのKPIは外した（2列に並ぶので何の内訳か分からなかった）。
+             機種別はカードの中に出している。 */
       { label: armCurLabel + " 予定こみ 合計", value: armCurAll ? String(armCurAll.台数) : "—",
         unit: "台", icon: Package, tone: "neutral" },
     ],

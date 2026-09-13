@@ -46,6 +46,7 @@ const REPLY = {
     snapshotAt: '2026-09-13 06:33', stale: false,
     pdfUrl: 'https://drive.google.com/file/d/armpdf/view',
     pdfName: 'アーム機種別出荷明細_2026-09-13.pdf',
+    byKind: [{ 名: '13ton', 台数: 2 }, { 名: 'SK300', 台数: 2 }, { 名: 'SK400', 台数: 1 }],
     days: [
       { date: '2026-09-14', label: '9/14', weekday: '月', count: 3,
         byDest: [{ 名: '正和', 台数: 1 }, { 名: 'あゆみ', 台数: 1 }, { 名: '正和(13ton)', 台数: 1 }],
@@ -568,12 +569,12 @@ const REPLY = {
   chk('★月の途中だと分かるように書く', /13日まで/.test(armHead.本文), armHead.本文);
   chk('★今月の予定こみの合計も出る（実績95 → 予定こみ140）',
     /9月 予定こみ 合計 \| 140 \| 台/.test(armHead.本文), armHead.本文);
-  chk('★13tonも「どの数字の一部か」を見出しに書ききる',
-    /9月 13ton（13日まで） \| 25 \| 台/.test(armHead.本文), armHead.本文);
-  chk('★「うち」だけの見出しにしない', !/うち 13ton/.test(armHead.本文), armHead.本文);
-  chk('13tonは実績のすぐ次に置く',
-    armHead.本文.indexOf('9月 13ton') > armHead.本文.indexOf('9月 出荷（13日まで）') &&
-    armHead.本文.indexOf('9月 13ton') < armHead.本文.indexOf('9月 予定こみ'), armHead.本文);
+  chk('★13tonのKPIは出さない（機種別はカードの中）',
+    !/13ton \| \d+ \| 台/.test(armHead.本文) && !/うち 13ton/.test(armHead.本文), armHead.本文);
+  // KPIはタブの並び（受注・指図書…）より前。日の見出しの「台」と混ぜない
+  chk('KPIは3つ',
+    (armHead.本文.slice(0, armHead.本文.indexOf('受注・指図書')).match(/\| 台/g) || []).length === 3,
+    armHead.本文.slice(0, 200));
   chk('★前月（8月）の数字は出さない', !/8月 出荷/.test(armHead.本文), armHead.本文);
   chk('★「7日以内」は出さない', !/7日以内/.test(armHead.本文), armHead.本文);
   chk('★「直近1か月」はKPIに出さない', !/直近1か月 \|/.test(armHead.本文), armHead.本文);
@@ -597,6 +598,18 @@ const REPLY = {
       翌日の中身: /YB12B00240F1/.test(t) };
   });
   console.log('   アーム:', JSON.stringify(arm));
+  const kinds = await page.evaluate(() => {
+    const card = [...document.querySelectorAll('div.rounded-lg')]
+      .filter((d) => /アーム出荷予定/.test(d.textContent))
+      .sort((a, b) => a.textContent.length - b.textContent.length)[0];
+    if (!card) return null;
+    const row = card.querySelector('div.flex.flex-wrap');
+    return row ? row.innerText.replace(/\n/g, ' ').trim() : null;
+  });
+  console.log('   機種別:', JSON.stringify(kinds));
+  chk('★カードの中に機種別の内訳が出る',
+    kinds !== null && /13ton 2/.test(kinds) && /SK300 2/.test(kinds) && /SK400 1/.test(kinds), kinds);
+  chk('機種別は台数の多い順', kinds !== null && kinds.indexOf('13ton') < kinds.indexOf('SK400'), kinds);
   chk('出荷日ごとに見出しが出る', arm.日の見出し.length === 2, arm.日の見出し);
   chk('★見出しに台数と出荷先の内訳が出る',
     /9\/14 \| \(月\) \| 3 \| 台 \| 正和 1・あゆみ 1・正和\(13ton\) 1/.test(arm.日の見出し[0]), arm.日の見出し[0]);

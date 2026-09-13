@@ -46,6 +46,7 @@ const REPLY = {
     snapshotAt: '2026-09-13 06:33', stale: false,
     pdfUrl: 'https://drive.google.com/file/d/armpdf/view',
     pdfName: 'アーム機種別出荷明細_2026-09-13.pdf',
+    byKind: [{ 名: '13ton', 台数: 2 }, { 名: 'SK300', 台数: 2 }, { 名: 'SK400', 台数: 1 }],
     days: [
       { date: '2026-09-14', label: '9/14', weekday: '月', count: 3,
         byDest: [{ 名: '正和', 台数: 1 }, { 名: 'あゆみ', 台数: 1 }, { 名: '正和(13ton)', 台数: 1 }],
