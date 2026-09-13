@@ -60,7 +60,7 @@ const REPLY = {
   getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
-    startMonth: null, sourceName: null, harvestedAt: null }),
+    startMonth: null, prev: null, sourceName: null, harvestedAt: null }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
     sheetUrl: 'x', weekOffset: 0, weekLabel: '9/7〜9/12', hasPrev: true, hasNext: true,
     days: [

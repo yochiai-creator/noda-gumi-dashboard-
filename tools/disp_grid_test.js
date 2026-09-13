@@ -73,6 +73,7 @@ const REPLY = {
       { 年月: '2026-08', 台数: 210, 区分別: { SK200: 100, SK300: 60, '13ton': 50 } },
       { 年月: '2026-09', 台数: 95, 区分別: { SK200: 50, SK300: 20, '13ton': 25 } },
     ], kinds: ['SK200', 'SK300', '13ton'], total: 650, startMonth: '2026-04',
+    prev: { 年月: '2026-08', 台数: 210, 区分別: { SK200: 100, SK300: 60, '13ton': 50 } },
     sourceName: '出荷予定　日程表変更A(26年9月10日).xlsm', harvestedAt: '2026-09-13 03:10' }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
     sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/11', hasPrev: true, hasNext: true,
@@ -562,9 +563,11 @@ const REPLY = {
   chk('★配車の横にアームのタブがある', /アーム出荷予定/.test(String(armHead.見出し)), armHead.見出し);
   chk('★KPIに次の出荷日と台数が出る',
     /次の出荷 9\/14\(月\) \| 3 \| 台/.test(armHead.本文), armHead.本文);
-  chk('7日以内・直近1か月・13ton が出る',
-    /7日以内/.test(armHead.本文) && /直近1か月/.test(armHead.本文) && /13ton/.test(armHead.本文),
-    armHead.本文);
+  chk('★前月の実績が出る（8月 出荷 210台）',
+    /8月 出荷 \| 210 \| 台/.test(armHead.本文), armHead.本文);
+  chk('★前月のうち13tonが出る', /8月 うち 13ton \| 50 \| 台/.test(armHead.本文), armHead.本文);
+  chk('★「7日以内」は出さない', !/7日以内/.test(armHead.本文), armHead.本文);
+  chk('★「直近1か月」はKPIに出さない', !/直近1か月 \|/.test(armHead.本文), armHead.本文);
 
   const armCard = page.locator('button', { hasText: /アーム出荷予定/ }).nth(1);
   chk('配車タブにアームの欄がある', await armCard.count() > 0);

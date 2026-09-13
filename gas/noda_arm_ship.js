@@ -414,6 +414,9 @@ function getArmMonthlyData_uncached_() {
     kinds: [],         // 出てくる区分（台数の多い順）
     total: 0,
     startMonth: null,  // 年度はじめ
+    /* ★ 前月は年度の外に出ることがある（4月に見ると前月は3月＝前年度）。
+         グラフは年度はじめからだが、この1件だけは年度で切らずに出す。 */
+    prev: null,        // { 年月, 台数, 区分別 }
     sourceName: null,
     harvestedAt: null,
     error: null
@@ -436,6 +439,14 @@ function getArmMonthlyData_uncached_() {
     data.months = built.months;
     data.kinds = built.kinds;
     data.total = built.total;
+
+    // 前月は年度で切らずに探す
+    var all = arm_monthsFromRows_(values, null);
+    var pm = arm_prevMonthKey_(new Date());
+    for (var i = 0; i < all.months.length; i++) {
+      if (all.months[i].年月 === pm) { data.prev = all.months[i]; break; }
+    }
+    if (!data.prev) data.prev = { 年月: pm, 台数: 0, 区分別: {} };
   } catch (err) {
     data.error = String(err);
     Logger.log('アーム月次の取得でエラー: ' + String(err));
@@ -466,6 +477,13 @@ function arm_monthsFromRows_(values, startMonth) {
     kinds: Object.keys(kindTotal).sort(function (a, b) { return kindTotal[b] - kindTotal[a]; }),
     total: total
   };
+}
+
+// 前の月の 'yyyy-MM'（1月なら前年の12月）
+function arm_prevMonthKey_(now) {
+  var y = now.getFullYear(), m = now.getMonth();   // 0始まり
+  if (m === 0) { y -= 1; m = 12; } else { /* m は1始まりで見ると前月 */ }
+  return y + '-' + (m < 10 ? '0' + m : String(m));
 }
 
 // 年度はじめ（4月）の 'yyyy-MM'。1〜3月は前の年の4月。

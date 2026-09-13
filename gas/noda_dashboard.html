@@ -5717,14 +5717,10 @@ function App() {
         関係なく入ってくるので、週で切ると金曜に見たとき来週ぶんが見えない。 */
   const armDays = live.armPlan && live.armPlan.days || [];
   const armNext = armDays.length > 0 ? armDays[0] : null;
-  const armWeekCount = (() => {
-    const limit = new Date();
-    limit.setDate(limit.getDate() + 7);
-    const p2 = n => n < 10 ? "0" + n : String(n);
-    const key = limit.getFullYear() + "-" + p2(limit.getMonth() + 1) + "-" + p2(limit.getDate());
-    return armDays.reduce((sum, d) => sum + (d.date <= key ? d.count : 0), 0);
-  })();
-  const arm13Count = armDays.reduce((sum, d) => sum + d.rows.filter(r => r.is13).length, 0);
+  /* 前月の実績（アームの月別出荷から）。予定ではなく済んだ月の台数。 */
+  const armPrev = live.armMonthly && live.armMonthly.prev || null;
+  const armPrevLabel = armPrev ? vizMonthLabel(armPrev.年月) : "前月";
+  const armPrev13 = armPrev && armPrev.区分別 ? armPrev.区分別["13ton"] || 0 : null;
 
   // タブごとのヘッダー見出し・KPIカードを組み立てる
   const tabHeaders = {
@@ -5895,20 +5891,14 @@ function App() {
       icon: Truck,
       tone: "ok"
     }, {
-      label: "7日以内",
-      value: String(armWeekCount),
-      unit: "台",
-      icon: Truck,
-      tone: "ok"
-    }, {
-      label: "直近1か月",
-      value: String(live.armPlan && live.armPlan.total || 0),
+      label: armPrevLabel + " 出荷",
+      value: armPrev ? String(armPrev.台数) : "—",
       unit: "台",
       icon: Package,
-      tone: "neutral"
+      tone: "ok"
     }, {
-      label: "うち 13ton",
-      value: String(arm13Count),
+      label: armPrevLabel + " うち 13ton",
+      value: armPrev13 == null ? "—" : String(armPrev13),
       unit: "台",
       icon: Boxes,
       tone: "neutral"
