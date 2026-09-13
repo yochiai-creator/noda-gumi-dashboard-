@@ -73,6 +73,7 @@ const REPLY = {
       { 年月: '2026-08', 台数: 210, 区分別: { SK200: 100, SK300: 60, '13ton': 50 } },
       { 年月: '2026-09', 台数: 95, 区分別: { SK200: 50, SK300: 20, '13ton': 25 }, 最終日: '2026-09-13' },
     ], kinds: ['SK200', 'SK300', '13ton'], total: 650, startMonth: '2026-04', today: '2026-09-13',
+    currentAll: { 年月: '2026-09', 台数: 140, 区分別: { SK200: 70, SK300: 35, '13ton': 35 } },
     sourceName: '出荷予定　日程表変更A(26年9月10日).xlsm', harvestedAt: '2026-09-13 03:10' }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
     sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/11', hasPrev: true, hasNext: true,

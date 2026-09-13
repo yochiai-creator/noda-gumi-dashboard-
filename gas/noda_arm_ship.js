@@ -418,6 +418,9 @@ function getArmMonthlyData_uncached_() {
     total: 0,
     startMonth: null,  // 年度はじめ
     today: null,       // ここまでの実績、という日
+    /* ★ 今月ぶんだけは「予定こみ」も出す。グラフと表は実績だけだが、
+         今月あと何台出るのかは現場が知りたいので、KPIに1つだけ出す。 */
+    currentAll: null,  // { 年月, 台数, 区分別 } 今月まるごと（先の予定も入れた数）
     sourceName: null,
     harvestedAt: null,
     error: null
@@ -443,6 +446,13 @@ function getArmMonthlyData_uncached_() {
     data.months = built.months;
     data.kinds = built.kinds;
     data.total = built.total;
+
+    // 今月まるごと（今日で切らない＝先の予定も入れた数）
+    var ym = data.today.substring(0, 7);
+    var all = arm_monthsFromRows_(values, ym, null);
+    data.currentAll = all.months.length > 0 && all.months[0].年月 === ym
+      ? all.months[0]
+      : { 年月: ym, 台数: 0, 区分別: {} };
 
   } catch (err) {
     data.error = String(err);

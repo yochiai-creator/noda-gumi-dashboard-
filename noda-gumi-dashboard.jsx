@@ -2887,6 +2887,8 @@ export default function App() {
   })();
   const armCurLabel = armCur ? vizMonthLabel(armCur.年月) : "今月";
   const armCur13 = armCur && armCur.区分別 ? (armCur.区分別["13ton"] || 0) : null;
+  /* 今月まるごと（これから出る予定も入れた数）。実績との差が「あと何台」。 */
+  const armCurAll = (live.armMonthly && live.armMonthly.currentAll) || null;
 
   // タブごとのヘッダー見出し・KPIカードを組み立てる
   const tabHeaders = {
@@ -2981,6 +2983,8 @@ export default function App() {
              読み間違える（9月の合計だと思われる）。 */
       { label: armCurLabel + " 出荷" + (armToday ? "（" + vizArmDayLabel(armToday).split("/")[1] + "日まで）" : ""),
         value: armCur ? String(armCur.台数) : "—", unit: "台", icon: Package, tone: "ok" },
+      { label: armCurLabel + " 予定こみ 合計", value: armCurAll ? String(armCurAll.台数) : "—",
+        unit: "台", icon: Package, tone: "neutral" },
       { label: armCurLabel + " うち 13ton", value: armCur13 == null ? "—" : String(armCur13),
         unit: "台", icon: Boxes, tone: "neutral" },
     ],

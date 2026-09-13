@@ -296,5 +296,26 @@ console.log('■ 先の予定は実績に混ぜない');
   chk("先頭の ' が付いていても読める", c.months.length === 1 && c.months[0].年月 === '2026-04', c.months);
 }
 
+console.log('■ 今月の「予定こみ」も返す');
+{
+  /* ★ グラフと表は実績だけだが、KPIの1つだけは「今月あと何台出るのか」を
+        知りたいので、今日で切らない今月の合計も返す。 */
+  const s = build(SNAP);
+  const rows = [
+    ['2026-08-20', 'SK200', 99],   // 先月。今月の合計に混ぜない
+    ['2026-09-10', 'SK200', 5],
+    ['2026-09-13', 'SK200', 3],
+    ['2026-09-14', 'SK200', 9],    // これから
+    ['2026-09-30', '13ton', 2],    // これから
+    ['2026-10-02', 'SK300', 7],    // 来月。混ぜない
+  ];
+  const cur = s.arm_monthsFromRows_(rows, '2026-09', null);
+  chk('★今月まるごとは19台（実績8＋予定11）',
+    cur.months[0].年月 === '2026-09' && cur.months[0].台数 === 19, cur.months[0]);
+  chk('先月は入らない', !cur.months.some((m) => m.年月 === '2026-08'), cur.months.map((m) => m.年月));
+  const act = s.arm_monthsFromRows_(rows, '2026-09', '2026-09-13');
+  chk('実績のほうは8台のまま', act.months[0].台数 === 8, act.months[0]);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);
