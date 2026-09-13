@@ -53,7 +53,7 @@ const REPLY = {
   getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
-    startMonth: null, today: null, prev: null, sourceName: null, harvestedAt: null }),
+    startMonth: null, today: null, sourceName: null, harvestedAt: null }),
   getDispatchGridData: () => ({ ...E, source: 'Excel', editable: false, weekOffset: 0, weekLabel: null, hasPrev: false, hasNext: false, days: [], trucks: [], totals: {} }),
 };
 (async () => {

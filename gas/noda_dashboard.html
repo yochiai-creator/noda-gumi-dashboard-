@@ -5722,10 +5722,21 @@ function App() {
         関係なく入ってくるので、週で切ると金曜に見たとき来週ぶんが見えない。 */
   const armDays = live.armPlan && live.armPlan.days || [];
   const armNext = armDays.length > 0 ? armDays[0] : null;
-  /* 前月の実績（アームの月別出荷から）。予定ではなく済んだ月の台数。 */
-  const armPrev = live.armMonthly && live.armMonthly.prev || null;
-  const armPrevLabel = armPrev ? vizMonthLabel(armPrev.年月) : "前月";
-  const armPrev13 = armPrev && armPrev.区分別 ? armPrev.区分別["13ton"] || 0 : null;
+  /* 今月の実績（アームの月別出荷から）。予定ではなく、今日までに出た台数。
+     ★ 月別出荷はサーバ側で今日までに切ってあるので、今月の行をそのまま使える。 */
+  const armToday = live.armMonthly && live.armMonthly.today || null;
+  const armCur = (() => {
+    const ms = live.armMonthly && live.armMonthly.months || [];
+    if (!armToday) return null;
+    const ym = armToday.slice(0, 7);
+    return ms.filter(m => m.年月 === ym)[0] || {
+      年月: ym,
+      台数: 0,
+      区分別: {}
+    };
+  })();
+  const armCurLabel = armCur ? vizMonthLabel(armCur.年月) : "今月";
+  const armCur13 = armCur && armCur.区分別 ? armCur.区分別["13ton"] || 0 : null;
 
   // タブごとのヘッダー見出し・KPIカードを組み立てる
   const tabHeaders = {
@@ -5895,15 +5906,18 @@ function App() {
       unit: "台",
       icon: Truck,
       tone: "ok"
-    }, {
-      label: armPrevLabel + " 出荷",
-      value: armPrev ? String(armPrev.台数) : "—",
+    },
+    /* ★ 月の途中なので「◯日まで」と添える。添えないと月まるごとの数と
+           読み間違える（9月の合計だと思われる）。 */
+    {
+      label: armCurLabel + " 出荷" + (armToday ? "（" + vizArmDayLabel(armToday).split("/")[1] + "日まで）" : ""),
+      value: armCur ? String(armCur.台数) : "—",
       unit: "台",
       icon: Package,
       tone: "ok"
     }, {
-      label: armPrevLabel + " うち 13ton",
-      value: armPrev13 == null ? "—" : String(armPrev13),
+      label: armCurLabel + " うち 13ton",
+      value: armCur13 == null ? "—" : String(armCur13),
       unit: "台",
       icon: Boxes,
       tone: "neutral"

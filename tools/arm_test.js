@@ -296,21 +296,5 @@ console.log('■ 先の予定は実績に混ぜない');
   chk("先頭の ' が付いていても読める", c.months.length === 1 && c.months[0].年月 === '2026-04', c.months);
 }
 
-console.log('■ 前月の実績');
-{
-  const s = build(SNAP);
-  chk('9月なら前月は8月', s.arm_prevMonthKey_(new Date(2026, 8, 13)) === '2026-08',
-    s.arm_prevMonthKey_(new Date(2026, 8, 13)));
-  chk('★1月なら前年の12月', s.arm_prevMonthKey_(new Date(2027, 0, 5)) === '2026-12',
-    s.arm_prevMonthKey_(new Date(2027, 0, 5)));
-  chk('12月', s.arm_prevMonthKey_(new Date(2026, 11, 31)) === '2026-11',
-    s.arm_prevMonthKey_(new Date(2026, 11, 31)));
-  /* ★ 4月に見ると前月は3月＝前年度。年度で切ってしまうと出せなくなるので、
-        前月だけは年度の外も探す。 */
-  const b = s.arm_monthsFromRows_([['2026-03-20', 'SK200', 30]], null, '2026-09-13');
-  chk('年度で切らなければ前年度の月も返る', b.months.length === 1 && b.months[0].年月 === '2026-03',
-    b.months);
-}
-
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);
