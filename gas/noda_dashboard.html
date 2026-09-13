@@ -3605,6 +3605,11 @@ const vizMonthLabel = v => {
   const p = vizDateParts(v);
   return p ? p.m + "月" : String(v == null ? "" : v);
 };
+// 'yyyy-MM-dd' → '9/13'
+const vizArmDayLabel = v => {
+  const m = String(v == null ? "" : v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? Number(m[2]) + "/" + Number(m[3]) : String(v == null ? "" : v);
+};
 const vizYearMonth = v => {
   const p = vizDateParts(v);
   return p ? p.y + "-" + (p.m < 10 ? "0" + p.m : p.m) : String(v == null ? "" : v);
@@ -5114,7 +5119,7 @@ function ActualsTab({
     className: "mt-2 text-[10px] text-slate-400 leading-relaxed"
   }, armMonthly.startMonth ? vizDateParts(armMonthly.startMonth).y + "年4月〜（年度）" : "", armMonthly.harvestedAt ? "　" + armMonthly.harvestedAt + " 集計" : "", /*#__PURE__*/React.createElement("span", {
     className: "block"
-  }, "\u30D6\u30FC\u30E0\u30D6\u30E9\u30B1\u30C3\u30C8\u306F\u9664\u304F")))), /*#__PURE__*/React.createElement("button", {
+  }, "\u5B9F\u7E3E\u306E\u307F", armMonthly.today ? "（" + vizArmDayLabel(armMonthly.today) + "まで）" : "", "\u30FB\u30D6\u30FC\u30E0\u30D6\u30E9\u30B1\u30C3\u30C8\u306F\u9664\u304F")))), /*#__PURE__*/React.createElement("button", {
     onClick: onRefresh,
     className: "w-full py-2 rounded-lg text-xs font-semibold text-white",
     style: {

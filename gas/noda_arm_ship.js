@@ -43,9 +43,13 @@ var ARM_CONFIG = {
   // 元の .xlsm の「出荷明細」シート。6行目からデータ。列は1始まり。
   DETAIL_SHEET: '出荷明細',
   COL: { insp: 5, kk: 6, zu: 9, go: 12, spec: 13, ship: 33, info: 40, dest: 43 },
-  // 集計結果の置き場（出荷実績の蓄積スプレッドシートの中に作る）
-  MONTH_SHEET: 'アーム月次',
-  MONTH_HEADERS: ['年月', '区分', '台数'],
+  /* 集計結果の置き場（出荷実績の蓄積スプレッドシートの中に作る）。
+     ★ 月ではなく日で貯める。月でまとめてしまうと「今月の途中まで」が作れず、
+       今月の棒に先の予定まで混ざってしまう（実績として見るものなので困る）。
+       集計し直すのは元ファイルが変わったときだけなので、
+       「どこまでが実績か」は読むときに今日で切る。 */
+  MONTH_SHEET: 'アーム日次',
+  MONTH_HEADERS: ['日付', '区分', '台数'],
   // 前回どのファイルから集計したか
   PROP_SIG: 'armMonthly.sourceSignature',
   PROP_SRC: 'armMonthly.sourceName',
@@ -254,7 +258,7 @@ function アームの出荷予定を確認する() {
  */
 function harvestArmMonthly(force, budgetMs) {
   var started = Date.now();
-  var out = { converted: false, months: 0, rows: 0, skipped: null, sourceName: null, error: null };
+  var out = { converted: false, days: 0, rows: 0, skipped: null, sourceName: null, error: null };
   try {
     var src = arm_latestSourceFile_();
     if (!src) { out.skipped = '元ファイル（日程表変更 .xlsm）が見つかりません'; return out; }
@@ -275,15 +279,15 @@ function harvestArmMonthly(force, budgetMs) {
     var agg = arm_aggregateSource_(src);
     arm_writeMonthly_(agg);
     out.converted = true;
-    out.months = agg.months.length;
+    out.days = agg.days.length;
     out.rows = agg.rowCount;
 
     props.setProperty(ARM_CONFIG.PROP_SIG, sig);
     props.setProperty(ARM_CONFIG.PROP_SRC, src.getName());
     props.setProperty(ARM_CONFIG.PROP_AT,
       Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'));
-    Logger.log('アーム月次: ' + src.getName() + ' から ' + agg.rowCount + '件 / ' +
-               agg.months.length + 'か月 ／ ' + Math.round((Date.now() - started) / 1000) + '秒');
+    Logger.log('アーム日次: ' + src.getName() + ' から ' + agg.rowCount + '件 / ' +
+               agg.days.length + '日 ／ ' + Math.round((Date.now() - started) / 1000) + '秒');
   } catch (err) {
     out.error = String(err);
     Logger.log('アーム月次の集計でエラー: ' + String(err));
@@ -302,7 +306,7 @@ function arm_aggregateSource_(src) {
     var sh = SpreadsheetApp.openById(convId).getSheetByName(ARM_CONFIG.DETAIL_SHEET);
     if (!sh) throw new Error('シート「' + ARM_CONFIG.DETAIL_SHEET + '」が見つかりません');
     var last = sh.getLastRow();
-    if (last < 6) return { months: [], rowCount: 0 };
+    if (last < 6) return { days: [], rowCount: 0 };
     var n = last - 5;
     var C = ARM_CONFIG.COL;
     var kk = sh.getRange(6, C.kk, n, 1).getValues();
@@ -315,7 +319,7 @@ function arm_aggregateSource_(src) {
 }
 
 /**
- * 年月×区分に数える（純関数）。
+ * 出荷日×区分に数える（純関数）。
  * ★ PDF生成側と同じく「ブームブラケット」は除く（アーム本体ではないため）。
  * ★ 区分は機器の欄の先頭（全角スペースの前）。「13ton仕上げ」「13ton ｼｮｰﾄ」などは
  *   まとめて 13ton にする。現場は13tonかどうかで見ている。
@@ -329,19 +333,16 @@ function arm_aggregateRows_(kk, spec, ship) {
     var specv = String((spec[i] && spec[i][0]) || '');
     if (kkv.indexOf('ブームブラケット') >= 0 || specv.indexOf('ブームブラケット') >= 0) continue;
 
-    var p = function (x) { return x < 10 ? '0' + x : String(x); };
-    var ym = s.getFullYear() + '-' + p(s.getMonth() + 1);
+    var date = arm_dateKey_(s);
     var kind = arm_kindOf_(kkv);
-    if (!map[ym]) map[ym] = {};
-    map[ym][kind] = (map[ym][kind] || 0) + 1;
+    if (!map[date]) map[date] = {};
+    map[date][kind] = (map[date][kind] || 0) + 1;
     rowCount++;
   }
-  var months = Object.keys(map).sort().map(function (ym) {
-    var kinds = map[ym], total = 0;
-    Object.keys(kinds).forEach(function (k) { total += kinds[k]; });
-    return { 年月: ym, 台数: total, 区分別: kinds };
+  var days = Object.keys(map).sort().map(function (d) {
+    return { 日付: d, 区分別: map[d] };
   });
-  return { months: months, rowCount: rowCount };
+  return { days: days, rowCount: rowCount };
 }
 
 function arm_kindOf_(kk) {
@@ -360,9 +361,11 @@ function arm_writeMonthly_(agg) {
   if (last > 1) sheet.getRange(2, 1, last - 1, ARM_CONFIG.MONTH_HEADERS.length).clearContent();
 
   var rows = [];
-  agg.months.forEach(function (m) {
-    Object.keys(m.区分別).sort().forEach(function (kind) {
-      rows.push([m.年月, kind, m.区分別[kind]]);
+  agg.days.forEach(function (d) {
+    Object.keys(d.区分別).sort().forEach(function (kind) {
+      // ★ 日付は文字列のまま入れる。Dateで入れるとシートの表示形式しだいで
+      //   読み戻したとき時差の分だけ前日になることがある。
+      rows.push(["'" + d.日付, kind, d.区分別[kind]]);
     });
   });
   if (rows.length > 0) {
@@ -414,6 +417,7 @@ function getArmMonthlyData_uncached_() {
     kinds: [],         // 出てくる区分（台数の多い順）
     total: 0,
     startMonth: null,  // 年度はじめ
+    today: null,       // ここまでの実績、という日
     /* ★ 前月は年度の外に出ることがある（4月に見ると前月は3月＝前年度）。
          グラフは年度はじめからだが、この1件だけは年度で切らずに出す。 */
     prev: null,        // { 年月, 台数, 区分別 }
@@ -434,15 +438,18 @@ function getArmMonthlyData_uncached_() {
       return data;
     }
     var values = sheet.getRange(2, 1, last - 1, ARM_CONFIG.MONTH_HEADERS.length).getValues();
-    data.startMonth = arm_fiscalStart_(new Date());
-    var built = arm_monthsFromRows_(values, data.startMonth);
+    var now = new Date();
+    data.today = arm_dateKey_(now);
+    data.startMonth = arm_fiscalStart_(now);
+    // ★ 今日より後は出さない（この表は実績）。今月は途中までになる。
+    var built = arm_monthsFromRows_(values, data.startMonth, data.today);
     data.months = built.months;
     data.kinds = built.kinds;
     data.total = built.total;
 
-    // 前月は年度で切らずに探す
-    var all = arm_monthsFromRows_(values, null);
-    var pm = arm_prevMonthKey_(new Date());
+    // 前月は年度で切らずに探す（4月に見ると前月は3月＝前年度）
+    var all = arm_monthsFromRows_(values, null, data.today);
+    var pm = arm_prevMonthKey_(now);
     for (var i = 0; i < all.months.length; i++) {
       if (all.months[i].年月 === pm) { data.prev = all.months[i]; break; }
     }
@@ -454,21 +461,25 @@ function getArmMonthlyData_uncached_() {
   return data;
 }
 
-/* シートの行（年月・区分・台数）を月ごとにまとめる（純関数）。
-   ★ 年度はじめ（4月）より前は出さない。 */
-function arm_monthsFromRows_(values, startMonth) {
+/* シートの行（日付・区分・台数）を月ごとにまとめる（純関数）。
+   ★ 年度はじめ（4月）より前は出さない。
+   ★ untilDate（'yyyy-MM-dd'）より後の日は出さない。
+     この表は「実績」なので、先の予定を混ぜてはいけない。今月は途中までになる。 */
+function arm_monthsFromRows_(values, startMonth, untilDate) {
   var map = {}, kindTotal = {}, total = 0;
   values.forEach(function (r) {
-    var ym = nc_dateText_(r[0], 'yyyy-MM');
-    if (!ym) return;
-    ym = String(ym).substring(0, 7);
+    var day = arm_dayKeyFromCell_(r[0]);
+    if (!day) return;
+    if (untilDate && day > untilDate) return;
+    var ym = day.substring(0, 7);
     if (startMonth && ym < startMonth) return;
     var kind = String(r[1] || 'その他');
     var n = Number(r[2]) || 0;
     if (n <= 0) return;
-    if (!map[ym]) map[ym] = { 年月: ym, 台数: 0, 区分別: {} };
+    if (!map[ym]) map[ym] = { 年月: ym, 台数: 0, 区分別: {}, 最終日: day };
     map[ym].台数 += n;
     map[ym].区分別[kind] = (map[ym].区分別[kind] || 0) + n;
+    if (day > map[ym].最終日) map[ym].最終日 = day;
     kindTotal[kind] = (kindTotal[kind] || 0) + n;
     total += n;
   });
@@ -477,6 +488,19 @@ function arm_monthsFromRows_(values, startMonth) {
     kinds: Object.keys(kindTotal).sort(function (a, b) { return kindTotal[b] - kindTotal[a]; }),
     total: total
   };
+}
+
+/* シートの日付セルを 'yyyy-MM-dd' にする。
+   ★ 文字列で入れているが、Dateで返ってくることもある。先頭の ' も落とす。 */
+function arm_dayKeyFromCell_(v) {
+  if (v instanceof Date || (typeof v === 'object' && v && typeof v.getTime === 'function')) {
+    return isNaN(v.getTime()) ? '' : arm_dateKey_(v);
+  }
+  var t = String(v == null ? '' : v).replace(/^'/, '').trim();
+  var m = t.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if (!m) return '';
+  var p = function (n) { return Number(n) < 10 ? '0' + Number(n) : String(Number(n)); };
+  return m[1] + '-' + p(m[2]) + '-' + p(m[3]);
 }
 
 // 前の月の 'yyyy-MM'（1月なら前年の12月）
@@ -498,7 +522,7 @@ function アームの出荷実績を集める() {
   var r = harvestArmMonthly(true, 5 * 60 * 1000);
   if (r.error) { Logger.log('エラー: ' + r.error); return r; }
   if (!r.converted) { Logger.log(r.skipped); return r; }
-  Logger.log('集計しました: ' + r.sourceName + ' / ' + r.rows + '件 / ' + r.months + 'か月');
+  Logger.log('集計しました: ' + r.sourceName + ' / ' + r.rows + '件 / ' + r.days + '日');
   var d = getArmMonthlyData(true);
   d.months.forEach(function (m) {
     Logger.log('  ' + m.年月 + '  ' + m.台数 + '台  ' +

@@ -1235,6 +1235,11 @@ function vizDateParts(v) {
 }
 const vizShortDate = (v) => { const p = vizDateParts(v); return p && p.d ? p.m + "/" + p.d : String(v == null ? "" : v); };
 const vizMonthLabel = (v) => { const p = vizDateParts(v); return p ? p.m + "月" : String(v == null ? "" : v); };
+// 'yyyy-MM-dd' → '9/13'
+const vizArmDayLabel = (v) => {
+  const m = String(v == null ? "" : v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? Number(m[2]) + "/" + Number(m[3]) : String(v == null ? "" : v);
+};
 const vizYearMonth = (v) => { const p = vizDateParts(v); return p ? p.y + "-" + (p.m < 10 ? "0" + p.m : p.m) : String(v == null ? "" : v); };
 
 /* 日の並びから「月が変わる位置」を拾う。
@@ -2453,7 +2458,11 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
             <p className="mt-2 text-[10px] text-slate-400 leading-relaxed">
               {armMonthly.startMonth ? vizDateParts(armMonthly.startMonth).y + "年4月〜（年度）" : ""}
               {armMonthly.harvestedAt ? "　" + armMonthly.harvestedAt + " 集計" : ""}
-              <span className="block">ブームブラケットは除く</span>
+              {/* ★ これは実績の表。先の予定は出していない（今月は途中まで）。 */}
+              <span className="block">
+                実績のみ{armMonthly.today ? "（" + vizArmDayLabel(armMonthly.today) + "まで）" : ""}
+                ・ブームブラケットは除く
+              </span>
             </p>
           </div>
         )}

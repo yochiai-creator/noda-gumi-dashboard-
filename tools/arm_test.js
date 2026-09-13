@@ -225,22 +225,19 @@ console.log('■ 月別の集計（元の .xlsm から）');
               [new Date(2026, 4, 7)], [new Date(2026, 4, 9)], [new Date(2026, 4, 20)],
               [''], [new Date(2026, 2, 15)], ['出荷日が日付でない']];
   const a = s.arm_aggregateRows_(kk, sp, sh);
-  check2(s, a);
-}
-
-function check2(s, a) {
   // 9行のうち、空欄1・文字列1・ブームブラケット1を除いた6行が対象
   chk('出荷日が日付でない行は数えない', a.rowCount === 6, a);
-  const by = {}; a.months.forEach((m) => { by[m.年月] = m; });
-  chk('年月ごとにまとまる', Object.keys(by).sort().join(',') === '2026-03,2026-04,2026-05',
-    Object.keys(by));
-  chk('4月は3台', by['2026-04'].台数 === 3, by['2026-04']);
+  chk('★出荷日ごとに持つ（月にまとめない）',
+    a.days.map((d) => d.日付).join(',') ===
+      '2026-03-15,2026-04-02,2026-04-10,2026-04-28,2026-05-07,2026-05-20',
+    a.days.map((d) => d.日付));
+  const byDay = {}; a.days.forEach((d) => { byDay[d.日付] = d.区分別; });
   chk('★13tonはまとめる（仕上げ・ｼｮｰﾄを分けない）',
-    by['2026-04'].区分別['13ton'] === 1 && by['2026-05'].区分別['13ton'] === 1, a.months);
-  chk('★ブームブラケットは除く', by['2026-05'].台数 === 2, by['2026-05']);
+    byDay['2026-04-02']['13ton'] === 1 && byDay['2026-05-07']['13ton'] === 1, a.days);
+  chk('★ブームブラケットは除く（5/9は行ごと無い）', byDay['2026-05-09'] === undefined, a.days);
   chk('機種は区分に混ぜない（SK300　10型 → SK300）',
-    by['2026-04'].区分別['SK300'] === 1, by['2026-04'].区分別);
-  chk('特機も1つの区分', by['2026-05'].区分別['特機'] === 1, by['2026-05'].区分別);
+    byDay['2026-04-10']['SK300'] === 1, byDay['2026-04-10']);
+  chk('特機も1つの区分', byDay['2026-05-20']['特機'] === 1, byDay['2026-05-20']);
   chk('区分', s.arm_kindOf_('SK200　SRHﾃｨｱ') === 'SK200', s.arm_kindOf_('SK200　SRHﾃｨｱ'));
   chk('半角スペース区切りも切る', s.arm_kindOf_('SK400 3.45m') === 'SK400', s.arm_kindOf_('SK400 3.45m'));
   chk('空欄は「その他」', s.arm_kindOf_('') === 'その他');
@@ -256,25 +253,47 @@ console.log('■ 年度はじめから出す');
   chk('4月ちょうど', s.arm_fiscalStart_(new Date(2026, 3, 1)) === '2026-04');
 
   const rows = [
-    ['2026-03', 'SK200', 30],   // 前年度。出さない
-    ['2026-04', 'SK200', 90], ['2026-04', '13ton', 50],
-    ['2026-05', 'SK200', 80],
-    ['2026-05', 'SK300', 0],    // 0台は行ごと落とす
+    ['2026-03-20', 'SK200', 30],   // 前年度。出さない
+    ['2026-04-10', 'SK200', 90], ['2026-04-28', '13ton', 50],
+    ['2026-05-07', 'SK200', 80],
+    ['2026-05-09', 'SK300', 0],    // 0台は行ごと落とす
   ];
-  const b = s.arm_monthsFromRows_(rows, '2026-04');
+  const b = s.arm_monthsFromRows_(rows, '2026-04', '2026-09-13');
   chk('★年度より前の月は出さない', !b.months.some((m) => m.年月 === '2026-03'),
     b.months.map((m) => m.年月));
   chk('月の台数を合算', b.months[0].台数 === 140, b.months[0]);
   chk('合計', b.total === 220, b.total);
   chk('区分は多い順', b.kinds[0] === 'SK200', b.kinds);
   chk('0台の区分は持たない', b.months[1].区分別['SK300'] === undefined, b.months[1]);
+  chk('その月の最終日を持つ', b.months[0].最終日 === '2026-04-28', b.months[0].最終日);
+}
+
+console.log('■ 先の予定は実績に混ぜない');
+{
+  const s = build(SNAP);
+  const rows = [
+    ['2026-09-10', 'SK200', 5],   // 今日より前 → 実績
+    ['2026-09-13', 'SK200', 3],   // 今日 → 入れる
+    ['2026-09-14', 'SK200', 9],   // 明日 → 予定なので出さない
+    ['2026-10-02', 'SK300', 7],   // 来月 → 出さない
+  ];
+  const b = s.arm_monthsFromRows_(rows, '2026-04', '2026-09-13');
+  chk('★来月の予定は出さない', !b.months.some((m) => m.年月 === '2026-10'),
+    b.months.map((m) => m.年月));
+  chk('★今月は今日までで切る（明日の9台を入れない）', b.months[0].台数 === 8, b.months[0]);
+  chk('今日ぶんは入れる', b.months[0].最終日 === '2026-09-13', b.months[0].最終日);
+  // 切らなければ全部入る＝落としているのは untilDate のおかげだと確かめる
+  chk('切らなければ24台', s.arm_monthsFromRows_(rows, '2026-04', null).total === 24,
+    s.arm_monthsFromRows_(rows, '2026-04', null).total);
 }
 {
-  // シートが日付型で返してくることがある（'2026-04' が Date になる）
+  // シートが日付型で返してくることがある
   const s = build(SNAP);
-  const b = s.arm_monthsFromRows_([[new Date(2026, 3, 1), 'SK200', 5]], '2026-04');
-  chk('★年月がDateで返ってきても読める', b.months.length === 1 && b.months[0].年月 === '2026-04',
+  const b = s.arm_monthsFromRows_([[new Date(2026, 3, 1), 'SK200', 5]], '2026-04', '2026-09-13');
+  chk('★日付がDateで返ってきても読める', b.months.length === 1 && b.months[0].年月 === '2026-04',
     b.months);
+  const c = s.arm_monthsFromRows_([["'2026-04-01", 'SK200', 5]], '2026-04', '2026-09-13');
+  chk("先頭の ' が付いていても読める", c.months.length === 1 && c.months[0].年月 === '2026-04', c.months);
 }
 
 console.log('■ 前月の実績');
@@ -288,7 +307,7 @@ console.log('■ 前月の実績');
     s.arm_prevMonthKey_(new Date(2026, 11, 31)));
   /* ★ 4月に見ると前月は3月＝前年度。年度で切ってしまうと出せなくなるので、
         前月だけは年度の外も探す。 */
-  const b = s.arm_monthsFromRows_([['2026-03', 'SK200', 30]], null);
+  const b = s.arm_monthsFromRows_([['2026-03-20', 'SK200', 30]], null, '2026-09-13');
   chk('年度で切らなければ前年度の月も返る', b.months.length === 1 && b.months[0].年月 === '2026-03',
     b.months);
 }
