@@ -19,6 +19,8 @@ const REPLY = {
     total: 31680, max: 39408, nearFull: 3, over: 1,
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
   getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
+  getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [],
+    sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getDispatchGridData: () => ({ ...E, source: 'Excel', editable: false, weekOffset: 0, weekLabel: null, hasPrev: false, hasNext: false, days: [], trucks: [], totals: {} }),
 };
 (async () => {

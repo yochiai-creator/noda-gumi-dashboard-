@@ -194,8 +194,101 @@ function SectionTitle({ children, note }) {
   );
 }
 
+/* ---------- アームの出荷予定 ---------- */
+/* ★ 中身は「アーム出荷明細pdf生成」が書き出したJSONそのもの。
+     落合さんが見ているPDFと同じ内容を、日ごとにたためる形で出す。
+   ★ トラック（どの便で運ぶか）はまだどこにも無いので出していない。
+     決まったら、この日の見出しの横に足せる形にしてある。 */
+function ArmPlan({ plan }) {
+  const days = (plan && plan.days) || [];
+  // 一番近い日だけ開けておく。全部開くとスクロールが終わらない。
+  const [openDate, setOpenDate] = useState(null);
+  const shown = openDate == null ? (days[0] && days[0].date) : openDate;
+
+  if (plan && plan.error) {
+    return <p className="text-xs text-slate-500">{plan.error}</p>;
+  }
+  if (days.length === 0) {
+    return <p className="text-xs text-slate-500">直近1か月の出荷予定はありません。</p>;
+  }
+
+  return (
+    <div>
+      {plan.stale && (
+        <p className="text-[11px] mb-2" style={{ color: "#b45309" }}>
+          元のExcel（{plan.sourceName}）のほうが新しいので、この予定は1つ前の版かもしれません。
+        </p>
+      )}
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[11px] text-slate-400">
+          {plan.snapshotAt ? plan.snapshotAt + " 時点" : ""}
+        </span>
+        {plan.pdfUrl && (
+          <a href={plan.pdfUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white ml-auto"
+            style={{ background: "#2563eb", textDecoration: "none" }}>
+            <FileText size={11} />明細PDF
+          </a>
+        )}
+      </div>
+
+      <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+        {days.map((g) => {
+          const open = g.date === shown;
+          return (
+            <div key={g.date}>
+              <button onClick={() => setOpenDate(open ? "" : g.date)}
+                className="w-full text-left px-3 py-2 flex items-baseline gap-2"
+                style={{ background: "none", border: "none" }}>
+                <span className="text-sm font-bold tabular-nums shrink-0" style={{ color: NAVY }}>
+                  {g.label}
+                </span>
+                <span className="text-[11px] text-slate-400 shrink-0">({g.weekday})</span>
+                <span className="text-sm font-bold tabular-nums shrink-0">{g.count}</span>
+                <span className="text-[10px] text-slate-400 shrink-0">台</span>
+                <span className="text-[10px] text-slate-400 truncate">
+                  {g.byDest.map((x) => x.名 + " " + x.台数).join("・")}
+                </span>
+                <span className="text-[11px] ml-auto shrink-0" style={{ color: NAVY }}>
+                  {open ? "▲" : "▼"}
+                </span>
+              </button>
+              <div style={{ display: open ? undefined : "none" }}>
+                {g.rows.map((r, i) => (
+                  <div key={r.key || i} className="px-3 py-1.5 border-t border-slate-100"
+                    style={{ background: r.is13 ? "#fefce8" : undefined }}>
+                    <span className="flex items-baseline gap-2">
+                      <span className="text-[13px] font-semibold" style={{ color: VIZ.ink }}>
+                        {r.kiki}{r.kishu ? " " + r.kishu : ""}
+                      </span>
+                      <span className="text-[13px] tabular-nums" style={{ color: VIZ.ink2 }}>
+                        #{r.go}
+                      </span>
+                      {r.info && (
+                        <span className="text-[10px] px-1 rounded bg-slate-100 shrink-0"
+                          style={{ color: VIZ.ink2 }}>{r.info}</span>
+                      )}
+                      <span className="text-[10px] ml-auto shrink-0" style={{ color: VIZ.ink2 }}>
+                        {r.dest}
+                      </span>
+                    </span>
+                    <span className="block text-[11px]" style={{ color: VIZ.muted }}>
+                      {r.zu}{r.spec ? "　" + r.spec : ""}
+                      {r.insp ? "　検査 " + r.insp : "　検査まだ"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- タブ本体 ---------- */
-function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
+function DispatchTab({ grid, onSaveCell, onWeek, saving, armPlan }) {
   /* 畳んだときに見出しの横に出す内容（週と出荷台数）。
      何も見えなくなると畳んだ意味が無い。 */
   const closedNote = (() => {
@@ -217,6 +310,18 @@ function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
           note={grid && grid.source ? "出所：" + grid.source : ""}
           closedNote={closedNote}>
           <DispatchGrid grid={grid} onSave={onSaveCell} onWeek={onWeek} saving={saving} />
+        </Collapsible>
+      </div>
+
+      {/* ---- アームの出荷予定。LPガス容器とは別の製品なので表も別にする ---- */}
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <Collapsible tone="card" title="アーム出荷予定"
+          note={armPlan && armPlan.sourceName ? "出所：" + armPlan.sourceName : ""}
+          closedNote={armPlan && armPlan.total
+            ? "直近1か月 " + armPlan.total + "台"
+            : (armPlan && armPlan.error ? "読めていません" : "")}
+          defaultOpen={false}>
+          <ArmPlan plan={armPlan} />
         </Collapsible>
       </div>
 
@@ -2503,7 +2608,7 @@ export default function App() {
        古い値（起動時の仮データ）が一瞬見えていた。
        名前で管理して、足し忘れが起きないようにする。 */
   const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals",
-                     "invTrend", "monthly", "dispGrid", "yardMap", "yardCap"];
+                     "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan"];
   const [loadedKeys, setLoadedKeys] = useState({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -2614,6 +2719,12 @@ export default function App() {
 
     // 配車表のトラック×日付グリッド
     fetchDispatchGrid(gridWeek, force === true, () => markLoaded("dispGrid"));
+
+    // アーム（建機）の出荷予定。配車タブに出す
+    google.script.run
+      .withSuccessHandler((ap) => { setLive((prev) => ({ ...prev, armPlan: ap })); markLoaded("armPlan"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, armPlan: { error: String(err) } })); markLoaded("armPlan"); })
+      .getArmShipPlan(force === true);
 
     // 野外置場（置場容量）の合計と、埋め込むURL。
     // URLは変わらないので1回取れれば取り直さない。
@@ -2945,7 +3056,8 @@ export default function App() {
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} bySize={invBySize} />}
           {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab
-            grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
+            grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving}
+            armPlan={live.armPlan} />}
           {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} url={live.yardCapUrl} onRefresh={() => fetchLiveData(true)} />}
         </div>
 

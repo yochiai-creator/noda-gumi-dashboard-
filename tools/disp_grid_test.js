@@ -39,6 +39,33 @@ const REPLY = {
     total: 31680, max: 39408, nearFull: 3, over: 1,
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
   getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
+  // アームの出荷予定（別プロジェクトのJSONを読んだ結果）
+  getArmShipPlan: () => ({
+    updated: '2026-09-13 07:00', error: null, total: 5,
+    sourceName: '出荷予定　日程表変更A(26年9月4日).xlsm',
+    snapshotAt: '2026-09-13 06:33', stale: false,
+    pdfUrl: 'https://drive.google.com/file/d/armpdf/view',
+    pdfName: 'アーム機種別出荷明細_2026-09-13.pdf',
+    days: [
+      { date: '2026-09-14', label: '9/14', weekday: '月', count: 3,
+        byDest: [{ 名: '正和', 台数: 1 }, { 名: 'あゆみ', 台数: 1 }, { 名: '正和(13ton)', 台数: 1 }],
+        rows: [
+          { kiki: 'SK300', kishu: '10型', zu: 'LC12B10557F1', go: '325', spec: 'SK300　3.3m10型',
+            dest: '正和', info: 'グレー', insp: '5/29', is13: false, key: 'LC12B10557F1||325' },
+          { kiki: 'SK400', kishu: '', zu: 'LS12B10207F1', go: '10', spec: 'SK400　2.6m10型',
+            dest: 'あゆみ', info: '', insp: '9/5', is13: false, key: 'LS12B10207F1||10' },
+          { kiki: '13ton仕上げ', kishu: '', zu: 'YY12B00902F1G2', go: '1952', spec: '2.38m GD KCMC',
+            dest: '正和(13ton)', info: '', insp: '', is13: true, key: 'YY12B00902F1G2||1952' },
+        ] },
+      { date: '2026-09-15', label: '9/15', weekday: '火', count: 2,
+        byDest: [{ 名: '正和', 台数: 2 }],
+        rows: [
+          { kiki: 'SK300', kishu: '10型', zu: 'LC12B10556F1', go: '378', spec: 'SK300　3.3m10型',
+            dest: '正和', info: '', insp: '8/29', is13: false, key: 'LC12B10556F1||378' },
+          { kiki: 'SK200', kishu: 'SRHﾃｨｱ', zu: 'YB12B00240F1', go: '185', spec: 'SK200　SRHﾃｨｱ',
+            dest: '正和', info: '', insp: '9/1', is13: false, key: 'YB12B00240F1||185' },
+        ] },
+    ] }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
     sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/11', hasPrev: true, hasNext: true,
     days: [
@@ -175,7 +202,7 @@ const REPLY = {
 
   // 日を選ぶチップの幅がそろっているか（「（本日）」で1つだけ広くなっていた）
   const chips = await page.evaluate(() => [...document.querySelectorAll('button')]
-    .filter((x) => /^\d+\/\d+/.test(x.innerText.trim()))
+    .filter((x) => /^\d+\/\d+/.test(x.innerText.trim()) && x.getBoundingClientRect().width > 0)
     .map((x) => Math.round(x.getBoundingClientRect().width)));
   chk('日のチップの幅がそろっている（差10px以内）',
     chips.length > 0 && Math.max(...chips) - Math.min(...chips) <= 10, chips);
@@ -344,7 +371,7 @@ const REPLY = {
   /* ---------- 金曜が2列（土着・月着）に分かれている日 ---------- */
   console.log('■ 金曜の2列を1日にまとめる');
   const chipTexts = await page.evaluate(() => [...document.querySelectorAll('button')]
-    .filter((x) => /^\d+\/\d+/.test(x.innerText.trim()))
+    .filter((x) => /^\d+\/\d+/.test(x.innerText.trim()) && x.getBoundingClientRect().width > 0)
     .map((x) => x.innerText.replace(/\n/g, '/')));
   console.log('   チップ:', JSON.stringify(chipTexts));
   chk('★日のチップが5つ（9/11が2つに割れていない）', chipTexts.length === 5, chipTexts);
@@ -507,6 +534,48 @@ const REPLY = {
 
   chk('日付ラベルが「本日」と混ざっていない',
     m.カード見出し.every((t) => !(t.indexOf('本日') !== -1 && t.indexOf('/') !== -1)), m.カード見出し);
+
+  /* ---------- アーム出荷予定 ---------- */
+  console.log('■ アーム出荷予定');
+  const armCard = page.locator('button', { hasText: /アーム出荷予定/ }).first();
+  chk('配車タブにアームの欄がある', await armCard.count() > 0);
+  const armClosed = (await armCard.textContent()).trim();
+  console.log('   畳んだ見出し:', JSON.stringify(armClosed));
+  chk('★畳んでいても台数が見える', /直近1か月\s*5台/.test(armClosed.replace(/\s+/g, ' ')), armClosed);
+  await armCard.click();
+  await page.waitForTimeout(400);
+
+  const arm = await page.evaluate(() => {
+    const heads = [...document.querySelectorAll('button')]
+      .filter((b) => /^\d+\/\d+\s*\(/.test(b.innerText.trim()))
+      .map((b) => b.innerText.replace(/\n/g, ' | ').trim());
+    const t = document.body.innerText;
+    const pdf = [...document.querySelectorAll('a')].filter((a) => /明細PDF/.test(a.textContent))
+      .map((a) => a.getAttribute('href'));
+    return { 日の見出し: heads, pdf: pdf,
+      号機が出ている: /#325/.test(t), 図番が出ている: /LC12B10557F1/.test(t),
+      情報が出ている: /グレー/.test(t), 検査まだ: /検査まだ/.test(t),
+      翌日の中身: /YB12B00240F1/.test(t) };
+  });
+  console.log('   アーム:', JSON.stringify(arm));
+  chk('出荷日ごとに見出しが出る', arm.日の見出し.length === 2, arm.日の見出し);
+  chk('★見出しに台数と出荷先の内訳が出る',
+    /9\/14 \| \(月\) \| 3 \| 台 \| 正和 1・あゆみ 1・正和\(13ton\) 1/.test(arm.日の見出し[0]), arm.日の見出し[0]);
+  chk('★一番近い日だけ開いている（全部開かない）',
+    arm.号機が出ている && !arm.翌日の中身, arm);
+  chk('図番が出ている', arm.図番が出ている, arm);
+  chk('情報①（塗装色）が出ている', arm.情報が出ている, arm);
+  chk('★検査がまだのものはそう書く', arm.検査まだ, arm);
+  chk('明細PDFのリンクが出る',
+    arm.pdf.length === 1 && /armpdf/.test(arm.pdf[0]), arm.pdf);
+
+  // 2日目を開くと中身が出る
+  await page.locator('button', { hasText: /^9\/15/ }).first().click();
+  await page.waitForTimeout(300);
+  chk('別の日を開ける',
+    await page.evaluate(() => /YB12B00240F1/.test(document.body.innerText)));
+
+  await page.screenshot({ path: SP + '/arm_plan.png', fullPage: true });
 
   // 横に送った状態を撮って、トラック名が残っているか目で見る
   await page.evaluate(() => { const sc = document.querySelector('.overflow-x-auto.rounded-md');

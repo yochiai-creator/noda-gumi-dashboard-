@@ -34,6 +34,8 @@ const REPLY = {
     total: 31680, max: 39408, nearFull: 3, over: 1,
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
   getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
+  getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [],
+    sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getDispatchGridData: () => ({ updated: 'x', error: null, source: 'Excel', editable: false,
     weekOffset: 0, weekLabel: null, hasPrev: false, hasNext: false, days: [], trucks: [], totals: {} }),
   getShippingActualsSummary: () => ({ ...E, sheetUrl: 'https://x.test', rowCount: 0, shipmentCount: 0, months: [], bySize: {}, topDests: [], mismatchCount: 0, needsCheckCount: 0, nonCylinderCount: 0 }),

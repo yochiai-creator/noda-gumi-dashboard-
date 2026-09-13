@@ -39,6 +39,33 @@ const REPLY = {
     total: 31680, max: 39408, nearFull: 3, over: 1,
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
   getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
+  // アームの出荷予定（別プロジェクトのJSONを読んだ結果）
+  getArmShipPlan: () => ({
+    updated: '2026-09-13 07:00', error: null, total: 5,
+    sourceName: '出荷予定　日程表変更A(26年9月4日).xlsm',
+    snapshotAt: '2026-09-13 06:33', stale: false,
+    pdfUrl: 'https://drive.google.com/file/d/armpdf/view',
+    pdfName: 'アーム機種別出荷明細_2026-09-13.pdf',
+    days: [
+      { date: '2026-09-14', label: '9/14', weekday: '月', count: 3,
+        byDest: [{ 名: '正和', 台数: 1 }, { 名: 'あゆみ', 台数: 1 }, { 名: '正和(13ton)', 台数: 1 }],
+        rows: [
+          { kiki: 'SK300', kishu: '10型', zu: 'LC12B10557F1', go: '325', spec: 'SK300　3.3m10型',
+            dest: '正和', info: 'グレー', insp: '5/29', is13: false, key: 'LC12B10557F1||325' },
+          { kiki: 'SK400', kishu: '', zu: 'LS12B10207F1', go: '10', spec: 'SK400　2.6m10型',
+            dest: 'あゆみ', info: '', insp: '9/5', is13: false, key: 'LS12B10207F1||10' },
+          { kiki: '13ton仕上げ', kishu: '', zu: 'YY12B00902F1G2', go: '1952', spec: '2.38m GD KCMC',
+            dest: '正和(13ton)', info: '', insp: '', is13: true, key: 'YY12B00902F1G2||1952' },
+        ] },
+      { date: '2026-09-15', label: '9/15', weekday: '火', count: 2,
+        byDest: [{ 名: '正和', 台数: 2 }],
+        rows: [
+          { kiki: 'SK300', kishu: '10型', zu: 'LC12B10556F1', go: '378', spec: 'SK300　3.3m10型',
+            dest: '正和', info: '', insp: '8/29', is13: false, key: 'LC12B10556F1||378' },
+          { kiki: 'SK200', kishu: 'SRHﾃｨｱ', zu: 'YB12B00240F1', go: '185', spec: 'SK200　SRHﾃｨｱ',
+            dest: '正和', info: '', insp: '9/1', is13: false, key: 'YB12B00240F1||185' },
+        ] },
+    ] }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
     sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/11', hasPrev: true, hasNext: true,
     days: [

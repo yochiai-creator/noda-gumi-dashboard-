@@ -57,6 +57,8 @@ const REPLY = {
   getMonthlyCombinedData: () => ({ ...E, sheetUrl: 'x', months: [], hasOrders: false, hasPlan: false, partialMonth: null, startMonth: null }),
   getYardCapacitySummary: () => ({ ...E, locations: 36, a20: 0, a50: 0, total: 0, max: 0, nearFull: 0, over: 0, sheetUrl: 'x' }),
   getYardCapacityUrl: () => ({ url: null, error: null }),
+  getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [],
+    sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
     sheetUrl: 'x', weekOffset: 0, weekLabel: '9/7〜9/12', hasPrev: true, hasNext: true,
     days: [
