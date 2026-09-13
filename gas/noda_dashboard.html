@@ -4932,15 +4932,12 @@ function DispatchGrid({
 
 /* ---------- 実績・推移タブ本体 ---------- */
 function ActualsTab({
-  shipActuals,
   invTrend,
   monthly,
   armMonthly,
   onRefresh
 }) {
-  const [showTable, setShowTable] = useState(false);
   const inv = invTrend,
-    act = shipActuals,
     mc = monthly;
 
   /* ★ グラフは縦に長いので、見出しをタップして畳めるようにする。
@@ -5077,69 +5074,6 @@ function ActualsTab({
   }) : /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-500 py-2"
   }, "\u63A8\u79FB\u30B0\u30E9\u30D5\u306F2\u65E5\u5206\u4EE5\u4E0A\u8CAF\u307E\u308B\u3068\u51FA\u307E\u3059\u3002"))), /*#__PURE__*/React.createElement(Card, {
-    title: "\u6708\u6B21\u51FA\u8377\u5B9F\u7E3E",
-    note: act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null
-  }, !act ? /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-slate-400 py-4 text-center"
-  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : act.error ? /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-amber-700 py-2"
-  }, "\u53D6\u5F97\u30A8\u30E9\u30FC\uFF1A", act.error) : !act.months || act.months.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "text-xs text-slate-500 py-2"
-  }, "\u307E\u3060\u51FA\u8377\u5B9F\u7E3E\u304C\u8CAF\u307E\u3063\u3066\u3044\u307E\u305B\u3093\u3002\u6307\u56F3\u66F8PDF\u30921\u6642\u9593\u3054\u3068\u306B\u8AAD\u307F\u8FBC\u3093\u3067\u96C6\u8A08\u3057\u307E\u3059 \uFF08\u521D\u56DE\u306F\u5168\u671F\u9593\u3076\u3093\u3042\u308B\u306E\u3067\u6570\u65E5\u304B\u304B\u308A\u307E\u3059\uFF09\u3002") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyShipChart, {
-    months: act.months
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "mt-3 rounded-md border border-slate-200 overflow-hidden"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "w-14"
-  }, "\u6708"), /*#__PURE__*/React.createElement("span", {
-    className: "flex-1 text-right"
-  }, "\u672C\u6570"), /*#__PURE__*/React.createElement("span", {
-    className: "w-12 text-right"
-  }, "\u4EF6\u6570"), /*#__PURE__*/React.createElement("span", {
-    className: "flex-1 text-right"
-  }, "\u5185\u8A33")), act.months.map(m => /*#__PURE__*/React.createElement("div", {
-    key: m.年月,
-    className: "flex text-[11px] px-2 py-1.5 border-t border-slate-100"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "w-14 text-slate-600"
-  }, vizYearMonth(m.年月)), /*#__PURE__*/React.createElement("span", {
-    className: "flex-1 text-right font-semibold tabular-nums",
-    style: {
-      color: NAVY
-    }
-  }, vizComma(m.本数)), /*#__PURE__*/React.createElement("span", {
-    className: "w-12 text-right text-slate-500 tabular-nums"
-  }, m.件数), /*#__PURE__*/React.createElement("span", {
-    className: "flex-1 text-right text-slate-500 text-[10px]"
-  }, Object.keys(m.サイズ別).sort().map(k => k + " " + vizComma(m.サイズ別[k])).join(" / "))))), act.topDests && act.topDests.length > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "mt-3"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowTable(!showTable),
-    className: "text-[11px] font-semibold",
-    style: {
-      color: NAVY
-    }
-  }, showTable ? "出荷先を隠す" : "出荷先の上位を見る"), showTable && /*#__PURE__*/React.createElement("div", {
-    className: "mt-2 rounded-md border border-slate-200 overflow-hidden"
-  }, act.topDests.map(dst => /*#__PURE__*/React.createElement("div", {
-    key: dst.コード,
-    className: "flex items-center text-[11px] px-2 py-1.5 border-t border-slate-100 first:border-t-0"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-400 tabular-nums w-10"
-  }, dst.コード), /*#__PURE__*/React.createElement("span", {
-    className: "flex-1 truncate text-slate-700"
-  }, dst.名), /*#__PURE__*/React.createElement("span", {
-    className: "text-right font-semibold tabular-nums w-14",
-    style: {
-      color: NAVY
-    }
-  }, vizComma(dst.本数)), /*#__PURE__*/React.createElement("span", {
-    className: "text-right text-slate-400 tabular-nums w-10"
-  }, dst.件数, "\u4EF6"))))), (act.mismatchCount > 0 || act.needsCheckCount > 0 || act.nonCylinderCount > 0) && /*#__PURE__*/React.createElement("div", {
-    className: "mt-3 text-[10px] text-slate-500 leading-relaxed"
-  }, act.mismatchCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u6570\u91CF\u3068\u5BB9\u5668\u756A\u53F7\u30EC\u30F3\u30B8\u304C\u98DF\u3044\u9055\u3046\u6307\u56F3\u66F8\uFF1A", act.mismatchCount, "\u4EF6"), act.needsCheckCount > 0 && /*#__PURE__*/React.createElement("div", null, "PDF\u306E\u6587\u5B57\u304C\u8AAD\u3081\u305A\u8981\u78BA\u8A8D\uFF1A", act.needsCheckCount, "\u4EF6"), act.nonCylinderCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u5BB9\u5668\u4EE5\u5916\uFF08\u30D0\u30EB\u30AF\u8CAF\u69FD\u306A\u3069\uFF09\u3067\u672C\u6570\u96C6\u8A08\u304B\u3089\u9664\u5916\uFF1A", act.nonCylinderCount, "\u4EF6")))), /*#__PURE__*/React.createElement(Card, {
     title: "\u30A2\u30FC\u30E0 \u6708\u5225\u51FA\u8377",
     note: armMonthly && armMonthly.sourceName ? "出所：" + armMonthly.sourceName : "月ごと（台）",
     closedNote: armMonthly && armMonthly.total ? "合計 " + armMonthly.total + "台" : ""
@@ -5333,7 +5267,6 @@ function App() {
     shipping: null,
     orderPlan: null,
     dispatch: null,
-    shipActuals: null,
     invTrend: null,
     monthly: null,
     dispGrid: null,
@@ -5354,7 +5287,7 @@ function App() {
        9件そろった時点で画面を出してしまい、最後の1件が間に合わず
        古い値（起動時の仮データ）が一瞬見えていた。
        名前で管理して、足し忘れが起きないようにする。 */
-  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals", "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan", "armMonthly"];
+  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan", "armMonthly"];
   const [loadedKeys, setLoadedKeys] = useState({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const isGasEnv = typeof google !== "undefined" && google.script && google.script.run;
@@ -5515,22 +5448,10 @@ function App() {
       markLoaded("dispatch");
     }).getDispatchTodayData(force === true);
 
-    // 蓄積シートから月次出荷実績を取得（シートを読むだけなので軽い）
-    google.script.run.withSuccessHandler(sa => {
-      setLive(prev => ({
-        ...prev,
-        shipActuals: sa
-      }));
-      markLoaded("shipActuals");
-    }).withFailureHandler(err => {
-      setLive(prev => ({
-        ...prev,
-        shipActuals: {
-          error: String(err)
-        }
-      }));
-      markLoaded("shipActuals");
-    }).getShippingActualsSummary(force === true);
+    /* ★ getShippingActualsSummary の取得はやめた（2026/09/13）。
+         使っていたのは「月次出荷実績」カードだけで、そのカードを消したため。
+         集計そのものはサーバ側で getMonthlyCombinedData が使っているので、
+         「在庫・出荷・受注」の数字は今までどおり出る。 */
 
     // 蓄積シートから在庫推移を取得
     google.script.run.withSuccessHandler(it => {
@@ -6130,7 +6051,6 @@ function App() {
     onRefresh: () => fetchLiveData(true),
     bySize: invBySize
   }), tab === "actuals" && /*#__PURE__*/React.createElement(ActualsTab, {
-    shipActuals: live.shipActuals,
     invTrend: live.invTrend,
     monthly: live.monthly,
     armMonthly: live.armMonthly,

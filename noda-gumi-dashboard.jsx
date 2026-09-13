@@ -2250,9 +2250,8 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
 }
 
 /* ---------- 実績・推移タブ本体 ---------- */
-function ActualsTab({ shipActuals, invTrend, monthly, armMonthly, onRefresh }) {
-  const [showTable, setShowTable] = useState(false);
-  const inv = invTrend, act = shipActuals, mc = monthly;
+function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
+  const inv = invTrend, mc = monthly;
 
   /* ★ グラフは縦に長いので、見出しをタップして畳めるようにする。
        中身は外さずに隠す（外すと開き直したときタップした月などが消える）。 */
@@ -2409,76 +2408,10 @@ function ActualsTab({ shipActuals, invTrend, monthly, armMonthly, onRefresh }) {
         )}
       </Card>
 
-      {/* ---- 月次出荷実績 ---- */}
-      <Card title="月次出荷実績"
-        note={act && act.shipmentCount ? act.shipmentCount + "件の指図書から集計" : null}
-        >
-        {!act ? (
-          <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
-        ) : act.error ? (
-          <div className="text-xs text-amber-700 py-2">取得エラー：{act.error}</div>
-        ) : !act.months || act.months.length === 0 ? (
-          <div className="text-xs text-slate-500 py-2">
-            まだ出荷実績が貯まっていません。指図書PDFを1時間ごとに読み込んで集計します
-            （初回は全期間ぶんあるので数日かかります）。
-          </div>
-        ) : (
-          <div>
-            <MonthlyShipChart months={act.months} />
-
-            {/* 表はグラフの代わりに読める形。グラフだけに値を閉じ込めない */}
-            <div className="mt-3 rounded-md border border-slate-200 overflow-hidden">
-              <div className="flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5">
-                <span className="w-14">月</span>
-                <span className="flex-1 text-right">本数</span>
-                <span className="w-12 text-right">件数</span>
-                <span className="flex-1 text-right">内訳</span>
-              </div>
-              {act.months.map((m) => (
-                <div key={m.年月} className="flex text-[11px] px-2 py-1.5 border-t border-slate-100">
-                  <span className="w-14 text-slate-600">{vizYearMonth(m.年月)}</span>
-                  <span className="flex-1 text-right font-semibold tabular-nums" style={{ color: NAVY }}>{vizComma(m.本数)}</span>
-                  <span className="w-12 text-right text-slate-500 tabular-nums">{m.件数}</span>
-                  <span className="flex-1 text-right text-slate-500 text-[10px]">
-                    {Object.keys(m.サイズ別).sort().map((k) => k + " " + vizComma(m.サイズ別[k])).join(" / ")}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* 出荷先。名称はPDFのテキスト化で化けることがあるのでコードも出す */}
-            {act.topDests && act.topDests.length > 0 && (
-              <div className="mt-3">
-                <button onClick={() => setShowTable(!showTable)}
-                  className="text-[11px] font-semibold" style={{ color: NAVY }}>
-                  {showTable ? "出荷先を隠す" : "出荷先の上位を見る"}
-                </button>
-                {showTable && (
-                  <div className="mt-2 rounded-md border border-slate-200 overflow-hidden">
-                    {act.topDests.map((dst) => (
-                      <div key={dst.コード} className="flex items-center text-[11px] px-2 py-1.5 border-t border-slate-100 first:border-t-0">
-                        <span className="text-slate-400 tabular-nums w-10">{dst.コード}</span>
-                        <span className="flex-1 truncate text-slate-700">{dst.名}</span>
-                        <span className="text-right font-semibold tabular-nums w-14" style={{ color: NAVY }}>{vizComma(dst.本数)}</span>
-                        <span className="text-right text-slate-400 tabular-nums w-10">{dst.件数}件</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 取り込みの品質。おかしい件数を隠さず出しておく */}
-            {(act.mismatchCount > 0 || act.needsCheckCount > 0 || act.nonCylinderCount > 0) && (
-              <div className="mt-3 text-[10px] text-slate-500 leading-relaxed">
-                {act.mismatchCount > 0 && <div>数量と容器番号レンジが食い違う指図書：{act.mismatchCount}件</div>}
-                {act.needsCheckCount > 0 && <div>PDFの文字が読めず要確認：{act.needsCheckCount}件</div>}
-                {act.nonCylinderCount > 0 && <div>容器以外（バルク貯槽など）で本数集計から除外：{act.nonCylinderCount}件</div>}
-              </div>
-            )}
-          </div>
-        )}
-      </Card>
+      {/* ★ ここにあった「月次出荷実績」のカードは落合さんの指示で削除した
+             （2026/09/13）。上の「在庫・出荷・受注」に同じ月別出荷が出ていて
+             二重だったため。集計そのもの（getShippingActualsSummary）は
+             「在庫・出荷・受注」が使っているので残してある。 */}
 
       {/* ---- アームの月別出荷実績（年度はじめから） ----
              ★ 容器は「本」、アームは「台」で単位が違うので同じグラフに混ぜない。
@@ -2646,7 +2579,7 @@ class ErrorBoundary extends React.Component {
 export default function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
-  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, shipActuals: null, invTrend: null, monthly: null, dispGrid: null, yardCap: null, yardCapUrl: null, loading: true, error: null });
+  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, invTrend: null, monthly: null, dispGrid: null, yardCap: null, yardCapUrl: null, loading: true, error: null });
   // 配車グリッドは週を切り替えるので、ほかの集計とは別に持つ
   const [gridWeek, setGridWeek] = useState(0);
   const [gridSaving, setGridSaving] = useState(false);
@@ -2656,7 +2589,7 @@ export default function App() {
        9件そろった時点で画面を出してしまい、最後の1件が間に合わず
        古い値（起動時の仮データ）が一瞬見えていた。
        名前で管理して、足し忘れが起きないようにする。 */
-  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals",
+  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch",
                      "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan", "armMonthly"];
   const [loadedKeys, setLoadedKeys] = useState({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
@@ -2749,11 +2682,10 @@ export default function App() {
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded("dispatch"); })
       .getDispatchTodayData(force === true);
 
-    // 蓄積シートから月次出荷実績を取得（シートを読むだけなので軽い）
-    google.script.run
-      .withSuccessHandler((sa) => { setLive((prev) => ({ ...prev, shipActuals: sa })); markLoaded("shipActuals"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, shipActuals: { error: String(err) } })); markLoaded("shipActuals"); })
-      .getShippingActualsSummary(force === true);
+    /* ★ getShippingActualsSummary の取得はやめた（2026/09/13）。
+         使っていたのは「月次出荷実績」カードだけで、そのカードを消したため。
+         集計そのものはサーバ側で getMonthlyCombinedData が使っているので、
+         「在庫・出荷・受注」の数字は今までどおり出る。 */
 
     // 蓄積シートから在庫推移を取得
     google.script.run
@@ -3136,7 +3068,7 @@ export default function App() {
 
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} bySize={invBySize} />}
-          {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} armMonthly={live.armMonthly} onRefresh={() => fetchLiveData(true)} />}
+          {tab === "actuals" && <ActualsTab invTrend={live.invTrend} monthly={live.monthly} armMonthly={live.armMonthly} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
