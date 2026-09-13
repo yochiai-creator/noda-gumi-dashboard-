@@ -535,15 +535,34 @@ const REPLY = {
   chk('日付ラベルが「本日」と混ざっていない',
     m.カード見出し.every((t) => !(t.indexOf('本日') !== -1 && t.indexOf('/') !== -1)), m.カード見出し);
 
-  /* ---------- アーム出荷予定 ---------- */
-  console.log('■ アーム出荷予定');
-  const armCard = page.locator('button', { hasText: /アーム出荷予定/ }).first();
-  chk('配車タブにアームの欄がある', await armCard.count() > 0);
-  const armClosed = (await armCard.textContent()).trim();
-  console.log('   畳んだ見出し:', JSON.stringify(armClosed));
-  chk('★畳んでいても台数が見える', /直近1か月\s*5台/.test(armClosed.replace(/\s+/g, ' ')), armClosed);
-  await armCard.click();
+  // 横に送った状態を撮って、トラック名が残っているか目で見る
+  await page.evaluate(() => { const sc = document.querySelector('.overflow-x-auto.rounded-md');
+    if (sc) sc.scrollLeft = 220; });
   await page.waitForTimeout(400);
+  const box = await page.locator('.overflow-x-auto.rounded-md').first().boundingBox();
+  await page.screenshot({ path: SP + '/disp_scrolled.png',
+    clip: { x: box.x - 8, y: box.y - 44, width: box.width + 16, height: box.height + 52 } });
+  /* ---------- アーム出荷予定（独立したタブ） ---------- */
+  console.log('■ アーム出荷予定');
+  await page.locator('button', { hasText: 'アーム出荷予定' }).first().click();
+  await page.waitForTimeout(500);
+  const armHead = await page.evaluate(() => ({
+    見出し: (document.querySelector('h1') || {}).textContent,
+    本文: document.body.innerText.slice(0, 400).replace(/\n/g, ' | '),
+  }));
+  console.log('   アームタブ:', JSON.stringify(armHead));
+  chk('★配車の横にアームのタブがある', /アーム出荷予定/.test(String(armHead.見出し)), armHead.見出し);
+  chk('★KPIに次の出荷日と台数が出る',
+    /次の出荷 9\/14\(月\) \| 3 \| 台/.test(armHead.本文), armHead.本文);
+  chk('7日以内・直近1か月・13ton が出る',
+    /7日以内/.test(armHead.本文) && /直近1か月/.test(armHead.本文) && /13ton/.test(armHead.本文),
+    armHead.本文);
+
+  const armCard = page.locator('button', { hasText: /アーム出荷予定/ }).nth(1);
+  chk('配車タブにアームの欄がある', await armCard.count() > 0);
+  const armOpen = (await armCard.textContent()).trim();
+  console.log('   カード見出し:', JSON.stringify(armOpen));
+  chk('カードは開いた状態で出る', /たたむ/.test(armOpen), armOpen);
 
   const arm = await page.evaluate(() => {
     const heads = [...document.querySelectorAll('button')]
@@ -577,13 +596,7 @@ const REPLY = {
 
   await page.screenshot({ path: SP + '/arm_plan.png', fullPage: true });
 
-  // 横に送った状態を撮って、トラック名が残っているか目で見る
-  await page.evaluate(() => { const sc = document.querySelector('.overflow-x-auto.rounded-md');
-    if (sc) sc.scrollLeft = 220; });
-  await page.waitForTimeout(400);
-  const box = await page.locator('.overflow-x-auto.rounded-md').first().boundingBox();
-  await page.screenshot({ path: SP + '/disp_scrolled.png',
-    clip: { x: box.x - 8, y: box.y - 44, width: box.width + 16, height: box.height + 52 } });
+
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
   await b.close();
   process.exit(fail ? 1 : 0);

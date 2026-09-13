@@ -288,7 +288,22 @@ function ArmPlan({ plan }) {
 }
 
 /* ---------- タブ本体 ---------- */
-function DispatchTab({ grid, onSaveCell, onWeek, saving, armPlan }) {
+/* アームは容器とは別の製品なので、配車と混ぜずに独立したタブにしてある。 */
+function ArmTab({ plan }) {
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <Collapsible tone="card" title="アーム出荷予定"
+          note={plan && plan.sourceName ? "出所：" + plan.sourceName : ""}
+          closedNote={plan && plan.total ? "直近1か月 " + plan.total + "台" : ""}>
+          <ArmPlan plan={plan} />
+        </Collapsible>
+      </div>
+    </div>
+  );
+}
+
+function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
   /* 畳んだときに見出しの横に出す内容（週と出荷台数）。
      何も見えなくなると畳んだ意味が無い。 */
   const closedNote = (() => {
@@ -310,18 +325,6 @@ function DispatchTab({ grid, onSaveCell, onWeek, saving, armPlan }) {
           note={grid && grid.source ? "出所：" + grid.source : ""}
           closedNote={closedNote}>
           <DispatchGrid grid={grid} onSave={onSaveCell} onWeek={onWeek} saving={saving} />
-        </Collapsible>
-      </div>
-
-      {/* ---- アームの出荷予定。LPガス容器とは別の製品なので表も別にする ---- */}
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <Collapsible tone="card" title="アーム出荷予定"
-          note={armPlan && armPlan.sourceName ? "出所：" + armPlan.sourceName : ""}
-          closedNote={armPlan && armPlan.total
-            ? "直近1か月 " + armPlan.total + "台"
-            : (armPlan && armPlan.error ? "読めていません" : "")}
-          defaultOpen={false}>
-          <ArmPlan plan={armPlan} />
         </Collapsible>
       </div>
 
@@ -2627,6 +2630,7 @@ export default function App() {
     { id: "orders", label: "受注・指図書" },
     { id: "yard",   label: "ヤード・現場" },
     { id: "dispatch", label: "配車・当日出荷" },
+    { id: "arm", label: "アーム出荷予定" },
     { id: "actuals", label: "実績・推移" },
     { id: "yardcap", label: "野外置場" },
   ];
@@ -2874,11 +2878,27 @@ export default function App() {
   // どの週の数字なのかが分かるようにする（前の週／次の週で動くため）
   const dispatchWeekLabel = dgOk && dg.weekLabel ? dg.weekLabel : null;
 
+  /* アームの集計。KPIと見出しの両方で使う。
+     ★ 「今週」ではなく「今日から7日」で数える。出荷予定は週の区切りと
+        関係なく入ってくるので、週で切ると金曜に見たとき来週ぶんが見えない。 */
+  const armDays = (live.armPlan && live.armPlan.days) || [];
+  const armNext = armDays.length > 0 ? armDays[0] : null;
+  const armWeekCount = (() => {
+    const limit = new Date();
+    limit.setDate(limit.getDate() + 7);
+    const p2 = (n) => (n < 10 ? "0" + n : String(n));
+    const key = limit.getFullYear() + "-" + p2(limit.getMonth() + 1) + "-" + p2(limit.getDate());
+    return armDays.reduce((sum, d) => sum + (d.date <= key ? d.count : 0), 0);
+  })();
+  const arm13Count = armDays.reduce(
+    (sum, d) => sum + d.rows.filter((r) => r.is13).length, 0);
+
   // タブごとのヘッダー見出し・KPIカードを組み立てる
   const tabHeaders = {
     orders: { title: "受注・指図書", subtitle: dateLabel },
     yard: { title: "ヤード・現場", subtitle: dateLabel },
     dispatch: { title: "配車・当日出荷", subtitle: dispatchWeekLabel ? dispatchWeekLabel + " の週" : dispatchDateLabel + " 時点" },
+    arm: { title: "アーム出荷予定", subtitle: armNext ? "次の出荷 " + armNext.label + "(" + armNext.weekday + ")" : "直近1か月" },
     yardcap: { title: "野外置場", subtitle: dateLabel },
   };
   const currentHeader = tabHeaders[tab] || tabHeaders.orders;
@@ -2956,6 +2976,16 @@ export default function App() {
       { label: (dispatchWeekLabel || "週") + " 20k", value: dispatchWeekQty20k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
       { label: (dispatchWeekLabel || "週") + " 50k", value: dispatchWeekQty50k.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
       { label: (dispatchWeekLabel || "週") + " 総計", value: (dispatchWeekQty20k + dispatchWeekQty50k).toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
+    ],
+    arm: [
+      /* ★ KPIカードは label/value/unit しか描いていない（sub は描かれない）ので、
+             出荷先の内訳はここに入れず、下の日の見出しに出している。 */
+      { label: armNext ? "次の出荷 " + armNext.label + "(" + armNext.weekday + ")" : "次の出荷",
+        value: armNext ? String(armNext.count) : "—", unit: "台", icon: Truck, tone: "ok" },
+      { label: "7日以内", value: String(armWeekCount), unit: "台", icon: Truck, tone: "ok" },
+      { label: "直近1か月", value: String((live.armPlan && live.armPlan.total) || 0), unit: "台",
+        icon: Package, tone: "neutral" },
+      { label: "うち 13ton", value: String(arm13Count), unit: "台", icon: Boxes, tone: "neutral" },
     ],
     yardcap: (() => {
       const y = live.yardCap;
@@ -3056,8 +3086,8 @@ export default function App() {
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} bySize={invBySize} />}
           {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab
-            grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving}
-            armPlan={live.armPlan} />}
+            grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
+          {tab === "arm" && <ArmTab plan={live.armPlan} />}
           {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} url={live.yardCapUrl} onRefresh={() => fetchLiveData(true)} />}
         </div>
 
