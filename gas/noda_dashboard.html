@@ -4935,6 +4935,7 @@ function ActualsTab({
   shipActuals,
   invTrend,
   monthly,
+  armMonthly,
   onRefresh
 }) {
   const [showTable, setShowTable] = useState(false);
@@ -5138,7 +5139,48 @@ function ActualsTab({
     className: "text-right text-slate-400 tabular-nums w-10"
   }, dst.件数, "\u4EF6"))))), (act.mismatchCount > 0 || act.needsCheckCount > 0 || act.nonCylinderCount > 0) && /*#__PURE__*/React.createElement("div", {
     className: "mt-3 text-[10px] text-slate-500 leading-relaxed"
-  }, act.mismatchCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u6570\u91CF\u3068\u5BB9\u5668\u756A\u53F7\u30EC\u30F3\u30B8\u304C\u98DF\u3044\u9055\u3046\u6307\u56F3\u66F8\uFF1A", act.mismatchCount, "\u4EF6"), act.needsCheckCount > 0 && /*#__PURE__*/React.createElement("div", null, "PDF\u306E\u6587\u5B57\u304C\u8AAD\u3081\u305A\u8981\u78BA\u8A8D\uFF1A", act.needsCheckCount, "\u4EF6"), act.nonCylinderCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u5BB9\u5668\u4EE5\u5916\uFF08\u30D0\u30EB\u30AF\u8CAF\u69FD\u306A\u3069\uFF09\u3067\u672C\u6570\u96C6\u8A08\u304B\u3089\u9664\u5916\uFF1A", act.nonCylinderCount, "\u4EF6")))), /*#__PURE__*/React.createElement("button", {
+  }, act.mismatchCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u6570\u91CF\u3068\u5BB9\u5668\u756A\u53F7\u30EC\u30F3\u30B8\u304C\u98DF\u3044\u9055\u3046\u6307\u56F3\u66F8\uFF1A", act.mismatchCount, "\u4EF6"), act.needsCheckCount > 0 && /*#__PURE__*/React.createElement("div", null, "PDF\u306E\u6587\u5B57\u304C\u8AAD\u3081\u305A\u8981\u78BA\u8A8D\uFF1A", act.needsCheckCount, "\u4EF6"), act.nonCylinderCount > 0 && /*#__PURE__*/React.createElement("div", null, "\u5BB9\u5668\u4EE5\u5916\uFF08\u30D0\u30EB\u30AF\u8CAF\u69FD\u306A\u3069\uFF09\u3067\u672C\u6570\u96C6\u8A08\u304B\u3089\u9664\u5916\uFF1A", act.nonCylinderCount, "\u4EF6")))), /*#__PURE__*/React.createElement(Card, {
+    title: "\u30A2\u30FC\u30E0 \u6708\u5225\u51FA\u8377",
+    note: armMonthly && armMonthly.sourceName ? "出所：" + armMonthly.sourceName : "月ごと（台）",
+    closedNote: armMonthly && armMonthly.total ? "合計 " + armMonthly.total + "台" : ""
+  }, !armMonthly ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-400 py-4 text-center"
+  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : armMonthly.error ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-amber-700 py-2"
+  }, armMonthly.error) : !armMonthly.months || armMonthly.months.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u4ECA\u5E74\u5EA6\u306E\u51FA\u8377\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093\u3002") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(MonthlyShipChart, {
+    months: armMonthly.months.map(m => ({
+      年月: m.年月,
+      本数: m.台数
+    })).reverse()
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mt-3 rounded-md border border-slate-200 overflow-hidden"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-14"
+  }, "\u6708"), /*#__PURE__*/React.createElement("span", {
+    className: "w-12 text-right"
+  }, "\u53F0\u6570"), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-right"
+  }, "\u5185\u8A33")), armMonthly.months.slice().reverse().map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.年月,
+    className: "flex text-[11px] px-2 py-1.5 border-t border-slate-100"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-14 text-slate-600"
+  }, vizMonthLabel(m.年月)), /*#__PURE__*/React.createElement("span", {
+    className: "w-12 text-right font-semibold tabular-nums",
+    style: {
+      color: NAVY
+    }
+  }, m.台数), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-right text-slate-500 text-[10px]"
+  }, Object.keys(m.区分別).sort().map(k => k + " " + m.区分別[k]).join(" / "))))), /*#__PURE__*/React.createElement("p", {
+    className: "mt-2 text-[10px] text-slate-400 leading-relaxed"
+  }, armMonthly.startMonth ? vizDateParts(armMonthly.startMonth).y + "年4月〜（年度）" : "", armMonthly.harvestedAt ? "　" + armMonthly.harvestedAt + " 集計" : "", /*#__PURE__*/React.createElement("span", {
+    className: "block"
+  }, "\u30D6\u30FC\u30E0\u30D6\u30E9\u30B1\u30C3\u30C8\u306F\u9664\u304F")))), /*#__PURE__*/React.createElement("button", {
     onClick: onRefresh,
     className: "w-full py-2 rounded-lg text-xs font-semibold text-white",
     style: {
@@ -5312,7 +5354,7 @@ function App() {
        9件そろった時点で画面を出してしまい、最後の1件が間に合わず
        古い値（起動時の仮データ）が一瞬見えていた。
        名前で管理して、足し忘れが起きないようにする。 */
-  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals", "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan"];
+  const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals", "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan", "armMonthly"];
   const [loadedKeys, setLoadedKeys] = useState({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const isGasEnv = typeof google !== "undefined" && google.script && google.script.run;
@@ -5527,7 +5569,7 @@ function App() {
     // 配車表のトラック×日付グリッド
     fetchDispatchGrid(gridWeek, force === true, () => markLoaded("dispGrid"));
 
-    // アーム（建機）の出荷予定。配車タブに出す
+    // アーム（建機）の出荷予定。アームタブに出す
     google.script.run.withSuccessHandler(ap => {
       setLive(prev => ({
         ...prev,
@@ -5543,6 +5585,23 @@ function App() {
       }));
       markLoaded("armPlan");
     }).getArmShipPlan(force === true);
+
+    // アームの月別出荷実績（年度はじめから）。実績・推移タブに出す
+    google.script.run.withSuccessHandler(am => {
+      setLive(prev => ({
+        ...prev,
+        armMonthly: am
+      }));
+      markLoaded("armMonthly");
+    }).withFailureHandler(err => {
+      setLive(prev => ({
+        ...prev,
+        armMonthly: {
+          error: String(err)
+        }
+      }));
+      markLoaded("armMonthly");
+    }).getArmMonthlyData(force === true);
 
     // 野外置場（置場容量）の合計と、埋め込むURL。
     // URLは変わらないので1回取れれば取り直さない。
@@ -6074,6 +6133,7 @@ function App() {
     shipActuals: live.shipActuals,
     invTrend: live.invTrend,
     monthly: live.monthly,
+    armMonthly: live.armMonthly,
     onRefresh: () => fetchLiveData(true)
   }), tab === "dispatch" && /*#__PURE__*/React.createElement(DispatchTab, {
     grid: live.dispGrid,

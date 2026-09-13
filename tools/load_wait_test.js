@@ -33,6 +33,7 @@ const chk = (name, cond, extra) => { if (cond) { pass++; console.log('  OK  ', n
       getYardCapacitySummary: { ...E, locations: 0, a20: 0, a50: 0, total: 0, max: 0, nearFull: 0, over: 0, sheetUrl: 'x' },
       getYardCapacityUrl: { url: null, error: null },
       getArmShipPlan: { ...E, total: 0, days: [], sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null },
+      getArmMonthlyData: { ...E, months: [], kinds: [], total: 0, startMonth: null, sourceName: null, harvestedAt: null },
       getYardMapUpdatesBothWithOrderText: JSON.stringify({ '50k': [], '20k': [] }),
       getYardBlockDetailWithPdf: { found: false, orders: [] },
     };

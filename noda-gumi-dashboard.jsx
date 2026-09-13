@@ -2250,7 +2250,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
 }
 
 /* ---------- 実績・推移タブ本体 ---------- */
-function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
+function ActualsTab({ shipActuals, invTrend, monthly, armMonthly, onRefresh }) {
   const [showTable, setShowTable] = useState(false);
   const inv = invTrend, act = shipActuals, mc = monthly;
 
@@ -2480,6 +2480,52 @@ function ActualsTab({ shipActuals, invTrend, monthly, onRefresh }) {
         )}
       </Card>
 
+      {/* ---- アームの月別出荷実績（年度はじめから） ----
+             ★ 容器は「本」、アームは「台」で単位が違うので同じグラフに混ぜない。
+               別のカードにして、縦軸も別にする。 */}
+      <Card title="アーム 月別出荷"
+        note={armMonthly && armMonthly.sourceName ? "出所：" + armMonthly.sourceName : "月ごと（台）"}
+        closedNote={armMonthly && armMonthly.total ? "合計 " + armMonthly.total + "台" : ""}>
+        {!armMonthly ? (
+          <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
+        ) : armMonthly.error ? (
+          <div className="text-xs text-amber-700 py-2">{armMonthly.error}</div>
+        ) : !armMonthly.months || armMonthly.months.length === 0 ? (
+          <div className="text-xs text-slate-500 py-2">今年度の出荷はまだありません。</div>
+        ) : (
+          <div>
+            {/* MonthlyShipChart は { 年月, 本数 } を新しい順で受ける。
+                アームは台数なので詰め替えて渡す（単位は見出しと表で示す）。 */}
+            <MonthlyShipChart months={armMonthly.months
+              .map((m) => ({ 年月: m.年月, 本数: m.台数 })).reverse()} />
+
+            <div className="mt-3 rounded-md border border-slate-200 overflow-hidden">
+              <div className="flex text-[10px] font-semibold text-slate-500 bg-slate-50 px-2 py-1.5">
+                <span className="w-14">月</span>
+                <span className="w-12 text-right">台数</span>
+                <span className="flex-1 text-right">内訳</span>
+              </div>
+              {armMonthly.months.slice().reverse().map((m) => (
+                <div key={m.年月} className="flex text-[11px] px-2 py-1.5 border-t border-slate-100">
+                  {/* 年度の中だけを出すので月だけでよい（グラフの目盛りと同じ表記） */}
+                  <span className="w-14 text-slate-600">{vizMonthLabel(m.年月)}</span>
+                  <span className="w-12 text-right font-semibold tabular-nums" style={{ color: NAVY }}>{m.台数}</span>
+                  <span className="flex-1 text-right text-slate-500 text-[10px]">
+                    {Object.keys(m.区分別).sort().map((k) => k + " " + m.区分別[k]).join(" / ")}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-2 text-[10px] text-slate-400 leading-relaxed">
+              {armMonthly.startMonth ? vizDateParts(armMonthly.startMonth).y + "年4月〜（年度）" : ""}
+              {armMonthly.harvestedAt ? "　" + armMonthly.harvestedAt + " 集計" : ""}
+              <span className="block">ブームブラケットは除く</span>
+            </p>
+          </div>
+        )}
+      </Card>
+
       <button onClick={onRefresh}
         className="w-full py-2 rounded-lg text-xs font-semibold text-white" style={{ background: NAVY }}>
         最新に更新
@@ -2611,7 +2657,7 @@ export default function App() {
        古い値（起動時の仮データ）が一瞬見えていた。
        名前で管理して、足し忘れが起きないようにする。 */
   const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "shipActuals",
-                     "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan"];
+                     "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan", "armMonthly"];
   const [loadedKeys, setLoadedKeys] = useState({});
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
@@ -2724,11 +2770,17 @@ export default function App() {
     // 配車表のトラック×日付グリッド
     fetchDispatchGrid(gridWeek, force === true, () => markLoaded("dispGrid"));
 
-    // アーム（建機）の出荷予定。配車タブに出す
+    // アーム（建機）の出荷予定。アームタブに出す
     google.script.run
       .withSuccessHandler((ap) => { setLive((prev) => ({ ...prev, armPlan: ap })); markLoaded("armPlan"); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, armPlan: { error: String(err) } })); markLoaded("armPlan"); })
       .getArmShipPlan(force === true);
+
+    // アームの月別出荷実績（年度はじめから）。実績・推移タブに出す
+    google.script.run
+      .withSuccessHandler((am) => { setLive((prev) => ({ ...prev, armMonthly: am })); markLoaded("armMonthly"); })
+      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, armMonthly: { error: String(err) } })); markLoaded("armMonthly"); })
+      .getArmMonthlyData(force === true);
 
     // 野外置場（置場容量）の合計と、埋め込むURL。
     // URLは変わらないので1回取れれば取り直さない。
@@ -3084,7 +3136,7 @@ export default function App() {
 
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} bySize={invBySize} />}
-          {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} onRefresh={() => fetchLiveData(true)} />}
+          {tab === "actuals" && <ActualsTab shipActuals={live.shipActuals} invTrend={live.invTrend} monthly={live.monthly} armMonthly={live.armMonthly} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}

@@ -300,14 +300,24 @@ function harvestDailyData() {
     out.shipping = { error: String(err) };
     Logger.log('出荷実績の取込で例外: ' + String(err));
   }
+  // ★ ここから先は「残り時間があれば」。GASの実行上限は6分なので、
+  //   5分を越えないところで打ち切る（途中で切られるより自分で止める）。
+  var left = function () { return 5 * 60 * 1000 - (Date.now() - dailyStarted); };
+
+  // アームの月別出荷実績。元の .xlsm が変わったときだけ集計する（週1回程度）。
+  // 変わっていなければフォルダを見るだけで終わる。
+  try {
+    out.armMonthly = harvestArmMonthly(false, left());
+  } catch (err) {
+    out.armMonthly = { error: String(err) };
+    Logger.log('アーム月次の集計で例外: ' + String(err));
+  }
+
   // ★ 配車表の行き先（住所）と指図書を突き合わせるための住所を貯める。
   //   出荷先コード1つにつき1回PDFを読めば足りるので、日を追うごとに揃う。
-  //   ★ ここまでで既に4分近く使っていることがある。GASの実行上限は6分なので、
-  //     残り時間の中でだけ進める（足りなければ今日は何もしない）。
   try {
-    var left = 5 * 60 * 1000 - (Date.now() - dailyStarted);
-    out.destAddr = left > 20 * 1000
-      ? shipact_fillDestAddresses_(Math.min(left, 60 * 1000))
+    out.destAddr = left() > 20 * 1000
+      ? shipact_fillDestAddresses_(Math.min(left(), 60 * 1000))
       : { skipped: true };
   } catch (err) {
     out.destAddr = { error: String(err) };

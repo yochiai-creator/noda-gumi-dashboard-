@@ -34,7 +34,19 @@ var ARM_CONFIG = {
   SRC_FOLDER_ID: '1NS4WoClO0xlGWSxvFimFcqFGUT0jOKQL',
   SRC_KEYWORD: '日程表変更',
 
-  DAYS: 31   // PDF生成側と同じ「直近1か月」
+  DAYS: 31,  // PDF生成側と同じ「直近1か月」
+
+  // ---- 月別の出荷実績を貯めるための設定 ----
+  // 元の .xlsm の「出荷明細」シート。6行目からデータ。列は1始まり。
+  DETAIL_SHEET: '出荷明細',
+  COL: { insp: 5, kk: 6, zu: 9, go: 12, spec: 13, ship: 33, info: 40, dest: 43 },
+  // 集計結果の置き場（出荷実績の蓄積スプレッドシートの中に作る）
+  MONTH_SHEET: 'アーム月次',
+  MONTH_HEADERS: ['年月', '区分', '台数'],
+  // 前回どのファイルから集計したか
+  PROP_SIG: 'armMonthly.sourceSignature',
+  PROP_SRC: 'armMonthly.sourceName',
+  PROP_AT: 'armMonthly.harvestedAt'
 };
 
 var ARM_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -182,17 +194,8 @@ function arm_readSnapshot_() {
      ここが食い違うと、画面に出す「出所」が実際に使われたファイルと別物になる。
    ★ 名前から日付が読めないものしか無いときだけ、更新日時で代用する。 */
 function arm_latestSource_() {
-  var folder = DriveApp.getFolderById(ARM_CONFIG.SRC_FOLDER_ID);
-  var it = folder.getFiles(), best = null, bestKey = -1, fallback = null;
-  while (it.hasNext()) {
-    var f = it.next();
-    if (f.getName().indexOf(ARM_CONFIG.SRC_KEYWORD) < 0) continue;
-    if (!fallback || f.getLastUpdated().getTime() > fallback.getLastUpdated().getTime()) fallback = f;
-    var k = arm_dateKeyFromName_(f.getName());
-    if (k > bestKey) { bestKey = k; best = f; }
-  }
-  var pick = bestKey >= 0 ? best : fallback;
-  return pick ? { name: pick.getName(), updatedAt: pick.getLastUpdated() } : null;
+  var f = arm_latestSourceFile_();
+  return f ? { name: f.getName(), updatedAt: f.getLastUpdated() } : null;
 }
 
 // 「…A(26年9月10日).xlsm」→ 20260910。読めなければ -1。
@@ -227,4 +230,254 @@ function アームの出荷予定を確認する() {
                g.byDest.map(function (x) { return x.名 + ' ' + x.台数; }).join(' / '));
   });
   return d;
+}
+
+/* ===================================================================
+ * 月別の出荷実績（年度はじめから）
+ * -------------------------------------------------------------------
+ * ★ こちらは直近1か月のJSONでは足りない。
+ *   arm_pdf_snapshot.json は「今日から31日」しか入っていないので、
+ *   4月からの実績は元の .xlsm を読むしかない。
+ *
+ * ★ .xlsm は4〜7MB。スプレッドシートへの変換だけで数十秒かかるので、
+ *   画面を開くたびにはやらない。元ファイルが変わったときだけ集計して、
+ *   結果（年月×区分の台数）をシートに貯める。画面はそのシートを読むだけ。
+ * =================================================================== */
+
+// ===== 公開関数：月別の出荷実績を集計してシートに貯める =====
+/**
+ * @param {boolean} force  元ファイルが変わっていなくても集計し直す
+ * @param {number}  budgetMs 使ってよい時間（足りなければ何もしない）
+ */
+function harvestArmMonthly(force, budgetMs) {
+  var started = Date.now();
+  var out = { converted: false, months: 0, rows: 0, skipped: null, sourceName: null, error: null };
+  try {
+    var src = arm_latestSourceFile_();
+    if (!src) { out.skipped = '元ファイル（日程表変更 .xlsm）が見つかりません'; return out; }
+    out.sourceName = src.getName();
+
+    var props = PropertiesService.getScriptProperties();
+    var sig = src.getId() + '_' + src.getLastUpdated().getTime();
+    if (force !== true && props.getProperty(ARM_CONFIG.PROP_SIG) === sig) {
+      out.skipped = '前回と同じファイルなので集計しません';
+      return out;
+    }
+    // 変換は数十秒かかる。残り時間が足りないなら手を付けない（途中で切れるより良い）
+    if (budgetMs != null && budgetMs < 90 * 1000) {
+      out.skipped = '時間が足りないので次回にまわします';
+      return out;
+    }
+
+    var agg = arm_aggregateSource_(src);
+    arm_writeMonthly_(agg);
+    out.converted = true;
+    out.months = agg.months.length;
+    out.rows = agg.rowCount;
+
+    props.setProperty(ARM_CONFIG.PROP_SIG, sig);
+    props.setProperty(ARM_CONFIG.PROP_SRC, src.getName());
+    props.setProperty(ARM_CONFIG.PROP_AT,
+      Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'));
+    Logger.log('アーム月次: ' + src.getName() + ' から ' + agg.rowCount + '件 / ' +
+               agg.months.length + 'か月 ／ ' + Math.round((Date.now() - started) / 1000) + '秒');
+  } catch (err) {
+    out.error = String(err);
+    Logger.log('アーム月次の集計でエラー: ' + String(err));
+  }
+  return out;
+}
+
+// ===== 内部：.xlsm を読んで 年月×区分 の台数にする =====
+function arm_aggregateSource_(src) {
+  // xlsm → スプレッドシート（読み取り用の一時コピー）。必ず消す。
+  var conv = Drive.Files.create(
+    { name: 'tmp_arm_monthly', mimeType: MimeType.GOOGLE_SHEETS },
+    src.getBlob(), { supportsAllDrives: true });
+  var convId = conv.id;
+  try {
+    var sh = SpreadsheetApp.openById(convId).getSheetByName(ARM_CONFIG.DETAIL_SHEET);
+    if (!sh) throw new Error('シート「' + ARM_CONFIG.DETAIL_SHEET + '」が見つかりません');
+    var last = sh.getLastRow();
+    if (last < 6) return { months: [], rowCount: 0 };
+    var n = last - 5;
+    var C = ARM_CONFIG.COL;
+    var kk = sh.getRange(6, C.kk, n, 1).getValues();
+    var spec = sh.getRange(6, C.spec, n, 1).getValues();
+    var ship = sh.getRange(6, C.ship, n, 1).getValues();
+    return arm_aggregateRows_(kk, spec, ship);
+  } finally {
+    try { Drive.Files.remove(convId); } catch (e) { /* 消せなくても集計は済んでいる */ }
+  }
+}
+
+/**
+ * 年月×区分に数える（純関数）。
+ * ★ PDF生成側と同じく「ブームブラケット」は除く（アーム本体ではないため）。
+ * ★ 区分は機器の欄の先頭（全角スペースの前）。「13ton仕上げ」「13ton ｼｮｰﾄ」などは
+ *   まとめて 13ton にする。現場は13tonかどうかで見ている。
+ */
+function arm_aggregateRows_(kk, spec, ship) {
+  var map = {}, rowCount = 0;
+  for (var i = 0; i < ship.length; i++) {
+    var s = ship[i][0];
+    if (!(s instanceof Date) || isNaN(s.getTime())) continue;
+    var kkv = String((kk[i] && kk[i][0]) || '');
+    var specv = String((spec[i] && spec[i][0]) || '');
+    if (kkv.indexOf('ブームブラケット') >= 0 || specv.indexOf('ブームブラケット') >= 0) continue;
+
+    var p = function (x) { return x < 10 ? '0' + x : String(x); };
+    var ym = s.getFullYear() + '-' + p(s.getMonth() + 1);
+    var kind = arm_kindOf_(kkv);
+    if (!map[ym]) map[ym] = {};
+    map[ym][kind] = (map[ym][kind] || 0) + 1;
+    rowCount++;
+  }
+  var months = Object.keys(map).sort().map(function (ym) {
+    var kinds = map[ym], total = 0;
+    Object.keys(kinds).forEach(function (k) { total += kinds[k]; });
+    return { 年月: ym, 台数: total, 区分別: kinds };
+  });
+  return { months: months, rowCount: rowCount };
+}
+
+function arm_kindOf_(kk) {
+  var t = String(kk || '').trim();
+  if (t === '') return 'その他';
+  if (t.indexOf('13ton') === 0) return '13ton';
+  var sp = t.indexOf('　');            // 全角スペース区切り（「SK300　10型」）
+  if (sp < 0) sp = t.indexOf(' ');
+  return (sp > 0 ? t.substring(0, sp) : t).trim();
+}
+
+// ===== 内部：集計結果をシートに書き出す（毎回まるごと入れ替え） =====
+function arm_writeMonthly_(agg) {
+  var sheet = arm_getMonthSheet_();
+  var last = sheet.getLastRow();
+  if (last > 1) sheet.getRange(2, 1, last - 1, ARM_CONFIG.MONTH_HEADERS.length).clearContent();
+
+  var rows = [];
+  agg.months.forEach(function (m) {
+    Object.keys(m.区分別).sort().forEach(function (kind) {
+      rows.push([m.年月, kind, m.区分別[kind]]);
+    });
+  });
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, ARM_CONFIG.MONTH_HEADERS.length).setValues(rows);
+  }
+}
+
+function arm_getMonthSheet_() {
+  // 出荷実績の蓄積スプレッドシートに間借りする（管理するファイルを増やさない）
+  var ss = shipact_getSheet_().getParent();
+  var sheet = ss.getSheetByName(ARM_CONFIG.MONTH_SHEET);
+  if (!sheet) sheet = ss.insertSheet(ARM_CONFIG.MONTH_SHEET);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, ARM_CONFIG.MONTH_HEADERS.length).setValues([ARM_CONFIG.MONTH_HEADERS]);
+    sheet.getRange(1, 1, 1, ARM_CONFIG.MONTH_HEADERS.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/* 元ファイル（Fileオブジェクトのまま返す）。名前の日付で選ぶ理由は
+   arm_latestSource_ のコメントを参照。 */
+function arm_latestSourceFile_() {
+  var folder = DriveApp.getFolderById(ARM_CONFIG.SRC_FOLDER_ID);
+  var it = folder.getFiles(), best = null, bestKey = -1, fallback = null;
+  while (it.hasNext()) {
+    var f = it.next();
+    if (f.getName().indexOf(ARM_CONFIG.SRC_KEYWORD) < 0) continue;
+    if (!fallback || f.getLastUpdated().getTime() > fallback.getLastUpdated().getTime()) fallback = f;
+    var k = arm_dateKeyFromName_(f.getName());
+    if (k > bestKey) { bestKey = k; best = f; }
+  }
+  return bestKey >= 0 ? best : fallback;
+}
+
+// ===== 公開関数：月別の出荷実績（画面用・キャッシュ付き） =====
+function getArmMonthlyData(force) {
+  return nc_cached_('armMonthly', force === true, 900, getArmMonthlyData_uncached_);
+}
+
+function getArmMonthlyData_uncached_() {
+  var data = {
+    updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
+    months: [],        // [{ 年月, 台数, 区分別 }] 古い順（年度はじめから）
+    kinds: [],         // 出てくる区分（台数の多い順）
+    total: 0,
+    startMonth: null,  // 年度はじめ
+    sourceName: null,
+    harvestedAt: null,
+    error: null
+  };
+  try {
+    var props = PropertiesService.getScriptProperties();
+    data.sourceName = props.getProperty(ARM_CONFIG.PROP_SRC);
+    data.harvestedAt = props.getProperty(ARM_CONFIG.PROP_AT);
+
+    var sheet = arm_getMonthSheet_();
+    var last = sheet.getLastRow();
+    if (last < 2) {
+      data.error = 'まだ集計していません。夜の取込で貯まります（すぐ見たいときは ' +
+                   'アームの出荷実績を集める を実行してください）。';
+      return data;
+    }
+    var values = sheet.getRange(2, 1, last - 1, ARM_CONFIG.MONTH_HEADERS.length).getValues();
+    data.startMonth = arm_fiscalStart_(new Date());
+    var built = arm_monthsFromRows_(values, data.startMonth);
+    data.months = built.months;
+    data.kinds = built.kinds;
+    data.total = built.total;
+  } catch (err) {
+    data.error = String(err);
+    Logger.log('アーム月次の取得でエラー: ' + String(err));
+  }
+  return data;
+}
+
+/* シートの行（年月・区分・台数）を月ごとにまとめる（純関数）。
+   ★ 年度はじめ（4月）より前は出さない。 */
+function arm_monthsFromRows_(values, startMonth) {
+  var map = {}, kindTotal = {}, total = 0;
+  values.forEach(function (r) {
+    var ym = nc_dateText_(r[0], 'yyyy-MM');
+    if (!ym) return;
+    ym = String(ym).substring(0, 7);
+    if (startMonth && ym < startMonth) return;
+    var kind = String(r[1] || 'その他');
+    var n = Number(r[2]) || 0;
+    if (n <= 0) return;
+    if (!map[ym]) map[ym] = { 年月: ym, 台数: 0, 区分別: {} };
+    map[ym].台数 += n;
+    map[ym].区分別[kind] = (map[ym].区分別[kind] || 0) + n;
+    kindTotal[kind] = (kindTotal[kind] || 0) + n;
+    total += n;
+  });
+  return {
+    months: Object.keys(map).sort().map(function (k) { return map[k]; }),
+    kinds: Object.keys(kindTotal).sort(function (a, b) { return kindTotal[b] - kindTotal[a]; }),
+    total: total
+  };
+}
+
+// 年度はじめ（4月）の 'yyyy-MM'。1〜3月は前の年の4月。
+function arm_fiscalStart_(now) {
+  var y = now.getFullYear();
+  if (now.getMonth() + 1 < 4) y -= 1;
+  return y + '-04';
+}
+
+// ===== 公開関数：今すぐ集計する（手動用） =====
+function アームの出荷実績を集める() {
+  var r = harvestArmMonthly(true, 5 * 60 * 1000);
+  if (r.error) { Logger.log('エラー: ' + r.error); return r; }
+  if (!r.converted) { Logger.log(r.skipped); return r; }
+  Logger.log('集計しました: ' + r.sourceName + ' / ' + r.rows + '件 / ' + r.months + 'か月');
+  var d = getArmMonthlyData(true);
+  d.months.forEach(function (m) {
+    Logger.log('  ' + m.年月 + '  ' + m.台数 + '台  ' +
+      Object.keys(m.区分別).sort().map(function (k) { return k + ' ' + m.区分別[k]; }).join(' / '));
+  });
+  return r;
 }

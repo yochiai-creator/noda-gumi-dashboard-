@@ -66,6 +66,14 @@ const REPLY = {
             dest: '正和', info: '', insp: '9/1', is13: false, key: 'YB12B00240F1||185' },
         ] },
     ] }),
+  getArmMonthlyData: () => ({ updated: '2026-09-13 07:00', error: null,
+    months: [
+      { 年月: '2026-04', 台数: 180, 区分別: { SK200: 90, SK300: 40, '13ton': 50 } },
+      { 年月: '2026-05', 台数: 165, 区分別: { SK200: 80, SK300: 45, '13ton': 40 } },
+      { 年月: '2026-08', 台数: 210, 区分別: { SK200: 100, SK300: 60, '13ton': 50 } },
+      { 年月: '2026-09', 台数: 95, 区分別: { SK200: 50, SK300: 20, '13ton': 25 } },
+    ], kinds: ['SK200', 'SK300', '13ton'], total: 650, startMonth: '2026-04',
+    sourceName: '出荷予定　日程表変更A(26年9月10日).xlsm', harvestedAt: '2026-09-13 03:10' }),
   getDispatchGridData: () => ({ ...E, source: 'スプレッドシート', editable: true,
     sheetUrl: 'https://x.test', weekOffset: 0, weekLabel: '9/7〜9/11', hasPrev: true, hasNext: true,
     days: [
@@ -595,6 +603,32 @@ const REPLY = {
     await page.evaluate(() => /YB12B00240F1/.test(document.body.innerText)));
 
   await page.screenshot({ path: SP + '/arm_plan.png', fullPage: true });
+
+  /* ---------- アームの月別出荷（実績・推移タブ） ---------- */
+  console.log('■ アーム 月別出荷');
+  await page.locator('button', { hasText: '実績・推移' }).first().click();
+  await page.waitForTimeout(600);
+  const armM = await page.evaluate(() => {
+    const card = [...document.querySelectorAll('div.rounded-lg')]
+      .filter((d) => /アーム 月別出荷/.test(d.textContent))
+      .sort((a, b) => a.textContent.length - b.textContent.length)[0];
+    if (!card) return null;
+    const bars = [...card.querySelectorAll('svg path')].length;
+    const rows = [...card.querySelectorAll('div.border-t')].map((r) => r.innerText.replace(/\n/g, ' | '));
+    return { 本文: card.innerText.replace(/\n/g, ' | '), 棒の数: bars, 行: rows };
+  });
+  console.log('   アーム月別:', JSON.stringify(armM));
+  chk('★実績・推移タブにアームの月別出荷が出る', armM !== null, armM);
+  chk('4月からの棒が出ている（4本）', armM && armM.棒の数 === 4, armM && armM.棒の数);
+  chk('★容器の「本」と混ぜず「台」で出す',
+    armM && /台数/.test(armM.本文) && !/本数/.test(armM.本文), armM && armM.本文);
+  chk('新しい月が上（9月が先頭）', armM && /^9月/.test(armM.行[0]), armM && armM.行);
+  chk('区分の内訳が出る', armM && /13ton 25 \/ SK200 50 \/ SK300 20/.test(armM.行[0]), armM && armM.行[0]);
+  chk('年度と集計時刻を添える',
+    armM && /2026年4月〜（年度）/.test(armM.本文) && /2026-09-13 03:10 集計/.test(armM.本文),
+    armM && armM.本文);
+  chk('ブームブラケットを除いたことを書く', armM && /ブームブラケットは除く/.test(armM.本文), armM && armM.本文);
+  await page.screenshot({ path: SP + '/arm_monthly.png', fullPage: true });
 
 
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
