@@ -2629,10 +2629,10 @@ export default function App() {
   const tabs = [
     { id: "orders", label: "受注・指図書" },
     { id: "yard",   label: "ヤード・現場" },
+    { id: "yardcap", label: "野外置場" },
     { id: "dispatch", label: "配車・当日出荷" },
     { id: "arm", label: "アーム出荷予定" },
     { id: "actuals", label: "実績・推移" },
-    { id: "yardcap", label: "野外置場" },
   ];
 
   // force が true のときはキャッシュを無視して取り直す（更新ボタン・編集直後用）。
