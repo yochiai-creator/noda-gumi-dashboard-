@@ -158,13 +158,27 @@ console.log('■ どの .xlsm を元にしたかを正しく出す');
   chk('その版は予定より古いので stale にしない', d.stale === false, d.stale);
 }
 {
+  // ファイル名は固定していない。名前に「日程表変更」を含む .xlsm だけを見る
+  const s = build(SNAP, { srcFiles: [
+    { name: '出荷予定　日程表変更A(26年9月10日).xlsm', updated: new Date('2026-09-11T23:31:00+09:00') },
+    // ★ 同じ語を含むPDFやメモが置かれても拾わない
+    { name: '出荷予定　日程表変更A(26年12月1日).pdf', updated: new Date('2026-12-01T00:00:00+09:00') },
+    { name: '日程表変更のメモ.docx', updated: new Date('2026-12-02T00:00:00+09:00') },
+    { name: 'まったく別の予定表(26年12月3日).xlsm', updated: new Date('2026-12-03T00:00:00+09:00') },
+  ] });
+  const d = s.getArmShipPlan_uncached_();
+  chk('★「日程表変更」を含む .xlsm だけを見る', /日程表変更A\(26年9月10日\)\.xlsm/.test(d.sourceName),
+    d.sourceName);
+}
+{
   // 名前から日付が読めないものしか無いときは更新日時で代用する
   const s = build(SNAP, { srcFiles: [
     { name: '出荷予定　日程表変更A.xlsm', updated: new Date('2026-09-01T00:00:00+09:00') },
-    { name: '出荷予定　日程表変更A（最新）.xlsm', updated: new Date('2026-09-11T00:00:00+09:00') },
+    { name: '出荷予定　日程表変更A（最新）.XLSM', updated: new Date('2026-09-11T00:00:00+09:00') },
   ] });
   const d = s.getArmShipPlan_uncached_();
   chk('名前に日付が無ければ更新日時で選ぶ', /最新/.test(d.sourceName), d.sourceName);
+  chk('拡張子の大文字小文字は問わない', /\.XLSM$/.test(d.sourceName), d.sourceName);
 }
 {
   const s = build(SNAP);

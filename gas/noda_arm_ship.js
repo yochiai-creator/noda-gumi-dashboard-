@@ -4,8 +4,10 @@
  * 役割：配車タブに「いつ・どの機種の何号機が・どこへ出るか」を出す。
  *
  * ★ どこから取るのか
- *   元データは「'001_アーム出荷明細」フォルダに毎週入る
- *   「出荷予定　日程表変更A(26年9月4日).xlsm」（4〜7MB）。
+ *   元データは「'001_アーム出荷明細」フォルダ（SRC_FOLDER_ID）に毎週入る
+ *   .xlsm（4〜7MB）。ファイル名は固定していない。
+ *   名前に「日程表変更」を含む .xlsm を全部見て、
+ *   名前の中の日付「(26年9月10日)」が一番新しいものを使う。
  *   これを毎回スプレッドシートに変換して読むのは重すぎる（変換だけで十数秒）。
  *
  *   すでに別プロジェクト「アーム出荷明細pdf生成」が、
@@ -32,7 +34,8 @@ var ARM_CONFIG = {
 
   // 元の .xlsm 置き場（「'001_アーム出荷明細」）。新しさの確認だけに使う。
   SRC_FOLDER_ID: '1NS4WoClO0xlGWSxvFimFcqFGUT0jOKQL',
-  SRC_KEYWORD: '日程表変更',
+  SRC_KEYWORD: '日程表変更',   // ファイル名は固定しない。この語を含む .xlsm を探す
+  SRC_EXT: '.xlsm',
 
   DAYS: 31,  // PDF生成側と同じ「直近1か月」
 
@@ -387,9 +390,13 @@ function arm_latestSourceFile_() {
   var it = folder.getFiles(), best = null, bestKey = -1, fallback = null;
   while (it.hasNext()) {
     var f = it.next();
-    if (f.getName().indexOf(ARM_CONFIG.SRC_KEYWORD) < 0) continue;
+    var nm = f.getName();
+    if (nm.indexOf(ARM_CONFIG.SRC_KEYWORD) < 0) continue;
+    // ★ 拡張子も見る。同じ名前でPDFやメモが置かれたときに拾わないため
+    //   （PDF生成側も .xlsm だけを見ている）。
+    if (nm.toLowerCase().slice(-ARM_CONFIG.SRC_EXT.length) !== ARM_CONFIG.SRC_EXT) continue;
     if (!fallback || f.getLastUpdated().getTime() > fallback.getLastUpdated().getTime()) fallback = f;
-    var k = arm_dateKeyFromName_(f.getName());
+    var k = arm_dateKeyFromName_(nm);
     if (k > bestKey) { bestKey = k; best = f; }
   }
   return bestKey >= 0 ? best : fallback;
