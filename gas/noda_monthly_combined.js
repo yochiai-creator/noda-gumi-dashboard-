@@ -112,8 +112,12 @@ function getMonthlyCombinedData_uncached_() {
 
     var thisMonth = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
 
-    // 中身のある月だけを対象にする（配車表の空の未来月を0本として描かないため）
+    /* 中身のある月だけを対象にする（配車表の空の未来月を0本として描かないため）。
+       ★ 先の月は落とす。配車表には来月以降の予定も入っているので、
+         入れてしまうと9月半ばなのに「4月〜10月」の実績に見える（実際そうなった）。
+         予定を足して見せるのは当月だけ、というのがこのグラフの決めごと。 */
     var withData = Object.keys(keys).sort().filter(function (k) {
+      if (k > thisMonth) return false;
       var s = ship.byMonth[k], i = inv.byMonth[k], o = ord.byMonth[k];
       var hasShip = s && ((s.本数 || 0) > 0 || (s.予定 || 0) > 0);
       return hasShip || (i && i.総本数 > 0) || (o && o.本数 > 0);

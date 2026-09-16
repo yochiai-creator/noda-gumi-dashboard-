@@ -88,9 +88,27 @@ const SNAP = {
   'BAD||1': { kiki: 'SK200', kishu: '', dest: '正和' },
 };
 
+/* ★ getArmShipPlan_uncached_ は本物の「今日」で切る（今日〜31日）。
+     固定の日付を入れておくと、日が変わった翌週には全部「過ぎた日」になって
+     0件になる（実際そうなって落ちた）。こちらは今日からの相対で作る。 */
+const dayAfter = (n) => {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n);
+  return d.getTime();
+};
+const SNAP_LIVE = {
+  'LC12B10557F1||325': row(dayAfter(1), { info: 'グレー' }),
+  'LC12B10557F1||328': row(dayAfter(1), { dest: 'あゆみ' }),
+  'YY12B00902F1G2||1952': row(dayAfter(1),
+    { kiki: '13ton仕上げ', kishu: '', dest: '正和(13ton)', is13: true }),
+  'LC12B10556F1||378': row(dayAfter(2)),
+  'LC12B10556F1||379': row(dayAfter(2), { insp: '' }),
+  'OLD||1': row(dayAfter(-1)),    // 昨日。範囲外
+  'FAR||1': row(dayAfter(40)),    // 31日より先。範囲外
+};
+
 console.log('■ 出荷日ごとにまとめる');
 {
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   const days = s.arm_buildDays_(SNAP, new Date(2026, 8, 13));
   chk('日付の古い順', days.map((d) => d.label).join(','), days.map((d) => d.label).join(','));
   chk('★基準日より前は出さない', !days.some((d) => d.label === '9/12'), days.map((d) => d.label));
@@ -127,7 +145,7 @@ console.log('■ 出荷先が空のとき');
 
 console.log('■ まとめて取る');
 {
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   const d = s.getArmShipPlan_uncached_();
   chk('エラーなし', d.error === null, d.error);
   chk('合計台数', d.total === 5, d.total);
@@ -145,7 +163,7 @@ console.log('■ どの .xlsm を元にしたかを正しく出す');
        「9月4日」の版を後から開き直したせいで更新日時だけ新しくなっていて、
        更新日時で選ぶと古い版を「出所」として出してしまう。
        PDF生成側は名前の日付で選んでいるので、こちらも合わせる。 */
-  const s = build(SNAP, { srcFiles: [
+  const s = build(SNAP_LIVE, { srcFiles: [
     { name: '出荷予定　日程表変更A(26年9月4日).xlsm', updated: new Date('2026-09-13T06:49:00+09:00') },
     { name: '出荷予定　日程表変更A(26年9月10日).xlsm', updated: new Date('2026-09-11T23:31:00+09:00') },
     { name: 'よその資料.xlsx', updated: new Date('2026-12-01T00:00:00+09:00') },
@@ -159,7 +177,7 @@ console.log('■ どの .xlsm を元にしたかを正しく出す');
 }
 {
   // ファイル名は固定していない。名前に「日程表変更」を含む .xlsm だけを見る
-  const s = build(SNAP, { srcFiles: [
+  const s = build(SNAP_LIVE, { srcFiles: [
     { name: '出荷予定　日程表変更A(26年9月10日).xlsm', updated: new Date('2026-09-11T23:31:00+09:00') },
     // ★ 同じ語を含むPDFやメモが置かれても拾わない
     { name: '出荷予定　日程表変更A(26年12月1日).pdf', updated: new Date('2026-12-01T00:00:00+09:00') },
@@ -172,7 +190,7 @@ console.log('■ どの .xlsm を元にしたかを正しく出す');
 }
 {
   // 名前から日付が読めないものしか無いときは更新日時で代用する
-  const s = build(SNAP, { srcFiles: [
+  const s = build(SNAP_LIVE, { srcFiles: [
     { name: '出荷予定　日程表変更A.xlsm', updated: new Date('2026-09-01T00:00:00+09:00') },
     { name: '出荷予定　日程表変更A（最新）.XLSM', updated: new Date('2026-09-11T00:00:00+09:00') },
   ] });
@@ -181,7 +199,7 @@ console.log('■ どの .xlsm を元にしたかを正しく出す');
   chk('拡張子の大文字小文字は問わない', /\.XLSM$/.test(d.sourceName), d.sourceName);
 }
 {
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   chk('日付キー', s.arm_dateKeyFromName_('出荷予定　日程表変更A(26年9月10日).xlsm') === 20260910,
     s.arm_dateKeyFromName_('出荷予定　日程表変更A(26年9月10日).xlsm'));
   chk('1桁の月日も読める', s.arm_dateKeyFromName_('A(26年9月4日).xlsm') === 20260904,
@@ -192,7 +210,7 @@ console.log('■ どの .xlsm を元にしたかを正しく出す');
 console.log('■ 古いまま出さない');
 {
   // 元のExcelが後から更新された＝PDF生成が追いついていない
-  const s = build(SNAP, { srcAt: new Date('2026-09-13T08:00:00+09:00') });
+  const s = build(SNAP_LIVE, { srcAt: new Date('2026-09-13T08:00:00+09:00') });
   const d = s.getArmShipPlan_uncached_();
   chk('★元Excelのほうが新しければ stale', d.stale === true, d.stale);
   chk('それでも中身は返す（見えないよりまし）', d.total === 5, d.total);
@@ -208,14 +226,14 @@ console.log('■ スナップショットが無い');
 
 console.log('■ PDFがまだ無い');
 {
-  const s = build(SNAP, { noPdf: true });
+  const s = build(SNAP_LIVE, { noPdf: true });
   const d = s.getArmShipPlan_uncached_();
   chk('PDFが無くても予定は出る', d.total === 5 && d.pdfUrl === null, { total: d.total, pdf: d.pdfUrl });
 }
 
 console.log('■ 月別の集計（元の .xlsm から）');
 {
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   // 出荷明細シートの3列ぶん（機器 / 仕様 / 最新出荷日）
   const kk = [['SK300　10型'], ['SK200　B165'], ['13ton仕上げ'], ['13ton ｼｮｰﾄ'],
               ['SK300　ﾛﾝｸﾞ'], ['特機'], [''], ['SK200　B145'], ['SK300　10型']];
@@ -245,7 +263,7 @@ console.log('■ 月別の集計（元の .xlsm から）');
 
 console.log('■ 年度はじめから出す');
 {
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   chk('4月〜3月が年度', s.arm_fiscalStart_(new Date(2026, 8, 13)) === '2026-04',
     s.arm_fiscalStart_(new Date(2026, 8, 13)));
   chk('★1〜3月は前の年の4月から', s.arm_fiscalStart_(new Date(2027, 1, 5)) === '2026-04',
@@ -270,7 +288,7 @@ console.log('■ 年度はじめから出す');
 
 console.log('■ 先の予定は実績に混ぜない');
 {
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   const rows = [
     ['2026-09-10', 'SK200', 5],   // 今日より前 → 実績
     ['2026-09-13', 'SK200', 3],   // 今日 → 入れる
@@ -288,7 +306,7 @@ console.log('■ 先の予定は実績に混ぜない');
 }
 {
   // シートが日付型で返してくることがある
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   const b = s.arm_monthsFromRows_([[new Date(2026, 3, 1), 'SK200', 5]], '2026-04', '2026-09-13');
   chk('★日付がDateで返ってきても読める', b.months.length === 1 && b.months[0].年月 === '2026-04',
     b.months);
@@ -298,7 +316,7 @@ console.log('■ 先の予定は実績に混ぜない');
 
 console.log('■ 予定の機種別');
 {
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   const d = s.getArmShipPlan_uncached_();
   const by = {}; d.byKind.forEach((k) => { by[k.名] = k.台数; });
   chk('★13tonは実績と同じまとめ方（13ton仕上げ → 13ton）', by['13ton'] === 1, d.byKind);
@@ -313,7 +331,7 @@ console.log('■ 今月の「予定こみ」も返す');
 {
   /* ★ グラフと表は実績だけだが、KPIの1つだけは「今月あと何台出るのか」を
         知りたいので、今日で切らない今月の合計も返す。 */
-  const s = build(SNAP);
+  const s = build(SNAP_LIVE);
   const rows = [
     ['2026-08-20', 'SK200', 99],   // 先月。今月の合計に混ぜない
     ['2026-09-10', 'SK200', 5],
