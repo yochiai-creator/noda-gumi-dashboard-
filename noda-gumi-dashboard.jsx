@@ -1436,8 +1436,9 @@ function InventoryTrendChart({ days }) {
 
 /* ---------- 月次出荷実績：棒グラフ（1系列なので凡例は不要） ---------- */
 function MonthlyShipChart({ months }) {
-  const W = 340, H = 168;
-  const padL = 40, padR = 8, padT = 14, padB = 24;
+  // ★ 数字の大きさは「在庫・出荷・受注」に合わせてある（同じ画面に並ぶため）
+  const W = 340, H = 176;
+  const padL = 44, padR = 8, padT = 20, padB = 26;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const asc = [...months].reverse();     // 古い順に左から並べる
   const maxVal = Math.max(1, ...asc.map((m) => m.本数));
@@ -1451,7 +1452,7 @@ function MonthlyShipChart({ months }) {
       {ticks.map((t, i) => (
         <g key={"t" + i}>
           <line x1={padL} y1={yAt(t)} x2={padL + plotW} y2={yAt(t)} stroke={VIZ.grid} strokeWidth="1" />
-          <text x={padL - 6} y={yAt(t) + 3} textAnchor="end" fontSize="8" fill={VIZ.muted}
+          <text x={padL - 6} y={yAt(t) + 3} textAnchor="end" fontSize="9" fill={VIZ.muted}
             style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(t)}</text>
         </g>
       ))}
@@ -1463,9 +1464,8 @@ function MonthlyShipChart({ months }) {
           <g key={m.年月}>
             <path d={vizTopRoundedPath(cx - barW / 2, y, barW, Math.max(h, 1), 4)} fill={VIZ.s1} />
             {/* 月数が少ないので上端に値を出せる。入らない場合は表で読む */}
-            <text x={cx} y={y - 4} textAnchor="middle" fontSize="8.5" fontWeight="700" fill={VIZ.ink2}
-              style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(m.本数)}</text>
-            <text x={cx} y={H - 8} textAnchor="middle" fontSize="8.5" fill={VIZ.muted}>{vizMonthLabel(m.年月)}</text>
+            <VizNum x={cx} y={y - 5} text={vizComma(m.本数)} fill={VIZ.ink2} anchor="middle" size={10} />
+            <text x={cx} y={H - 8} textAnchor="middle" fontSize="10" fill={VIZ.muted}>{vizMonthLabel(m.年月)}</text>
           </g>
         );
       })}
@@ -1473,6 +1473,25 @@ function MonthlyShipChart({ months }) {
   );
 }
 
+
+/* グラフの上に置く数字。
+   ★ 縁取り（paint-order:stroke）だけでは線を隠しきれない。縁取りは字の形に
+     沿うので、字と字のすき間を通った線がそのまま見えてしまう。実際、
+     在庫の折れ線が「7,435」の真ん中を横切って読めなくなっていた。
+     面色の下敷きを1枚敷いてから字を置く。 */
+function VizNum({ x, y, text, fill, anchor, size }) {
+  const fs = size || 10;
+  const w = vizTextW(text, fs) + 5;
+  const rx = anchor === "end" ? x - w + 2 : anchor === "start" ? x - 2 : x - w / 2;
+  return (
+    <g>
+      <rect x={rx} y={y - fs + 1} width={w} height={fs + 3} rx="2"
+        fill={VIZ.surface} opacity="0.9" />
+      <text x={x} y={y} textAnchor={anchor || "middle"} fontSize={fs} fontWeight="700"
+        fill={fill} style={{ fontVariantNumeric: "tabular-nums" }}>{text}</text>
+    </g>
+  );
+}
 
 /* ---------- 在庫・出荷・受注を1つのグラフに（月次） ---------- */
 /* ★ なぜ「月」なのか、なぜ1つの縦軸でよいのか
@@ -1489,8 +1508,9 @@ function MonthlyShipChart({ months }) {
      単位はどれも「本」なので同じ縦軸でよい。 */
 function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
   const [pick, setPick] = useState(null);
-  const W = 340, H = 190;
-  const padL = 42, padR = 10, padT = 24, padB = 34;   // padT は棒の上の数字ぶん広げてある
+  const W = 340, H = 196;
+  // ★ 数字を大きくしたぶん、上下と左の余白も広げる（文字が切れないように）
+  const padL = 44, padR = 10, padT = 28, padB = 36;   // padT は棒の上の数字ぶん広げてある
   const plotW = W - padL - padR, plotH = H - padT - padB;
 
   const vals = [];
@@ -1550,7 +1570,7 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
         {ticks.map((t, i) => (
           <g key={"t" + i}>
             <line x1={padL} y1={yAt(t)} x2={padL + plotW} y2={yAt(t)} stroke={VIZ.grid} strokeWidth="1" />
-            <text x={padL - 6} y={yAt(t) + 3} textAnchor="end" fontSize="8" fill={VIZ.muted}
+            <text x={padL - 6} y={yAt(t) + 3} textAnchor="end" fontSize="9" fill={VIZ.muted}
               style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(t)}</text>
           </g>
         ))}
@@ -1588,7 +1608,7 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
               実績の棒の上端に置く（積んだ一番上に置くと、予定込みの値だと
               誤読される）。予定は薄い色なので上に文字が乗っても読める。 */}
         {(() => {
-          const FS = 8.5, GAP = 3;
+          const FS = 10, GAP = 3;
           const placed = [];
           return months.map((m, i) => {
             if (m.出荷 == null) return null;
@@ -1606,10 +1626,8 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
             //   予定の一番上まで飛んで、予定込みの値だと誤読されるため。
             const top = Math.min(yAt(m.出荷), m.受注 != null ? yAt(m.受注) : Infinity);
             return (
-              <text key={"bl" + m.年月} x={cx} y={top - 4} textAnchor="middle"
-                fontSize={FS} fontWeight="700" fill={VIZ.ink2}
-                stroke={VIZ.surface} strokeWidth="3" paintOrder="stroke"
-                style={{ fontVariantNumeric: "tabular-nums" }}>{txt}</text>
+              <VizNum key={"bl" + m.年月} x={cx} y={top - 5} text={txt}
+                fill={VIZ.ink2} anchor="middle" size={FS} />
             );
           });
         })()}
@@ -1633,26 +1651,25 @@ function MonthlyCombinedChart({ months, hasOrders, hasPlan, partialMonth }) {
           const v = vizComma(months[months.length - 1].在庫 != null
             ? months[months.length - 1].在庫
             : months.filter((m) => m.在庫 != null).slice(-1)[0].在庫);
-          const w = vizTextW(v, 8.5);
+          const w = vizTextW(v, 10);
           // 右端で切れるなら点の左側に出す
           const right = last[0] + 7 + w <= padL + plotW;
+          /* ★ 点の真横ではなく斜め上に置く。真横だと在庫の折れ線が
+                そのまま数字の上を通る（実際に読めなくなっていた）。 */
           return (
-            // 面色で縁取りしておく。棒や別の線に重なっても数字が読めるようにするため。
-            <text x={last[0] + (right ? 7 : -7)} y={last[1] - 5}
-              textAnchor={right ? "start" : "end"} fontSize="8.5" fontWeight="700"
-              fill={VIZ.s1} stroke={VIZ.surface} strokeWidth="3" paintOrder="stroke"
-              style={{ fontVariantNumeric: "tabular-nums" }}>{v}</text>
+            <VizNum x={last[0] + (right ? 7 : -7)} y={last[1] - 9}
+              text={v} fill={VIZ.s1} anchor={right ? "start" : "end"} size={10} />
           );
         })()}
 
         {months.map((m, i) => (
-          <text key={"x" + m.年月} x={cxAt(i)} y={H - 12} textAnchor="middle" fontSize="8.5"
+          <text key={"x" + m.年月} x={cxAt(i)} y={H - 15} textAnchor="middle" fontSize="10"
             fontWeight={pick === i ? "700" : "400"}
             fill={pick === i ? VIZ.ink2 : VIZ.muted}>{vizMonthLabel(m.年月)}</text>
         ))}
         {partialMonth && months.length > 0 &&
           months[months.length - 1].年月 === partialMonth && (
-          <text x={cxAt(months.length - 1)} y={H - 3} textAnchor="middle" fontSize="7"
+          <text x={cxAt(months.length - 1)} y={H - 3} textAnchor="middle" fontSize="8"
             fill={VIZ.muted}>集計中</text>
         )}
 

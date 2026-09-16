@@ -3904,12 +3904,13 @@ function InventoryTrendChart({
 function MonthlyShipChart({
   months
 }) {
+  // ★ 数字の大きさは「在庫・出荷・受注」に合わせてある（同じ画面に並ぶため）
   const W = 340,
-    H = 168;
-  const padL = 40,
+    H = 176;
+  const padL = 44,
     padR = 8,
-    padT = 14,
-    padB = 24;
+    padT = 20,
+    padB = 26;
   const plotW = W - padL - padR,
     plotH = H - padT - padB;
   const asc = [...months].reverse(); // 古い順に左から並べる
@@ -3941,7 +3942,7 @@ function MonthlyShipChart({
     x: padL - 6,
     y: yAt(t) + 3,
     textAnchor: "end",
-    fontSize: "8",
+    fontSize: "9",
     fill: VIZ.muted,
     style: {
       fontVariantNumeric: "tabular-nums"
@@ -3955,24 +3956,58 @@ function MonthlyShipChart({
     }, /*#__PURE__*/React.createElement("path", {
       d: vizTopRoundedPath(cx - barW / 2, y, barW, Math.max(h, 1), 4),
       fill: VIZ.s1
-    }), /*#__PURE__*/React.createElement("text", {
+    }), /*#__PURE__*/React.createElement(VizNum, {
       x: cx,
-      y: y - 4,
-      textAnchor: "middle",
-      fontSize: "8.5",
-      fontWeight: "700",
+      y: y - 5,
+      text: vizComma(m.本数),
       fill: VIZ.ink2,
-      style: {
-        fontVariantNumeric: "tabular-nums"
-      }
-    }, vizComma(m.本数)), /*#__PURE__*/React.createElement("text", {
+      anchor: "middle",
+      size: 10
+    }), /*#__PURE__*/React.createElement("text", {
       x: cx,
       y: H - 8,
       textAnchor: "middle",
-      fontSize: "8.5",
+      fontSize: "10",
       fill: VIZ.muted
     }, vizMonthLabel(m.年月)));
   }));
+}
+
+/* グラフの上に置く数字。
+   ★ 縁取り（paint-order:stroke）だけでは線を隠しきれない。縁取りは字の形に
+     沿うので、字と字のすき間を通った線がそのまま見えてしまう。実際、
+     在庫の折れ線が「7,435」の真ん中を横切って読めなくなっていた。
+     面色の下敷きを1枚敷いてから字を置く。 */
+function VizNum({
+  x,
+  y,
+  text,
+  fill,
+  anchor,
+  size
+}) {
+  const fs = size || 10;
+  const w = vizTextW(text, fs) + 5;
+  const rx = anchor === "end" ? x - w + 2 : anchor === "start" ? x - 2 : x - w / 2;
+  return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
+    x: rx,
+    y: y - fs + 1,
+    width: w,
+    height: fs + 3,
+    rx: "2",
+    fill: VIZ.surface,
+    opacity: "0.9"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: x,
+    y: y,
+    textAnchor: anchor || "middle",
+    fontSize: fs,
+    fontWeight: "700",
+    fill: fill,
+    style: {
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, text));
 }
 
 /* ---------- 在庫・出荷・受注を1つのグラフに（月次） ---------- */
@@ -3996,11 +4031,12 @@ function MonthlyCombinedChart({
 }) {
   const [pick, setPick] = useState(null);
   const W = 340,
-    H = 190;
-  const padL = 42,
+    H = 196;
+  // ★ 数字を大きくしたぶん、上下と左の余白も広げる（文字が切れないように）
+  const padL = 44,
     padR = 10,
-    padT = 24,
-    padB = 34; // padT は棒の上の数字ぶん広げてある
+    padT = 28,
+    padB = 36; // padT は棒の上の数字ぶん広げてある
   const plotW = W - padL - padR,
     plotH = H - padT - padB;
   const vals = [];
@@ -4094,7 +4130,7 @@ function MonthlyCombinedChart({
     x: padL - 6,
     y: yAt(t) + 3,
     textAnchor: "end",
-    fontSize: "8",
+    fontSize: "9",
     fill: VIZ.muted,
     style: {
       fontVariantNumeric: "tabular-nums"
@@ -4123,7 +4159,7 @@ function MonthlyCombinedChart({
     d: vizTopRoundedPath(barX(i, 1), yAt(m.受注), barW, Math.max(padT + plotH - yAt(m.受注), 1), 3),
     fill: VIZ.s3
   }))), (() => {
-    const FS = 8.5,
+    const FS = 10,
       GAP = 3;
     const placed = [];
     return months.map((m, i) => {
@@ -4145,21 +4181,15 @@ function MonthlyCombinedChart({
       //   予定（薄い棒）は高さの判定に入れない。入れると当月の数字が
       //   予定の一番上まで飛んで、予定込みの値だと誤読されるため。
       const top = Math.min(yAt(m.出荷), m.受注 != null ? yAt(m.受注) : Infinity);
-      return /*#__PURE__*/React.createElement("text", {
+      return /*#__PURE__*/React.createElement(VizNum, {
         key: "bl" + m.年月,
         x: cx,
-        y: top - 4,
-        textAnchor: "middle",
-        fontSize: FS,
-        fontWeight: "700",
+        y: top - 5,
+        text: txt,
         fill: VIZ.ink2,
-        stroke: VIZ.surface,
-        strokeWidth: "3",
-        paintOrder: "stroke",
-        style: {
-          fontVariantNumeric: "tabular-nums"
-        }
-      }, txt);
+        anchor: "middle",
+        size: FS
+      });
     });
   })(), invPts.length > 1 && /*#__PURE__*/React.createElement("polyline", {
     points: invPts.map(p => p[0] + "," + p[1]).join(" "),
@@ -4179,40 +4209,32 @@ function MonthlyCombinedChart({
   })), invPts.length > 0 && (() => {
     const last = invPts[invPts.length - 1];
     const v = vizComma(months[months.length - 1].在庫 != null ? months[months.length - 1].在庫 : months.filter(m => m.在庫 != null).slice(-1)[0].在庫);
-    const w = vizTextW(v, 8.5);
+    const w = vizTextW(v, 10);
     // 右端で切れるなら点の左側に出す
     const right = last[0] + 7 + w <= padL + plotW;
-    return (
-      /*#__PURE__*/
-      // 面色で縁取りしておく。棒や別の線に重なっても数字が読めるようにするため。
-      React.createElement("text", {
-        x: last[0] + (right ? 7 : -7),
-        y: last[1] - 5,
-        textAnchor: right ? "start" : "end",
-        fontSize: "8.5",
-        fontWeight: "700",
-        fill: VIZ.s1,
-        stroke: VIZ.surface,
-        strokeWidth: "3",
-        paintOrder: "stroke",
-        style: {
-          fontVariantNumeric: "tabular-nums"
-        }
-      }, v)
-    );
+    /* ★ 点の真横ではなく斜め上に置く。真横だと在庫の折れ線が
+          そのまま数字の上を通る（実際に読めなくなっていた）。 */
+    return /*#__PURE__*/React.createElement(VizNum, {
+      x: last[0] + (right ? 7 : -7),
+      y: last[1] - 9,
+      text: v,
+      fill: VIZ.s1,
+      anchor: right ? "start" : "end",
+      size: 10
+    });
   })(), months.map((m, i) => /*#__PURE__*/React.createElement("text", {
     key: "x" + m.年月,
     x: cxAt(i),
-    y: H - 12,
+    y: H - 15,
     textAnchor: "middle",
-    fontSize: "8.5",
+    fontSize: "10",
     fontWeight: pick === i ? "700" : "400",
     fill: pick === i ? VIZ.ink2 : VIZ.muted
   }, vizMonthLabel(m.年月))), partialMonth && months.length > 0 && months[months.length - 1].年月 === partialMonth && /*#__PURE__*/React.createElement("text", {
     x: cxAt(months.length - 1),
     y: H - 3,
     textAnchor: "middle",
-    fontSize: "7",
+    fontSize: "8",
     fill: VIZ.muted
   }, "\u96C6\u8A08\u4E2D"), months.map((m, i) => /*#__PURE__*/React.createElement("rect", {
     key: "hit" + i,
