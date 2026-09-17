@@ -490,3 +490,84 @@ function 生産ロットを指図書と照合する() {
   });
   return r;
 }
+
+// ===== 診断：ロットと指図書の容器Noが噛み合っているか見る =====
+/**
+ * ★ なぜ要るのか
+ *   照合が「0本」で終わったとき、理由が2つあって見分けが付かない。
+ *     (1) まだ指図書が出ていないだけ（正常）
+ *     (2) 接頭辞や桁が食い違っていて、永久に当たらない（不具合）
+ *   この関数は両者を分けて言い切る。数字を動かさない、見るだけの関数。
+ */
+function lot_diagnose_(lots, ships) {
+  var lines = [], warn = 0;
+  var byPre = {};
+  (ships || []).forEach(function (s) {
+    var p = String(s.prefix || '').toUpperCase();
+    if (!byPre[p]) byPre[p] = { n: 0, lo: s.a, hi: s.b };
+    byPre[p].n++;
+    if (s.a < byPre[p].lo) byPre[p].lo = s.a;
+    if (s.b > byPre[p].hi) byPre[p].hi = s.b;
+  });
+  var pres = Object.keys(byPre).sort(function (a, b) { return byPre[b].n - byPre[a].n; });
+
+  lines.push('指図書の容器Noレンジ ' + (ships || []).length + '件 / 接頭辞 ' + pres.length + '種類');
+  pres.slice(0, 12).forEach(function (p) {
+    lines.push('  ' + p + '  ' + byPre[p].n + '件  ' + byPre[p].lo + '〜' + byPre[p].hi);
+  });
+  if (pres.length > 12) lines.push('  …ほか ' + (pres.length - 12) + '種類');
+  if (!(ships || []).length) {
+    lines.push('★ 指図書側に容器Noのレンジが1件も無い。PDFの読み取りを先に直す必要がある。');
+    warn++;
+  }
+
+  lines.push('ロット ' + (lots || []).length + '件');
+  (lots || []).forEach(function (lot) {
+    var pre = String(lot.容器接頭辞 || '').toUpperCase();
+    var a = Number(lot.容器No開始), b = Number(lot.容器No終了);
+    lines.push('  ' + lot.ロットID + '  ' + (pre || '(接頭辞なし)') + ' ' + a + '〜' + b +
+               '  ' + lot.本数 + '本  ' + lot.状態 +
+               (lot.出荷済本数 ? '  引き済 ' + lot.出荷済本数 + '本' : ''));
+    var hit = lot_matchOne_(lot, ships || []);
+    var same = byPre[pre];
+    if (!pre) {
+      lines.push('    ★ ロットに接頭辞が入っていない。登録しなおしが要る。');
+      warn++;
+    } else if (!same) {
+      lines.push('    ★ この接頭辞「' + pre + '」は指図書側に1件も無い。' +
+                 (pres.length ? '指図書側は ' + pres.slice(0, 5).join(' / ') + ' を使っている。'
+                              : ''));
+      warn++;
+    } else if (hit.累計 > 0) {
+      lines.push('    重なった ' + hit.累計 + '本  依頼No ' + hit.依頼No);
+    } else if (String(a).length !== String(same.hi).length) {
+      /* ★「番号が範囲の外」では判定にしない。作ったばかりのロットは
+           出荷済のどれより番号が大きくて当たり前で、それは正常。
+           本当に危ないのは桁数そのものが違うとき。 */
+      lines.push('    ★ 接頭辞は合うが桁数が違う（ロット ' + String(a).length +
+                 '桁 / 指図書 ' + String(same.hi).length + '桁）。入力の取り違えかもしれない。');
+      warn++;
+    } else {
+      lines.push('    重なり無し。桁は指図書(' + same.lo + '〜' + same.hi +
+                 ')と同じ → まだ指図書が出ていないだけ。仕組みは動く。');
+    }
+    if (lot.状態 !== '入庫済' && lot.状態 !== '出荷済') {
+      lines.push('    ※ 状態が「' + lot.状態 + '」。照合の対象は入庫済だけ。');
+    }
+  });
+  return { lines: lines, 要確認: warn };
+}
+
+// ===== 公開関数：見比べるだけ（数字は動かさない） =====
+function ロットと指図書の番号を見比べる() {
+  var r;
+  try {
+    r = lot_diagnose_(lot_readAll_(), lot_shipRanges_(shipact_index_()));
+  } catch (err) {
+    Logger.log('見比べでエラー: ' + String(err));
+    return { error: String(err) };
+  }
+  r.lines.forEach(function (s) { Logger.log(s); });
+  Logger.log(r.要確認 ? '★ 要確認 ' + r.要確認 + '件' : '食い違いは見つからなかった');
+  return r;
+}

@@ -233,5 +233,47 @@ console.log('■ 状態ごとの本数');
   chk('しぼっても合計は全部ぶん', s.getProdLots('入庫済', 0).totals.未受検 === 100);
 }
 
+console.log('■ 見比べ（照合が0本のとき理由を言い分ける）');
+{
+  const S = [{ no: '26-1', prefix: 'HEP', a: 50000, b: 50100, date: '2026-09-10' },
+             { no: '26-2', prefix: 'HXP', a: 70000, b: 70050, date: '2026-09-11' }];
+  const d = (rows) => build(rows, [loc({})], S).lot_diagnose_(
+    build(rows, [loc({})], S).getProdLots('', 0).lots,
+    S.map((x) => Object.assign({}, x, { prefix: x.prefix })));
+  const txt = (r) => r.lines.join('\n');
+
+  // まだ指図書が出ていないだけ＝仕組みは動く
+  let r = d([lotRow({ id: 'L1', pre: 'HEP', a: '50200', b: '50250', 本数: 51, 状態: '入庫済', 置場番号: 7 })]);
+  chk('★出ていないだけなら要確認にしない', r.要確認 === 0, txt(r));
+  chk('その旨を書く', txt(r).indexOf('まだ指図書が出ていないだけ') >= 0, txt(r));
+  chk('★出荷済より番号が大きいのは正常（作りたてはそうなる）',
+      d([lotRow({ id: 'L1b', pre: 'HEP', a: '59900', b: '59950', 本数: 51, 状態: '入庫済', 置場番号: 7 })])
+        .要確認 === 0);
+
+  // 接頭辞が指図書側に無い＝永久に当たらない
+  r = d([lotRow({ id: 'L2', pre: 'ZZZ', a: '50200', b: '50250', 本数: 51, 状態: '入庫済', 置場番号: 7 })]);
+  chk('★接頭辞違いは要確認にする', r.要確認 === 1, txt(r));
+  chk('指図書側の接頭辞を出す', txt(r).indexOf('HEP') >= 0, txt(r));
+
+  // 桁違い（接頭辞は合うが範囲外）
+  r = d([lotRow({ id: 'L3', pre: 'HEP', a: '5020', b: '5025', 本数: 6, 状態: '入庫済', 置場番号: 7 })]);
+  chk('★桁違いは要確認にする', r.要確認 === 1, txt(r));
+  chk('桁数が違うと書く', txt(r).indexOf('桁数が違う') >= 0, txt(r));
+
+  // 当たっている
+  r = d([lotRow({ id: 'L4', pre: 'HEP', a: '50000', b: '50100', 本数: 101, 状態: '入庫済', 置場番号: 7 })]);
+  chk('重なれば本数と依頼Noを出す', txt(r).indexOf('重なった 101本') >= 0 &&
+      txt(r).indexOf('26-1') >= 0, txt(r));
+
+  // 状態が入庫済でなければ、当たらなくて当たり前だと書く
+  r = d([lotRow({ id: 'L5', pre: 'HEP', a: '50000', b: '50100', 本数: 101, 状態: '未受検' })]);
+  chk('★入庫前は対象外だと書く', txt(r).indexOf('照合の対象は入庫済だけ') >= 0, txt(r));
+  chk('入庫前は要確認にしない', r.要確認 === 0, txt(r));
+
+  // 指図書側が空
+  r = build([], [loc({})], []).lot_diagnose_([], []);
+  chk('★指図書側が空なら要確認', r.要確認 === 1, txt(r));
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);
