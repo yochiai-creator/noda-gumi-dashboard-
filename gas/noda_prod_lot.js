@@ -32,8 +32,11 @@ var LOT_CONFIG = {
             '容器接頭辞', '容器No開始', '容器No終了', '本数',
             '状態', '受検日', '入庫日', '置場番号', '置場名', '出荷済本数', '出荷日', '依頼No',
             '備考', '登録者', '登録日時', '更新日時'],
-  // 状態は4つだけ。増やすと現場が迷う。
+  // 流れは4つだけ。増やすと現場が迷う。
   STATES: ['未受検', '受検済', '入庫済', '出荷済'],
+  /* 「取消」は流れの続きではなく、打ち間違えた行の打ち消し。
+     行は消さずに残す。消すと、置場の数字がなぜ動いたのか後から辿れない。 */
+  CANCELLED: '取消',
   /* 置場容量シートの実績列。サイズと対応させる。
      ★ 置場容量シートは20/30/50の3列しか無い。2K・5K・8K・10Kはここに無く、
        置場の在庫数には足さない（無い列に足せない）。流れだけ追う。 */
@@ -51,7 +54,10 @@ function getProdLots(state, limit) {
     var all = lot_readAll_();
     out.totals = lot_totals_(all);
     var want = String(state || '').trim();
-    var rows = want ? all.filter(function (r) { return r.状態 === want; }) : all;
+    /* 打ち消した行は既定では出さない。画面に残すと本数を数え間違える。
+       「取消」でしぼれば見られる（履歴として消さずに残してある）。 */
+    var rows = want ? all.filter(function (r) { return r.状態 === want; })
+                    : all.filter(function (r) { return r.状態 !== LOT_CONFIG.CANCELLED; });
     // 新しい順（生産日→ロットID）
     rows.sort(function (a, b) {
       if (a.生産日 !== b.生産日) return a.生産日 < b.生産日 ? 1 : -1;
@@ -68,9 +74,11 @@ function getProdLots(state, limit) {
 /* 状態ごとの本数をまとめる（純関数）。
    ★ 出荷済は「今もある数」ではないので、本数ではなく件数と当月ぶんを出す。 */
 function lot_totals_(list) {
-  var t = { 未受検: 0, 受検済: 0, 入庫済: 0, 出荷済今月: 0, 件数: list.length };
+  var t = { 未受検: 0, 受検済: 0, 入庫済: 0, 出荷済今月: 0, 件数: 0 };
   var thisMonth = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
   list.forEach(function (r) {
+    if (r.状態 === LOT_CONFIG.CANCELLED) return;   // 打ち消した行は数えない
+    t.件数++;
     var nokori = r.本数 - r.出荷済本数;
     if (r.状態 === '未受検') t.未受検 += nokori;
     else if (r.状態 === '受検済') t.受検済 += nokori;
@@ -165,6 +173,7 @@ function lot_findOverlap_(list, pre, a, b) {
   var na = Number(a), nb = Number(b);
   for (var i = 0; i < list.length; i++) {
     var r = list[i];
+    if (r.状態 === LOT_CONFIG.CANCELLED) continue;   // 打ち消した番号は空きに戻す
     if (r.容器接頭辞 !== pre) continue;
     var ra = Number(r.容器No開始), rb = Number(r.容器No終了);
     if (na <= rb && ra <= nb) return r;
@@ -223,6 +232,65 @@ function stockInLot(id, locationNo) {
     }
   } catch (err) {
     Logger.log('入庫でエラー: ' + String(err));
+    return { ok: false, error: String(err) };
+  }
+}
+
+// ===== 公開関数：打ち間違えたロットを取り消す =====
+/**
+ * ★ なぜ要るのか
+ *   番号や本数を打ち間違えたロットを直す手段が無いと、置場の実績数が
+ *   間違ったまま残り、現場が画面を信じなくなる。
+ * ★ 行は消さない
+ *   状態を「取消」にするだけ。消すと、置場の数字がなぜ動いたのか辿れない。
+ * ★ 入庫済なら置場から引き戻す
+ *   入庫のときに足したぶんをそのまま戻す。yardUpdateLocation() を通すので
+ *   変更履歴にも残る。
+ * ★ 指図書に当たったロットは取り消さない
+ *   既に出荷された容器を「無かったこと」にはできない。理由を返して断る。
+ */
+function cancelProdLot(id, reason) {
+  try {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var found = lot_findRow_(id);
+      if (!found) return { ok: false, error: 'ロット「' + id + '」が見つかりません' };
+      var lot = found.lot;
+      if (lot.状態 === LOT_CONFIG.CANCELLED) {
+        return { ok: false, error: 'このロットは既に取り消してあります' };
+      }
+      if (lot.出荷済本数 > 0) {
+        return { ok: false, error: '指図書（' + lot.依頼No + '）で ' + lot.出荷済本数 +
+                 '本が出荷済です。出た容器は取り消せません。' };
+      }
+
+      // 入庫済なら、入庫のときに足したぶんを置場から引き戻す
+      var 戻し = 0, 置場 = '';
+      var key = LOT_CONFIG.SIZE_KEY[lot.サイズ];
+      if (lot.状態 === '入庫済' && key && lot.置場番号) {
+        var loc = lot_findLocation_(lot.置場番号);
+        if (!loc) return { ok: false, error: '置場「' + lot.置場番号 + '」が見つかりません' };
+        var r = lot_moveYard_(loc, key, -lot.本数);
+        if (r.error) return { ok: false, error: r.error };
+        戻し = lot.本数;
+        置場 = loc.name;
+      }
+
+      var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+      var why = String(reason || '').trim();
+      lot_writeRow_(found.rowNo, function (row, H) {
+        row[H['状態']] = LOT_CONFIG.CANCELLED;
+        row[H['備考']] = (String(row[H['備考']] || '') + ' ').trim() +
+                         '【取消 ' + now + (why ? ' ' + why : '') + '】';
+        row[H['更新日時']] = now;
+      });
+      return { ok: true, error: null, 戻した本数: 戻し, 置場: 置場 };
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    Logger.log('ロットの取消でエラー: ' + String(err));
     return { ok: false, error: String(err) };
   }
 }

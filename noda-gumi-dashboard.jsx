@@ -310,10 +310,11 @@ const LOT_TONE = {
   出荷済: { bg: "#f1f5f9", fg: "#64748b" },
 };
 
-function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, saving }) {
+function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, saving }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(null);
   const [pickFor, setPickFor] = useState(null);   // 入庫先を選んでいるロット
+  const [cancelFor, setCancelFor] = useState(null);   // 取り消そうとしているロット
   const [filter, setFilter] = useState("");
 
   const lots = (data && data.lots) || [];
@@ -508,6 +509,33 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, savi
                   <span className="block text-[10px] mt-0.5" style={{ color: VIZ.muted }}>
                     指図書が出たら自動で引かれます
                   </span>
+                )}
+                {/* ★ 打ち間違いを直す手段。無いと置場の数字が間違ったまま残り、
+                       現場が画面を信じなくなる。出荷済ぶんがあるロットには出さない
+                       （出て行った容器は無かったことにできない）。 */}
+                {l.出荷済本数 === 0 && l.状態 !== "出荷済" && (
+                  cancelFor === l.ロットID ? (
+                    <span className="flex flex-wrap items-center gap-2 mt-1">
+                      <span className="text-[10px]" style={{ color: "#b45309" }}>
+                        {l.状態 === "入庫済"
+                          ? "置場から " + vizComma(l.本数) + " 本 引き戻します"
+                          : "この登録を取り消します"}
+                      </span>
+                      <button disabled={saving}
+                        onClick={() => onCancel(l.ロットID, () => setCancelFor(null))}
+                        className="px-2 py-1 rounded-md text-[11px] font-semibold text-white"
+                        style={{ background: "#b45309", opacity: saving ? 0.5 : 1 }}>
+                        {saving ? "取消中…" : "取り消す"}
+                      </button>
+                      <button onClick={() => setCancelFor(null)}
+                        className="px-2 py-1 rounded-md text-[11px] bg-slate-200"
+                        style={{ color: VIZ.ink2 }}>やめる</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setCancelFor(l.ロットID)}
+                      className="mt-1 ml-2 px-2 py-1 rounded-md text-[11px] bg-slate-100"
+                      style={{ color: VIZ.muted }}>打ち間違い</button>
+                  )
                 )}
               </div>
             );
@@ -2731,7 +2759,7 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
     書き直さずそのまま iframe で読み込む。旧アプリ側も setXFrameOptionsMode(ALLOWALL)
     が入っていて、もともと埋め込む前提で書かれていた。 */
 function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSave, onRefresh,
-                          onAddLot, onInspectLot, onStockInLot, saving }) {
+                          onAddLot, onInspectLot, onStockInLot, onCancelLot, saving }) {
   const [keyword, setKeyword] = useState("");
   const [onlyNearFull, setOnlyNearFull] = useState(false);
   const [sortBy, setSortBy] = useState("no");     // "no" | "rate"
@@ -2786,7 +2814,8 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
             ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済)
             : ""}>
           <ProdLotCard data={lotData} types={types} locations={list} onAdd={onAddLot}
-            onInspect={onInspectLot} onStockIn={onStockInLot} saving={saving} />
+            onInspect={onInspectLot} onStockIn={onStockInLot} onCancel={onCancelLot}
+            saving={saving} />
         </Collapsible>
       </Card>
 
@@ -3272,6 +3301,7 @@ export default function App() {
     開始: form.開始, 終了: form.終了, 備考: form.備考 }), done);
   const inspectLot = (id) => runLotAction((run) => run.markLotInspected(id));
   const stockInLot = (id, no, done) => runLotAction((run) => run.stockInLot(id, no), done);
+  const cancelLot = (id, done) => runLotAction((run) => run.cancelProdLot(id, "画面から取消"), done);
 
   /* 本数を直して保存する。
      ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存
@@ -3653,6 +3683,7 @@ export default function App() {
             url={live.yardCapUrl}
             onSave={saveYardCount} onRefresh={fetchYardTab}
             onAddLot={addLot} onInspectLot={inspectLot} onStockInLot={stockInLot}
+            onCancelLot={cancelLot}
             saving={yardSaving} />}
         </div>
 

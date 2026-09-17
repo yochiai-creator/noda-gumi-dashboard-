@@ -95,7 +95,7 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .gap-x-2{column-gap:.5rem}
 .mr-1{margin-right:.25rem}
 .mr-2{margin-right:.5rem}
-.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.p-2{padding:.5rem}.w-28{width:7rem}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
+.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.p-2{padding:.5rem}.w-28{width:7rem}.ml-2{margin-left:.5rem}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
 </style>
 <script>
 /**
@@ -1099,11 +1099,13 @@ function ProdLotCard({
   onAdd,
   onInspect,
   onStockIn,
+  onCancel,
   saving
 }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(null);
   const [pickFor, setPickFor] = useState(null); // 入庫先を選んでいるロット
+  const [cancelFor, setCancelFor] = useState(null); // 取り消そうとしているロット
   const [filter, setFilter] = useState("");
   const lots = data && data.lots || [];
   const t = data && data.totals || null;
@@ -1375,7 +1377,34 @@ function ProdLotCard({
       style: {
         color: VIZ.muted
       }
-    }, "\u6307\u56F3\u66F8\u304C\u51FA\u305F\u3089\u81EA\u52D5\u3067\u5F15\u304B\u308C\u307E\u3059"));
+    }, "\u6307\u56F3\u66F8\u304C\u51FA\u305F\u3089\u81EA\u52D5\u3067\u5F15\u304B\u308C\u307E\u3059"), l.出荷済本数 === 0 && l.状態 !== "出荷済" && (cancelFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap items-center gap-2 mt-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px]",
+      style: {
+        color: "#b45309"
+      }
+    }, l.状態 === "入庫済" ? "置場から " + vizComma(l.本数) + " 本 引き戻します" : "この登録を取り消します"), /*#__PURE__*/React.createElement("button", {
+      disabled: saving,
+      onClick: () => onCancel(l.ロットID, () => setCancelFor(null)),
+      className: "px-2 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: "#b45309",
+        opacity: saving ? 0.5 : 1
+      }
+    }, saving ? "取消中…" : "取り消す"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setCancelFor(null),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3084\u3081\u308B")) : /*#__PURE__*/React.createElement("button", {
+      onClick: () => setCancelFor(l.ロットID),
+      className: "mt-1 ml-2 px-2 py-1 rounded-md text-[11px] bg-slate-100",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u6253\u3061\u9593\u9055\u3044")));
   })));
 }
 
@@ -5490,6 +5519,7 @@ function YardCapacityTab({
   onAddLot,
   onInspectLot,
   onStockInLot,
+  onCancelLot,
   saving
 }) {
   const [keyword, setKeyword] = useState("");
@@ -5564,6 +5594,7 @@ function YardCapacityTab({
     onAdd: onAddLot,
     onInspect: onInspectLot,
     onStockIn: onStockInLot,
+    onCancel: onCancelLot,
     saving: saving
   }))), /*#__PURE__*/React.createElement(Card, {
     className: "p-3"
@@ -6345,6 +6376,7 @@ function App() {
   }), done);
   const inspectLot = id => runLotAction(run => run.markLotInspected(id));
   const stockInLot = (id, no, done) => runLotAction(run => run.stockInLot(id, no), done);
+  const cancelLot = (id, done) => runLotAction(run => run.cancelProdLot(id, "画面から取消"), done);
 
   /* 本数を直して保存する。
      ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存
@@ -6893,6 +6925,7 @@ function App() {
     onAddLot: addLot,
     onInspectLot: inspectLot,
     onStockInLot: stockInLot,
+    onCancelLot: cancelLot,
     saving: yardSaving
   })), /*#__PURE__*/React.createElement("p", {
     className: "text-center text-[10px] text-slate-400 pt-2"

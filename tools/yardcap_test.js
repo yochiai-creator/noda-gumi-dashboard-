@@ -77,6 +77,7 @@ const REPLY = {
   ] }),
   markLotInspected: () => ({ ok: true, error: null }),
   stockInLot: () => ({ ok: true, error: null }),
+  cancelProdLot: () => ({ ok: true, error: null }),
   getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [], byKind: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
@@ -168,6 +169,32 @@ const REPLY = {
     !flow.btns.some((b) => /出した|出荷する/.test(b)) &&
     /指図書が出たら自動で引かれます/.test(flow.t), flow.btns);
   chk('出荷済には依頼Noが出る', /26-10660/.test(flow.t), flow.t.slice(0, 900));
+
+  // 打ち間違いを直せる。出て行った容器には出さない
+  chk('★打ち間違いの取消ボタンが出る', flow.btns.includes('打ち間違い'), flow.btns);
+  chk('★取消ボタンは出荷済ぶんのないロットだけ（3件）',
+    flow.btns.filter((b) => b === '打ち間違い').length === 3, flow.btns);
+  {
+    // 入庫済のロットで押すと、置場から何本戻すのかを先に見せる
+    const cancels = page.locator('main button', { hasText: '打ち間違い' });
+    await cancels.nth(2).click();     // 3件目＝入庫済 L20260915-003（80本）
+    await page.waitForTimeout(300);
+    const t2 = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' | '));
+    chk('★押す前に置場から引き戻す本数を見せる', /置場から 80 本 引き戻します/.test(t2),
+      t2.slice(t2.indexOf('生産の流れ'), t2.indexOf('生産の流れ') + 700));
+    const b2 = await page.evaluate(() => [...document.querySelectorAll('main button')]
+      .map((x) => x.textContent.trim()));
+    chk('確かめてから消す（取り消す／やめる）',
+      b2.includes('取り消す') && b2.includes('やめる'), b2);
+    // iPhoneの幅（390px）からはみ出さないこと
+    const w = await page.evaluate(() => ({
+      doc: document.documentElement.scrollWidth, win: window.innerWidth }));
+    chk('★390pxからはみ出さない', w.doc <= w.win, w);
+    await page.locator('main button', { hasText: 'やめる' }).first().click();
+    await page.waitForTimeout(300);
+    chk('やめれば何も起きない',
+      !(await page.evaluate(() => /引き戻します/.test(document.body.innerText))));
+  }
 
   // 「入庫する」を押すと置場を選ぶ欄が出る
   await page.locator('button', { hasText: '入庫する' }).first().click();

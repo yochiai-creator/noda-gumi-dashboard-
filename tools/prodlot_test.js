@@ -73,7 +73,7 @@ function build(lotRows, locations, ranges) {
 const lotRow = (o) => {
   const r = new Array(H.length).fill('');
   const set = (k, v) => { r[H.indexOf(k)] = v; };
-  set('ロットID', o.id); set('生産日', o.生産日 || '2026-09-17'); set('サイズ', o.サイズ || '50kg');
+  set('ロットID', o.id); set('生産日', o.生産日 || '2026-09-17'); set('サイズ', o.サイズ === undefined ? '50kg' : o.サイズ);   // '' も渡せる（置場に列が無いサイズ）
   set('機種コード', o.機種コード || '123'); set('機種名', o.機種名 || '新軽量１１８Ｌ（５０ｋｇ）ＬＰガス容器');
   set('容器接頭辞', o.pre || 'HEP'); set('容器No開始', o.a); set('容器No終了', o.b);
   set('本数', o.本数); set('状態', o.状態 || '未受検'); set('出荷済本数', o.出荷済 || 0);
@@ -231,6 +231,49 @@ console.log('■ 状態ごとの本数');
   chk('入庫済', t.入庫済 === 80, t);
   chk('★状態でしぼれる', s.getProdLots('入庫済', 0).lots.length === 1);
   chk('しぼっても合計は全部ぶん', s.getProdLots('入庫済', 0).totals.未受検 === 100);
+}
+
+console.log('■ 打ち間違えたロットの取消');
+{
+  // 入庫済を取り消すと、置場に足したぶんが戻る
+  let s = build([lotRow({ id: 'L1', a: '1', b: '600', 本数: 600, 状態: '入庫済',
+                          置場番号: 7, 置場名: '大型製缶' })], [loc({ a50: 600 })], []);
+  let r = s.cancelProdLot('L1', '番号の打ち間違い');
+  chk('取り消せる', r.ok === true, r);
+  chk('★置場から引き戻す', s.__locs[0].a50 === 0, s.__locs[0]);
+  chk('戻した本数を返す', r.戻した本数 === 600, r);
+  chk('★行は消さずに残す', s.__rows.length === 1);
+  chk('状態は取消', s.getProdLots('取消', 0).lots[0].状態 === '取消');
+  chk('★既定の一覧には出さない', s.getProdLots('', 0).lots.length === 0);
+  chk('合計にも数えない', s.getProdLots('', 0).totals.入庫済 === 0);
+  chk('件数にも数えない', s.getProdLots('', 0).totals.件数 === 0);
+  chk('理由を備考に残す', s.getProdLots('取消', 0).lots[0].備考.indexOf('番号の打ち間違い') >= 0);
+  chk('二度は取り消せない', s.cancelProdLot('L1').ok === false);
+
+  // 取り消した番号はもう一度使える
+  chk('★取り消した番号は登録しなおせる',
+    s.addProdLot({ 生産日: '2026-09-17', 機種コード: '123', 接頭辞: 'HEP',
+                   開始: '1', 終了: '600' }).ok === true);
+
+  // 未受検なら置場には何もしない
+  s = build([lotRow({ id: 'L2', a: '1', b: '10', 本数: 10, 状態: '未受検' })], [loc({ a50: 99 })], []);
+  chk('未受検でも取り消せる', s.cancelProdLot('L2').ok === true);
+  chk('置場は触らない', s.__locs[0].a50 === 99 && s.__yardCalls.length === 0);
+
+  // 出荷済ぶんがあるロットは取り消さない
+  s = build([lotRow({ id: 'L3', a: '1', b: '10', 本数: 10, 状態: '入庫済', 出荷済: 4,
+                      置場番号: 7, 置場名: 'x' })], [loc({ a50: 6 })], []);
+  r = s.cancelProdLot('L3');
+  chk('★出荷済ぶんがあれば断る', r.ok === false, r);
+  chk('置場は動かさない', s.__locs[0].a50 === 6);
+
+  // 置場に列が無いサイズ（10K）は置場を触らない
+  s = build([lotRow({ id: 'L4', a: '1', b: '10', 本数: 10, サイズ: '', 機種コード: '113',
+                      状態: '入庫済', 置場番号: 7, 置場名: 'x' })], [loc({ a50: 5 })], []);
+  chk('列が無いサイズでも取り消せる', s.cancelProdLot('L4').ok === true);
+  chk('置場は触らない', s.__yardCalls.length === 0);
+
+  chk('無いロットは断る', build([], [], []).cancelProdLot('X').ok === false);
 }
 
 console.log('■ 見比べ（照合が0本のとき理由を言い分ける）');
