@@ -304,6 +304,15 @@ function harvestDailyData() {
   //   5分を越えないところで打ち切る（途中で切られるより自分で止める）。
   var left = function () { return 5 * 60 * 1000 - (Date.now() - dailyStarted); };
 
+  /* 生産ロットを指図書と突き合わせて、出た分を置場から引く。
+     ★ 置場の日次記録より先にやる。後にすると、引く前の数字を推移に残してしまう。 */
+  try {
+    out.lotMatch = matchProdLotsWithOrders();
+  } catch (err) {
+    out.lotMatch = { error: String(err) };
+    Logger.log('生産ロットの照合で例外: ' + String(err));
+  }
+
   // 野外置場の今日ぶんの合計を1行だけ貯める（推移グラフ用）。シート1枚読むだけ。
   try {
     out.yardDaily = harvestYardDailyTotals();
@@ -1106,7 +1115,10 @@ var SHIPACT_INDEX_MEMO_ = null;
 
 function shipact_index_() {
   if (SHIPACT_INDEX_MEMO_) return SHIPACT_INDEX_MEMO_;
-  var idx = { byOrder: {}, byDate: {}, addrByCode: {}, rows: 0, error: null };
+  /* ★ ranges は「依頼No_枝番」ごとに1件。byOrder は依頼Noで1件にまとめるので、
+       枝番が複数ある指図書の容器Noレンジが落ちてしまう。
+       生産ロットとの突き合わせは全レンジが要るので、別に持つ。 */
+  var idx = { byOrder: {}, byDate: {}, addrByCode: {}, ranges: [], rows: 0, error: null };
   try {
     var sheet = shipact_getSheet_();
     var last = sheet.getLastRow();
@@ -1128,7 +1140,11 @@ function shipact_index_() {
           date: shipact_dateKey_(r[H['出荷希望日']]),
           code: r[H['出荷先コード']] ? String(r[H['出荷先コード']]) : '',
           size: String(r[H['サイズ']] || ''),
-          qty: Number(r[H['数量']]) || 0
+          qty: Number(r[H['数量']]) || 0,
+          // 生産ロットとの突き合わせに使う容器Noのレンジ
+          prefix: String(r[H['容器接頭辞']] || '').toUpperCase(),
+          cnoStart: r[H['容器No開始']] === '' ? null : Number(r[H['容器No開始']]),
+          cnoEnd: r[H['容器No終了']] === '' ? null : Number(r[H['容器No終了']])
         };
         var code = best[key].code;
         var city = String(r[H['市区町村']] || '').trim();
@@ -1139,6 +1155,9 @@ function shipact_index_() {
       Object.keys(best).forEach(function (k) {
         var e = best[k];
         idx.rows++;
+        if (e.prefix && e.cnoStart != null && e.cnoEnd != null) {
+          idx.ranges.push({ no: e.no, prefix: e.prefix, a: e.cnoStart, b: e.cnoEnd, date: e.date });
+        }
         // 依頼Noは年度付き（26-10660）で入っている。年度を外した形でも引けるようにする。
         shipact_putOrder_(idx.byOrder, e.no, e);
         var bare = e.no.replace(/^\d{2}-/, '');

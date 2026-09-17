@@ -300,6 +300,196 @@ function ArmPlan({ plan }) {
   );
 }
 
+/* ---------- 生産の流れ（未受検 → 受検済 → 入庫済 → 出荷済） ---------- */
+/* ★ 出荷は人が押さない。指図書の容器Noと突き合わせて自動で引く。
+     押し忘れで数字がずれるのを防ぐため（落合さんの指示）。 */
+const LOT_TONE = {
+  未受検: { bg: "#fef3c7", fg: "#b45309" },
+  受検済: { bg: "#dbeafe", fg: "#1d4ed8" },
+  入庫済: { bg: "#dcfce7", fg: "#15803d" },
+  出荷済: { bg: "#f1f5f9", fg: "#64748b" },
+};
+
+function ProdLotCard({ data, locations, onAdd, onInspect, onStockIn, saving }) {
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState(null);
+  const [pickFor, setPickFor] = useState(null);   // 入庫先を選んでいるロット
+  const [filter, setFilter] = useState("");
+
+  const lots = (data && data.lots) || [];
+  const t = (data && data.totals) || null;
+  const today = (() => {
+    const d = new Date(), p = (n) => (n < 10 ? "0" + n : String(n));
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  })();
+
+  const openAdd = () => {
+    setForm({ 生産日: today, サイズ: "50kg", 接頭辞: "", 開始: "", 終了: "", 備考: "" });
+    setAdding(true);
+  };
+  // 本数はここでも見せる。登録してから違うと気づくのは遅い
+  const count = (() => {
+    if (!form) return null;
+    const a = Number(form.開始), b = Number(form.終了);
+    if (!form.開始 || !form.終了 || isNaN(a) || isNaN(b) || b < a) return null;
+    return b - a + 1;
+  })();
+
+  const shown = filter ? lots.filter((l) => l.状態 === filter) : lots;
+
+  return (
+    <div>
+      {/* 状態ごとの本数。ここが「流れ」の全体像 */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {[["未受検", t && t.未受検], ["受検済", t && t.受検済], ["入庫済", t && t.入庫済],
+          ["出荷済", t && t.出荷済今月]].map(([k, v]) => (
+          <button key={k} onClick={() => setFilter(filter === k ? "" : k)}
+            className="px-2 py-1 rounded-md text-left"
+            style={{ background: filter === k ? LOT_TONE[k].fg : LOT_TONE[k].bg, border: "none" }}>
+            <span className="block text-[10px]"
+              style={{ color: filter === k ? "#fff" : LOT_TONE[k].fg }}>
+              {k === "出荷済" ? "今月 出荷済" : k === "受検済" ? "受検済・未入庫" : k}
+            </span>
+            <span className="block text-[15px] font-bold tabular-nums"
+              style={{ color: filter === k ? "#fff" : LOT_TONE[k].fg }}>
+              {v == null ? "—" : vizComma(v)}<span className="text-[10px] font-normal"> 本</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {!adding ? (
+        <button onClick={openAdd}
+          className="px-3 py-1.5 rounded-md text-xs font-semibold text-white mb-2"
+          style={{ background: NAVY }}>＋ 当日の生産を登録</button>
+      ) : (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-2 mb-2">
+          {/* ★ 390px では「生産日＋サイズ3つ」が1行に入らない（実測で426pxになった）。
+                 折り返す。 */}
+          <span className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>生産日</span>
+            <input value={form.生産日} onChange={(e) => setForm({ ...form, 生産日: e.target.value })}
+              className="w-28 px-2 py-1 rounded-md border border-slate-200 text-xs tabular-nums" />
+            {["20kg", "30kg", "50kg"].map((sz) => (
+              <button key={sz} onClick={() => setForm({ ...form, サイズ: sz })}
+                className="px-2 py-1 rounded-md text-[11px] font-semibold"
+                style={form.サイズ === sz ? { background: NAVY, color: "#fff" }
+                  : { background: "#e2e8f0", color: VIZ.ink2 }}>{sz}</button>
+            ))}
+          </span>
+          <span className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>容器No</span>
+            <input value={form.接頭辞} placeholder="HEP" inputMode="text"
+              onChange={(e) => setForm({ ...form, 接頭辞: e.target.value })}
+              className="w-14 px-2 py-1 rounded-md border border-slate-200 text-sm" />
+            <input value={form.開始} placeholder="54401" inputMode="numeric"
+              onChange={(e) => setForm({ ...form, 開始: e.target.value })}
+              className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
+            <span className="text-[11px]" style={{ color: VIZ.muted }}>〜</span>
+            <input value={form.終了} placeholder="54480" inputMode="numeric"
+              onChange={(e) => setForm({ ...form, 終了: e.target.value })}
+              className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
+          </span>
+          {/* ★ 本数は番号から数える。人に数えさせると必ずずれる */}
+          <span className="block text-[11px] mb-1.5" style={{ color: count == null ? VIZ.muted : VIZ.ink }}>
+            {count == null ? "番号を入れると本数が出ます" : "本数 " + vizComma(count) + " 本"}
+          </span>
+          <span className="flex items-center gap-2">
+            <button disabled={saving || count == null}
+              onClick={() => onAdd(form, () => { setAdding(false); setForm(null); })}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+              style={{ background: NAVY, opacity: saving || count == null ? 0.5 : 1 }}>
+              {saving ? "登録中…" : "登録"}
+            </button>
+            <button onClick={() => { setAdding(false); setForm(null); }}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-200"
+              style={{ color: VIZ.ink2 }}>やめる</button>
+          </span>
+        </div>
+      )}
+
+      {data && data.error && (
+        <p className="text-xs text-amber-700 py-1">{data.error}</p>
+      )}
+      {lots.length === 0 ? (
+        <p className="text-xs text-slate-500 py-2">まだ登録がありません。</p>
+      ) : shown.length === 0 ? (
+        <p className="text-xs text-slate-500 py-2">「{filter}」のロットはありません。</p>
+      ) : (
+        <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+          {shown.slice(0, 40).map((l) => {
+            const tone = LOT_TONE[l.状態] || LOT_TONE.未受検;
+            const nokori = l.本数 - l.出荷済本数;
+            return (
+              <div key={l.ロットID} className="px-3 py-2">
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[10px] px-1 rounded shrink-0"
+                    style={{ background: tone.bg, color: tone.fg }}>{l.状態}</span>
+                  <span className="text-[13px] font-semibold" style={{ color: VIZ.ink }}>{l.サイズ}</span>
+                  <span className="text-[13px] tabular-nums" style={{ color: VIZ.ink }}>
+                    {vizComma(nokori)}<span className="text-[10px]"> 本</span>
+                  </span>
+                  {l.出荷済本数 > 0 && l.状態 !== "出荷済" && (
+                    <span className="text-[10px]" style={{ color: VIZ.muted }}>
+                      （{vizComma(l.出荷済本数)}本 出荷済）
+                    </span>
+                  )}
+                  <span className="text-[10px] ml-auto shrink-0" style={{ color: VIZ.muted }}>{l.生産日}</span>
+                </span>
+                <span className="block text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>
+                  {l.容器接頭辞}{l.容器No開始}〜{l.容器接頭辞}{l.容器No終了}
+                </span>
+                <span className="block text-[10px]" style={{ color: VIZ.muted }}>
+                  {l.置場名 ? "置場 " + l.置場名 + "（" + l.置場番号 + "）" : ""}
+                  {l.依頼No ? "　指図書 " + l.依頼No : ""}
+                  {l.出荷日 ? "　" + l.出荷日 + " 出荷" : ""}
+                </span>
+
+                {l.状態 === "未受検" && (
+                  <button disabled={saving} onClick={() => onInspect(l.ロットID)}
+                    className="mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white"
+                    style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>受検OK</button>
+                )}
+                {l.状態 === "受検済" && (
+                  pickFor === l.ロットID ? (
+                    <span className="block mt-1">
+                      <span className="block text-[10px] mb-1" style={{ color: VIZ.ink2 }}>
+                        どの置場に入れますか
+                      </span>
+                      <span className="flex flex-wrap gap-1">
+                        {locations.map((loc) => (
+                          <button key={loc.no} disabled={saving}
+                            onClick={() => onStockIn(l.ロットID, loc.no, () => setPickFor(null))}
+                            className="px-2 py-1 rounded-md text-[11px] bg-slate-100"
+                            style={{ color: VIZ.ink2 }}>
+                            {loc.no} {loc.name}
+                          </button>
+                        ))}
+                        <button onClick={() => setPickFor(null)}
+                          className="px-2 py-1 rounded-md text-[11px] bg-slate-200"
+                          style={{ color: VIZ.ink2 }}>やめる</button>
+                      </span>
+                    </span>
+                  ) : (
+                    <button onClick={() => setPickFor(l.ロットID)}
+                      className="mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white"
+                      style={{ background: NAVY }}>入庫する</button>
+                  )
+                )}
+                {l.状態 === "入庫済" && (
+                  <span className="block text-[10px] mt-0.5" style={{ color: VIZ.muted }}>
+                    指図書が出たら自動で引かれます
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- タブ本体 ---------- */
 /* アームは容器とは別の製品なので、配車と混ぜずに独立したタブにしてある。 */
 function ArmTab({ plan }) {
@@ -2512,7 +2702,8 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
     中身は47KBの独自UI（敷地レイアウト図・建物編集・変更履歴）なので、Reactに
     書き直さずそのまま iframe で読み込む。旧アプリ側も setXFrameOptionsMode(ALLOWALL)
     が入っていて、もともと埋め込む前提で書かれていた。 */
-function YardCapacityTab({ summary, data, daily, log, url, onSave, onRefresh, saving }) {
+function YardCapacityTab({ summary, data, daily, log, lotData, url, onSave, onRefresh,
+                          onAddLot, onInspectLot, onStockInLot, saving }) {
   const [keyword, setKeyword] = useState("");
   const [onlyNearFull, setOnlyNearFull] = useState(false);
   const [sortBy, setSortBy] = useState("no");     // "no" | "rate"
@@ -2558,6 +2749,18 @@ function YardCapacityTab({ summary, data, daily, log, url, onSave, onRefresh, sa
           <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2">読み込めませんでした：{err}</p>
         </Card>
       )}
+
+      {/* ---- 生産の流れ。作った→検査→入庫→出荷 ---- */}
+      <Card className="p-3">
+        <Collapsible tone="card" title="生産の流れ"
+          note="作った → 受検 → 入庫 → 指図書で自動的に出荷"
+          closedNote={lotData && lotData.totals
+            ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済)
+            : ""}>
+          <ProdLotCard data={lotData} locations={list} onAdd={onAddLot}
+            onInspect={onInspectLot} onStockIn={onStockInLot} saving={saving} />
+        </Collapsible>
+      </Card>
 
       {/* ---- 置場の一覧。ここで本数を直す ---- */}
       <Card className="p-3">
@@ -3005,7 +3208,38 @@ export default function App() {
       .withSuccessHandler((d) => setLive((prev) => ({ ...prev, yardLog: d })))
       .withFailureHandler((err) => setLive((prev) => ({ ...prev, yardLog: { error: String(err) } })))
       .getYardChangeLog("", 60);
+    google.script.run
+      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, lots: d })))
+      .withFailureHandler((err) => setLive((prev) => ({ ...prev, lots: { error: String(err) } })))
+      .getProdLots("", 60);
   };
+
+  /* 生産の流れ（登録・受検・入庫）。
+     ★ どれも保存できたらサーバから取り直す。入庫は置場の実績数も動かすので、
+       置場の一覧とKPIも一緒に取り直す（画面だけ書き換えると食い違う）。 */
+  const runLotAction = (invoke, done) => {
+    if (!isGasEnv) return;
+    setYardSaving(true);
+    /* ★ ハンドラを付けてから呼ぶ。google.script.run は呼ぶたびに別の
+         入れものを返すので、先にメソッドを呼ぶと結果を受け取れない。 */
+    invoke(google.script.run
+      .withSuccessHandler((r) => {
+        setYardSaving(false);
+        if (r && r.ok === false) { window.alert(r.error || "できませんでした"); return; }
+        if (done) done();
+        fetchYardTab();
+        google.script.run
+          .withSuccessHandler((yc) => setLive((prev) => ({ ...prev, yardCap: yc })))
+          .withFailureHandler(() => {})
+          .getYardCapacitySummary();
+      })
+      .withFailureHandler((err) => { setYardSaving(false); window.alert(String(err)); }));
+  };
+  const addLot = (form, done) => runLotAction((run) => run.addProdLot({
+    生産日: form.生産日, サイズ: form.サイズ, 接頭辞: form.接頭辞,
+    開始: form.開始, 終了: form.終了, 備考: form.備考 }), done);
+  const inspectLot = (id) => runLotAction((run) => run.markLotInspected(id));
+  const stockInLot = (id, no, done) => runLotAction((run) => run.stockInLot(id, no), done);
 
   /* 本数を直して保存する。
      ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存
@@ -3383,8 +3617,10 @@ export default function App() {
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
           {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} data={live.yardTab}
-            daily={live.yardDaily} log={live.yardLog} url={live.yardCapUrl}
-            onSave={saveYardCount} onRefresh={fetchYardTab} saving={yardSaving} />}
+            daily={live.yardDaily} log={live.yardLog} lotData={live.lots} url={live.yardCapUrl}
+            onSave={saveYardCount} onRefresh={fetchYardTab}
+            onAddLot={addLot} onInspectLot={inspectLot} onStockInLot={stockInLot}
+            saving={yardSaving} />}
         </div>
 
         <p className="text-center text-[10px] text-slate-400 pt-2">

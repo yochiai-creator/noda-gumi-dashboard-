@@ -95,7 +95,7 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .gap-x-2{column-gap:.5rem}
 .mr-1{margin-right:.25rem}
 .mr-2{margin-right:.5rem}
-.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
+.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.p-2{padding:.5rem}.w-28{width:7rem}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
 </style>
 <script>
 /**
@@ -1068,6 +1068,290 @@ function ArmPlan({
         color: VIZ.muted
       }
     }, r.zu, r.spec ? "　" + r.spec : "", r.insp ? "　検査 " + r.insp : "　検査まだ")))));
+  })));
+}
+
+/* ---------- 生産の流れ（未受検 → 受検済 → 入庫済 → 出荷済） ---------- */
+/* ★ 出荷は人が押さない。指図書の容器Noと突き合わせて自動で引く。
+     押し忘れで数字がずれるのを防ぐため（落合さんの指示）。 */
+const LOT_TONE = {
+  未受検: {
+    bg: "#fef3c7",
+    fg: "#b45309"
+  },
+  受検済: {
+    bg: "#dbeafe",
+    fg: "#1d4ed8"
+  },
+  入庫済: {
+    bg: "#dcfce7",
+    fg: "#15803d"
+  },
+  出荷済: {
+    bg: "#f1f5f9",
+    fg: "#64748b"
+  }
+};
+function ProdLotCard({
+  data,
+  locations,
+  onAdd,
+  onInspect,
+  onStockIn,
+  saving
+}) {
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState(null);
+  const [pickFor, setPickFor] = useState(null); // 入庫先を選んでいるロット
+  const [filter, setFilter] = useState("");
+  const lots = data && data.lots || [];
+  const t = data && data.totals || null;
+  const today = (() => {
+    const d = new Date(),
+      p = n => n < 10 ? "0" + n : String(n);
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  })();
+  const openAdd = () => {
+    setForm({
+      生産日: today,
+      サイズ: "50kg",
+      接頭辞: "",
+      開始: "",
+      終了: "",
+      備考: ""
+    });
+    setAdding(true);
+  };
+  // 本数はここでも見せる。登録してから違うと気づくのは遅い
+  const count = (() => {
+    if (!form) return null;
+    const a = Number(form.開始),
+      b = Number(form.終了);
+    if (!form.開始 || !form.終了 || isNaN(a) || isNaN(b) || b < a) return null;
+    return b - a + 1;
+  })();
+  const shown = filter ? lots.filter(l => l.状態 === filter) : lots;
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-1.5 mb-2"
+  }, [["未受検", t && t.未受検], ["受検済", t && t.受検済], ["入庫済", t && t.入庫済], ["出荷済", t && t.出荷済今月]].map(([k, v]) => /*#__PURE__*/React.createElement("button", {
+    key: k,
+    onClick: () => setFilter(filter === k ? "" : k),
+    className: "px-2 py-1 rounded-md text-left",
+    style: {
+      background: filter === k ? LOT_TONE[k].fg : LOT_TONE[k].bg,
+      border: "none"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "block text-[10px]",
+    style: {
+      color: filter === k ? "#fff" : LOT_TONE[k].fg
+    }
+  }, k === "出荷済" ? "今月 出荷済" : k === "受検済" ? "受検済・未入庫" : k), /*#__PURE__*/React.createElement("span", {
+    className: "block text-[15px] font-bold tabular-nums",
+    style: {
+      color: filter === k ? "#fff" : LOT_TONE[k].fg
+    }
+  }, v == null ? "—" : vizComma(v), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] font-normal"
+  }, " \u672C"))))), !adding ? /*#__PURE__*/React.createElement("button", {
+    onClick: openAdd,
+    className: "px-3 py-1.5 rounded-md text-xs font-semibold text-white mb-2",
+    style: {
+      background: NAVY
+    }
+  }, "\uFF0B \u5F53\u65E5\u306E\u751F\u7523\u3092\u767B\u9332") : /*#__PURE__*/React.createElement("div", {
+    className: "rounded-md border border-slate-200 bg-slate-50 p-2 mb-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "flex flex-wrap items-center gap-2 mb-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] w-12 shrink-0",
+    style: {
+      color: VIZ.ink2
+    }
+  }, "\u751F\u7523\u65E5"), /*#__PURE__*/React.createElement("input", {
+    value: form.生産日,
+    onChange: e => setForm({
+      ...form,
+      生産日: e.target.value
+    }),
+    className: "w-28 px-2 py-1 rounded-md border border-slate-200 text-xs tabular-nums"
+  }), ["20kg", "30kg", "50kg"].map(sz => /*#__PURE__*/React.createElement("button", {
+    key: sz,
+    onClick: () => setForm({
+      ...form,
+      サイズ: sz
+    }),
+    className: "px-2 py-1 rounded-md text-[11px] font-semibold",
+    style: form.サイズ === sz ? {
+      background: NAVY,
+      color: "#fff"
+    } : {
+      background: "#e2e8f0",
+      color: VIZ.ink2
+    }
+  }, sz))), /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-1.5 mb-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] w-12 shrink-0",
+    style: {
+      color: VIZ.ink2
+    }
+  }, "\u5BB9\u5668No"), /*#__PURE__*/React.createElement("input", {
+    value: form.接頭辞,
+    placeholder: "HEP",
+    inputMode: "text",
+    onChange: e => setForm({
+      ...form,
+      接頭辞: e.target.value
+    }),
+    className: "w-14 px-2 py-1 rounded-md border border-slate-200 text-sm"
+  }), /*#__PURE__*/React.createElement("input", {
+    value: form.開始,
+    placeholder: "54401",
+    inputMode: "numeric",
+    onChange: e => setForm({
+      ...form,
+      開始: e.target.value
+    }),
+    className: "w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px]",
+    style: {
+      color: VIZ.muted
+    }
+  }, "\u301C"), /*#__PURE__*/React.createElement("input", {
+    value: form.終了,
+    placeholder: "54480",
+    inputMode: "numeric",
+    onChange: e => setForm({
+      ...form,
+      終了: e.target.value
+    }),
+    className: "w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums"
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "block text-[11px] mb-1.5",
+    style: {
+      color: count == null ? VIZ.muted : VIZ.ink
+    }
+  }, count == null ? "番号を入れると本数が出ます" : "本数 " + vizComma(count) + " 本"), /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    disabled: saving || count == null,
+    onClick: () => onAdd(form, () => {
+      setAdding(false);
+      setForm(null);
+    }),
+    className: "px-3 py-1.5 rounded-md text-xs font-semibold text-white",
+    style: {
+      background: NAVY,
+      opacity: saving || count == null ? 0.5 : 1
+    }
+  }, saving ? "登録中…" : "登録"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setAdding(false);
+      setForm(null);
+    },
+    className: "px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-200",
+    style: {
+      color: VIZ.ink2
+    }
+  }, "\u3084\u3081\u308B"))), data && data.error && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-amber-700 py-1"
+  }, data.error), lots.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u307E\u3060\u767B\u9332\u304C\u3042\u308A\u307E\u305B\u3093\u3002") : shown.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u300C", filter, "\u300D\u306E\u30ED\u30C3\u30C8\u306F\u3042\u308A\u307E\u305B\u3093\u3002") : /*#__PURE__*/React.createElement("div", {
+    className: "divide-y divide-slate-100 rounded-md border border-slate-200"
+  }, shown.slice(0, 40).map(l => {
+    const tone = LOT_TONE[l.状態] || LOT_TONE.未受検;
+    const nokori = l.本数 - l.出荷済本数;
+    return /*#__PURE__*/React.createElement("div", {
+      key: l.ロットID,
+      className: "px-3 py-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex items-baseline gap-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] px-1 rounded shrink-0",
+      style: {
+        background: tone.bg,
+        color: tone.fg
+      }
+    }, l.状態), /*#__PURE__*/React.createElement("span", {
+      className: "text-[13px] font-semibold",
+      style: {
+        color: VIZ.ink
+      }
+    }, l.サイズ), /*#__PURE__*/React.createElement("span", {
+      className: "text-[13px] tabular-nums",
+      style: {
+        color: VIZ.ink
+      }
+    }, vizComma(nokori), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px]"
+    }, " \u672C")), l.出荷済本数 > 0 && l.状態 !== "出荷済" && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px]",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\uFF08", vizComma(l.出荷済本数), "\u672C \u51FA\u8377\u6E08\uFF09"), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] ml-auto shrink-0",
+      style: {
+        color: VIZ.muted
+      }
+    }, l.生産日)), /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] tabular-nums",
+      style: {
+        color: VIZ.ink2
+      }
+    }, l.容器接頭辞, l.容器No開始, "\u301C", l.容器接頭辞, l.容器No終了), /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px]",
+      style: {
+        color: VIZ.muted
+      }
+    }, l.置場名 ? "置場 " + l.置場名 + "（" + l.置場番号 + "）" : "", l.依頼No ? "　指図書 " + l.依頼No : "", l.出荷日 ? "　" + l.出荷日 + " 出荷" : ""), l.状態 === "未受検" && /*#__PURE__*/React.createElement("button", {
+      disabled: saving,
+      onClick: () => onInspect(l.ロットID),
+      className: "mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: NAVY,
+        opacity: saving ? 0.5 : 1
+      }
+    }, "\u53D7\u691COK"), l.状態 === "受検済" && (pickFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
+      className: "block mt-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mb-1",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3069\u306E\u7F6E\u5834\u306B\u5165\u308C\u307E\u3059\u304B"), /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap gap-1"
+    }, locations.map(loc => /*#__PURE__*/React.createElement("button", {
+      key: loc.no,
+      disabled: saving,
+      onClick: () => onStockIn(l.ロットID, loc.no, () => setPickFor(null)),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-100",
+      style: {
+        color: VIZ.ink2
+      }
+    }, loc.no, " ", loc.name)), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPickFor(null),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3084\u3081\u308B"))) : /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPickFor(l.ロットID),
+      className: "mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: NAVY
+      }
+    }, "\u5165\u5EAB\u3059\u308B")), l.状態 === "入庫済" && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mt-0.5",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u6307\u56F3\u66F8\u304C\u51FA\u305F\u3089\u81EA\u52D5\u3067\u5F15\u304B\u308C\u307E\u3059"));
   })));
 }
 
@@ -5174,9 +5458,13 @@ function YardCapacityTab({
   data,
   daily,
   log,
+  lotData,
   url,
   onSave,
   onRefresh,
+  onAddLot,
+  onInspectLot,
+  onStockInLot,
   saving
 }) {
   const [keyword, setKeyword] = useState("");
@@ -5238,6 +5526,20 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-red-700 bg-red-50 rounded-md px-3 py-2"
   }, "\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F\uFF1A", err)), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    tone: "card",
+    title: "\u751F\u7523\u306E\u6D41\u308C",
+    note: "\u4F5C\u3063\u305F \u2192 \u53D7\u691C \u2192 \u5165\u5EAB \u2192 \u6307\u56F3\u66F8\u3067\u81EA\u52D5\u7684\u306B\u51FA\u8377",
+    closedNote: lotData && lotData.totals ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済) : ""
+  }, /*#__PURE__*/React.createElement(ProdLotCard, {
+    data: lotData,
+    locations: list,
+    onAdd: onAddLot,
+    onInspect: onInspectLot,
+    onStockIn: onStockInLot,
+    saving: saving
+  }))), /*#__PURE__*/React.createElement(Card, {
     className: "p-3"
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
@@ -5962,7 +6264,52 @@ function App() {
         error: String(err)
       }
     }))).getYardChangeLog("", 60);
+    google.script.run.withSuccessHandler(d => setLive(prev => ({
+      ...prev,
+      lots: d
+    }))).withFailureHandler(err => setLive(prev => ({
+      ...prev,
+      lots: {
+        error: String(err)
+      }
+    }))).getProdLots("", 60);
   };
+
+  /* 生産の流れ（登録・受検・入庫）。
+     ★ どれも保存できたらサーバから取り直す。入庫は置場の実績数も動かすので、
+       置場の一覧とKPIも一緒に取り直す（画面だけ書き換えると食い違う）。 */
+  const runLotAction = (invoke, done) => {
+    if (!isGasEnv) return;
+    setYardSaving(true);
+    /* ★ ハンドラを付けてから呼ぶ。google.script.run は呼ぶたびに別の
+         入れものを返すので、先にメソッドを呼ぶと結果を受け取れない。 */
+    invoke(google.script.run.withSuccessHandler(r => {
+      setYardSaving(false);
+      if (r && r.ok === false) {
+        window.alert(r.error || "できませんでした");
+        return;
+      }
+      if (done) done();
+      fetchYardTab();
+      google.script.run.withSuccessHandler(yc => setLive(prev => ({
+        ...prev,
+        yardCap: yc
+      }))).withFailureHandler(() => {}).getYardCapacitySummary();
+    }).withFailureHandler(err => {
+      setYardSaving(false);
+      window.alert(String(err));
+    }));
+  };
+  const addLot = (form, done) => runLotAction(run => run.addProdLot({
+    生産日: form.生産日,
+    サイズ: form.サイズ,
+    接頭辞: form.接頭辞,
+    開始: form.開始,
+    終了: form.終了,
+    備考: form.備考
+  }), done);
+  const inspectLot = id => runLotAction(run => run.markLotInspected(id));
+  const stockInLot = (id, no, done) => runLotAction(run => run.stockInLot(id, no), done);
 
   /* 本数を直して保存する。
      ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存
@@ -6503,9 +6850,13 @@ function App() {
     data: live.yardTab,
     daily: live.yardDaily,
     log: live.yardLog,
+    lotData: live.lots,
     url: live.yardCapUrl,
     onSave: saveYardCount,
     onRefresh: fetchYardTab,
+    onAddLot: addLot,
+    onInspectLot: inspectLot,
+    onStockInLot: stockInLot,
     saving: yardSaving
   })), /*#__PURE__*/React.createElement("p", {
     className: "text-center text-[10px] text-slate-400 pt-2"

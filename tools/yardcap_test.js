@@ -48,6 +48,26 @@ const REPLY = {
       内容: '20kg_実績: 1500 → 1568' },
   ] }),
   saveYardLocation: () => ({ ok: true, error: null }),
+  // 生産の流れ（未受検 → 受検済 → 入庫済 → 出荷済）
+  getProdLots: () => ({ updated: '2026-09-17 08:00', error: null,
+    totals: { 未受検: 100, 受検済: 50, 入庫済: 80, 出荷済今月: 240, 件数: 4 },
+    lots: [
+      { ロットID: 'L20260917-001', 生産日: '2026-09-17', サイズ: '50kg', 容器接頭辞: 'HEP',
+        容器No開始: '54401', 容器No終了: '54500', 本数: 100, 状態: '未受検', 出荷済本数: 0,
+        置場番号: '', 置場名: '', 依頼No: '', 出荷日: '', 備考: '' },
+      { ロットID: 'L20260916-002', 生産日: '2026-09-16', サイズ: '50kg', 容器接頭辞: 'HEP',
+        容器No開始: '54301', 容器No終了: '54350', 本数: 50, 状態: '受検済', 出荷済本数: 0,
+        置場番号: '', 置場名: '', 依頼No: '', 出荷日: '', 備考: '' },
+      { ロットID: 'L20260915-003', 生産日: '2026-09-15', サイズ: '50kg', 容器接頭辞: 'HEP',
+        容器No開始: '54201', 容器No終了: '54280', 本数: 80, 状態: '入庫済', 出荷済本数: 0,
+        置場番号: '7', 置場名: '大型製缶', 依頼No: '', 出荷日: '', 備考: '' },
+      { ロットID: 'L20260914-004', 生産日: '2026-09-14', サイズ: '50kg', 容器接頭辞: 'HEP',
+        容器No開始: '54101', 容器No終了: '54180', 本数: 80, 状態: '出荷済', 出荷済本数: 80,
+        置場番号: '7', 置場名: '大型製缶', 依頼No: '26-10660', 出荷日: '2026-09-14', 備考: '' },
+    ] }),
+  addProdLot: () => ({ ok: true, error: null, id: 'L20260917-005', 本数: 80 }),
+  markLotInspected: () => ({ ok: true, error: null }),
+  stockInLot: () => ({ ok: true, error: null }),
   getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [], byKind: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
@@ -119,6 +139,45 @@ const REPLY = {
   chk('「元のシートを開く」がある', links.includes('元のシートを開く'), links);
 
   chk('在庫の推移が出る', /在庫の推移/.test(body), body.slice(0, 900));
+
+  /* ---- 生産の流れ ---- */
+  const flow = await page.evaluate(() => {
+    const t = document.body.innerText.replace(/\n/g, ' | ');
+    const btns = [...document.querySelectorAll('main button')].map((b) => b.textContent.trim());
+    return { t, btns };
+  });
+  console.log('   生産の流れ:', JSON.stringify(flow.t.slice(flow.t.indexOf('生産の流れ'),
+    flow.t.indexOf('生産の流れ') + 400)));
+  chk('★生産の流れが出る', /生産の流れ/.test(flow.t), flow.t.slice(0, 200));
+  chk('★状態ごとの本数が出る',
+    /未受検 \| 100/.test(flow.t) && /受検済・未入庫 \| 50/.test(flow.t) &&
+    /入庫済 \| 80/.test(flow.t) && /今月 出荷済 \| 240/.test(flow.t), flow.t.slice(0, 600));
+  chk('容器番号の範囲が出る', /HEP54401〜HEP54500/.test(flow.t), flow.t.slice(0, 800));
+  chk('★未受検には「受検OK」が出る', flow.btns.includes('受検OK'), flow.btns);
+  chk('★受検済には「入庫する」が出る', flow.btns.includes('入庫する'), flow.btns);
+  chk('★入庫済には出荷のボタンを出さない（指図書で自動）',
+    !flow.btns.some((b) => /出した|出荷する/.test(b)) &&
+    /指図書が出たら自動で引かれます/.test(flow.t), flow.btns);
+  chk('出荷済には依頼Noが出る', /26-10660/.test(flow.t), flow.t.slice(0, 900));
+
+  // 「入庫する」を押すと置場を選ぶ欄が出る
+  await page.locator('button', { hasText: '入庫する' }).first().click();
+  await page.waitForTimeout(300);
+  const picks = await page.evaluate(() => [...document.querySelectorAll('main button')]
+    .map((b) => b.textContent.trim()).filter((t) => /^\d+\s/.test(t)));
+  chk('★置場を選べる', picks.length >= 3 && picks.some((p) => /大型製缶/.test(p)), picks);
+
+  // 登録フォーム：番号を入れると本数が出る
+  await page.locator('button', { hasText: '＋ 当日の生産を登録' }).first().click();
+  await page.waitForTimeout(300);
+  // 欄はプレースホルダで選ぶ（並び順で選ぶと、置場を選ぶ欄が開いた分だけずれる）
+  await page.locator('main input[placeholder="HEP"]').fill('HEP');
+  await page.locator('main input[placeholder="54401"]').fill('54401');
+  await page.locator('main input[placeholder="54480"]').fill('54480');
+  await page.waitForTimeout(300);
+  chk('★番号を入れると本数が出る（人に数えさせない）',
+    await page.evaluate(() => /本数 80 本/.test(document.body.innerText)),
+    await page.evaluate(() => document.body.innerText.slice(0, 200)));
   // 開いた行には、その置場だけの履歴が出る
   chk('★開いた置場の履歴がその場で出る',
     await page.evaluate(() => /20kg_実績: 1500 → 1568/.test(document.body.innerText)));
@@ -132,6 +191,20 @@ const REPLY = {
 
   const over = await page.evaluate(() => ({
     bodyScrollW: document.body.scrollWidth, clientW: document.documentElement.clientWidth }));
+  if (over.bodyScrollW > over.clientW + 1) {
+    console.log('   はみ出している要素:', JSON.stringify(await page.evaluate((w) => {
+      const out = [];
+      document.querySelectorAll('main *').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.right > w + 1 && r.width > 0) {
+          out.push({ tag: el.tagName, cls: String(el.className).slice(0, 60),
+            right: Math.round(r.right), w: Math.round(r.width),
+            t: (el.textContent || '').trim().slice(0, 30) });
+        }
+      });
+      return out.slice(0, 6);
+    }, over.clientW)));
+  }
   chk('横にはみ出していない', over.bodyScrollW <= over.clientW + 1, over);
 
   await page.screenshot({ path: SP + '/yardcap_tab.png', fullPage: false });
