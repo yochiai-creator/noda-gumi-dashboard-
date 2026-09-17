@@ -207,7 +207,11 @@ const REPLY = {
   }
   chk('横にはみ出していない', over.bodyScrollW <= over.clientW + 1, over);
 
-  await page.screenshot({ path: SP + '/yardcap_tab.png', fullPage: false });
+  // 「生産の流れ」が見える位置で撮る（一番上）
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: SP + '/yardcap_flow.png', fullPage: false });
+  await page.screenshot({ path: SP + '/yardcap_tab.png', fullPage: true });
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
   await b.close();
   process.exit(fail ? 1 : 0);
