@@ -3143,10 +3143,14 @@ export default function App() {
       .setDispatchCell({ row: e.row, col: e.col, value: e.value });
   };
 
+  /* ★ ここで force を立ててはいけない。週を変えるたびにキャッシュを無視して
+       取り直すことになり、そのたびにシート全体の読み取りと出荷実績の索引作りが
+       走って、切り替えが毎回重かった。鮮度は5分の期限と、セルを書き換えたときの
+       消し込みで足りている（すぐ取り直したいときは更新ボタンが force を立てる）。 */
   const changeGridWeek = (week) => {
     setGridWeek(week);
     setLive((prev) => ({ ...prev, dispGrid: null }));
-    fetchDispatchGrid(week, true);
+    fetchDispatchGrid(week, false);
   };
 
   const fetchLiveData = (force) => {

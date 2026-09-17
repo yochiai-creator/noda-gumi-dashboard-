@@ -146,9 +146,12 @@ const REPLY = {
   const page = await ctx.newPage();
   const data = {}; Object.keys(REPLY).forEach((k) => { data[k] = REPLY[k](); });
   await page.addInitScript((d) => {
+    window.__calls = [];
     function mk() { let ok = null;
       const o = { withSuccessHandler(f) { ok = f; return o; }, withFailureHandler() { return o; } };
-      Object.keys(d).forEach((fn) => { o[fn] = () => { setTimeout(() => { if (ok) ok(d[fn]); }, 0); return o; }; });
+      Object.keys(d).forEach((fn) => { o[fn] = (...a) => {
+        window.__calls.push([fn, ...a]);
+        setTimeout(() => { if (ok) ok(d[fn]); }, 0); return o; }; });
       return o; }
     window.google = { script: { get run() { return mk(); }, host: {} } };
   }, data);
@@ -664,6 +667,27 @@ const REPLY = {
   chk('★実績だけで、どこまでかを書く', armM && /実績のみ（9\/13まで）/.test(armM.本文), armM && armM.本文);
   await page.screenshot({ path: SP + '/arm_monthly.png', fullPage: true });
 
+
+  /* ---- 週の切り替え ---- */
+  // ★ 週を変えるたびに force を立てると、そのたびにシート全体と出荷実績の
+  //   索引を読み直すことになり、切り替えが毎回重かった。
+  await page.locator('button', { hasText: '配車・当日出荷' }).first().click();
+  await page.waitForTimeout(600);
+  await page.evaluate(() => { window.__calls = []; });
+  const nextWeek = page.locator('main button', { hasText: '次の週' }).first();
+  if (await nextWeek.count() > 0 && await nextWeek.isEnabled()) {
+    await nextWeek.click();
+    await page.waitForTimeout(600);
+    const calls = await page.evaluate(() => window.__calls
+      .filter((c) => c[0] === 'getDispatchGridData'));
+    console.log('   週の切り替え:', JSON.stringify(calls));
+    chk('★週を変えると配車グリッドだけ取り直す', calls.length === 1, calls);
+    chk('★force を立てない（立てると毎回シートを読み直して重い）',
+      calls.length === 1 && calls[0][1] === false, calls);
+    chk('次の週を要求する', calls.length === 1 && calls[0][2] === 1, calls);
+  } else {
+    chk('★「次の週」のボタンがある', false, '見つからない/押せない');
+  }
 
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
   await b.close();

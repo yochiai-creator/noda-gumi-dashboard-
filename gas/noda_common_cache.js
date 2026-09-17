@@ -65,6 +65,15 @@ function nc_forget_(name) {
   }
 }
 
+/** まとめて捨てる（1つずつ remove すると呼び出しが増えるため）。 */
+function nc_forgetMany_(names) {
+  try {
+    CacheService.getScriptCache().removeAll((names || []).map(nc_cacheKey_));
+  } catch (err) {
+    Logger.log('キャッシュ削除に失敗(' + (names || []).length + '件): ' + String(err));
+  }
+}
+
 /**
  * producer() の結果をキャッシュ経由で返す。
  * @param {string} name    キャッシュ名（エンジンごとに一意）
@@ -73,49 +82,62 @@ function nc_forget_(name) {
  * @param {function} producer 実際の集計を行う関数
  */
 function nc_cached_(name, force, ttlSec, producer) {
-  var key = nc_cacheKey_(name);
-  var cache = null;
-  try {
-    cache = CacheService.getScriptCache();
-  } catch (err) {
-    // キャッシュが使えない環境でも集計自体は動くようにする
-    Logger.log('CacheService取得エラー(' + name + '): ' + String(err));
+  if (!force) {
+    var hit = nc_peek_(name);
+    if (hit) return hit;
   }
-
-  if (cache && !force) {
-    var hit = null;
-    try { hit = cache.get(key); } catch (err) { hit = null; }
-    if (hit) {
-      try {
-        var cachedObj = JSON.parse(hit);
-        cachedObj.cached = true;
-        return cachedObj;
-      } catch (err) {
-        // 壊れたキャッシュは捨てて取り直す
-        Logger.log('キャッシュのJSON解析に失敗したため取り直します(' + name + ')');
-      }
-    }
-  }
-
   var data = producer();
-
-  // エラー結果はキャッシュしない（次回すぐ再試行できるように）
-  if (cache && data && !data.error) {
-    try {
-      var s = JSON.stringify(data);
-      if (s.length <= NC_CACHE_CONFIG.MAX_BYTES) {
-        cache.put(key, s, ttlSec);
-      } else {
-        Logger.log('キャッシュ保存をスキップ：' + name + ' が ' + s.length +
-                   'バイトで上限(' + NC_CACHE_CONFIG.MAX_BYTES + ')を超過');
-      }
-    } catch (err) {
-      Logger.log('キャッシュ保存エラー(' + name + '): ' + String(err));
-    }
-  }
-
+  nc_put_(name, data, ttlSec);
   if (data) data.cached = false;
   return data;
+}
+
+/**
+ * キャッシュにあれば返す。無ければ null（作りには行かない）。
+ * ★ 1回の読み取りで複数のキーを作りたいとき（配車グリッドの前後の週など）に、
+ *   「もう有るか」を確かめるために要る。
+ */
+function nc_peek_(name) {
+  var cache;
+  try { cache = CacheService.getScriptCache(); } catch (err) {
+    Logger.log('CacheService取得エラー(' + name + '): ' + String(err));
+    return null;
+  }
+  var hit = null;
+  try { hit = cache.get(nc_cacheKey_(name)); } catch (err) { hit = null; }
+  if (!hit) return null;
+  try {
+    var obj = JSON.parse(hit);
+    obj.cached = true;
+    return obj;
+  } catch (err) {
+    // 壊れたキャッシュは捨てて取り直す
+    Logger.log('キャッシュのJSON解析に失敗したため取り直します(' + name + ')');
+    return null;
+  }
+}
+
+/** 作った結果をキャッシュに置く。エラー結果と大きすぎるものは置かない。 */
+function nc_put_(name, data, ttlSec) {
+  if (!data || data.error) return false;   // エラーは次回すぐ再試行できるように残さない
+  var cache;
+  try { cache = CacheService.getScriptCache(); } catch (err) {
+    Logger.log('CacheService取得エラー(' + name + '): ' + String(err));
+    return false;
+  }
+  try {
+    var s = JSON.stringify(data);
+    if (s.length > NC_CACHE_CONFIG.MAX_BYTES) {
+      Logger.log('キャッシュ保存をスキップ：' + name + ' が ' + s.length +
+                 'バイトで上限(' + NC_CACHE_CONFIG.MAX_BYTES + ')を超過');
+      return false;
+    }
+    cache.put(nc_cacheKey_(name), s, ttlSec);
+    return true;
+  } catch (err) {
+    Logger.log('キャッシュ保存エラー(' + name + '): ' + String(err));
+    return false;
+  }
 }
 
 /**

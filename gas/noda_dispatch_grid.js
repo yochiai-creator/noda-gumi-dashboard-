@@ -370,93 +370,142 @@ function dgrid_cellKind_(text) {
 
 // ===== 公開関数：トラック×日付のグリッドを返す（キャッシュ付き） =====
 // weekOffset: 0=今週を含むブロック、-1=前の週、+1=次の週
-function getDispatchGridData(force, weekOffset) {
-  var off = Number(weekOffset) || 0;
-  return nc_cached_('dispatchGrid_' + off, force, 300, function () {
-    return getDispatchGridData_uncached_(off);
-  });
+/**
+ * ★ 週を変えたときが遅かった理由
+ *   週ごとに別キャッシュなので、切り替えるたびにキャッシュ外れになり、
+ *   そのたびに「シート全体の読み取り」と「出荷実績シートの索引作り」を
+ *   まるごとやり直していた。重いのはこの2つで、どちらも週によらず同じ。
+ * ★ 直し方
+ *   1回の読み取りで前後の週まで作ってキャッシュに置く。次に矢印を押した
+ *   ときはキャッシュに当たるので、読み直しが起きない。
+ */
+var DGRID_PREFETCH = 2;    // 要求された週の前後いくつを一緒に作るか
+var DGRID_TTL = 300;
+/* 書き換えたときに消す週の幅。作り置きが前後に伸びるので、
+   矢印で行ける範囲より広めに取る。消し漏れた週が古い数字を出すのが一番まずい。 */
+var DGRID_FORGET_SPAN = 30;
+
+/* 配車グリッドの作り置きを全部捨てる（セルを書き換えた直後に呼ぶ）。 */
+function dgrid_forgetAll_() {
+  var names = [];
+  for (var w = -DGRID_FORGET_SPAN; w <= DGRID_FORGET_SPAN; w++) names.push('dispatchGrid_' + w);
+  nc_forgetMany_(names);
 }
 
-function getDispatchGridData_uncached_(weekOffset) {
-  var data = {
-    updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
-    source: null,        // 'スプレッドシート' か 'Excel'
-    editable: false,     // Excelのままなら編集できない
-    sheetUrl: null,
-    weekOffset: Number(weekOffset) || 0,
-    weekLabel: null,
-    hasPrev: false, hasNext: false,
-    days: [],            // [{ col, date, label, header }]
-    trucks: [],          // [{ row, company, truck, cells: { 列番号: {kind,text} } }]
-    totals: {},          // 日付列 → { 合計20k, 合計50k, 小口, コンテナ }
-    error: null
-  };
-
-  try {
-    var src = dgrid_getSourceSheet_();
-    if (!src.sheet) throw new Error('シート「' + DISP_GRID_CONFIG.SHEET_NAME + '」が読めません');
-    data.source = src.source;
-    data.editable = src.editable;
-    if (src.editable) data.sheetUrl = src.sheet.getParent().getUrl();
-    else data.excelName = src.name;
-
-    var values = src.sheet.getDataRange().getValues();
-    var blocks = dgrid_findBlocks_(values);
-    if (blocks.length === 0) throw new Error('週ブロックが見つかりません');
-
-    // 今日を含むブロックを探す（無ければ今日より後で一番近いブロック）
-    var todayStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
-    var idx = -1;
-    for (var i = 0; i < blocks.length; i++) {
-      var ds = blocks[i].days;
-      if (ds[0].date <= todayStr && todayStr <= ds[ds.length - 1].date) { idx = i; break; }
-    }
-    if (idx < 0) {
-      for (var j = 0; j < blocks.length; j++) {
-        if (blocks[j].days[0].date >= todayStr) { idx = j; break; }
-      }
-    }
-    if (idx < 0) idx = blocks.length - 1;
-
-    idx = Math.min(blocks.length - 1, Math.max(0, idx + data.weekOffset));
-    var block = blocks[idx];
-    data.hasPrev = idx > 0;
-    data.hasNext = idx < blocks.length - 1;
-    data.days = block.days;
-    data.weekLabel = block.days[0].label + '〜' + block.days[block.days.length - 1].label;
-
-    var trucks = dgrid_readTrucks_(values, block);
-    var pdfCache = {};   // 同じ依頼Noを週のあいだで何度も検索しない
-    var shipIndex = shipact_index_();   // 出荷実績シートの索引（1回の実行で使い回す）
-    data.trucks = trucks.map(function (t) {
-      var cells = {};
-      block.days.forEach(function (d) {
-        var row = values[t.row] || [];
-        var k = dgrid_cellKind_(row[d.col]);
-        // ★ その便の本数。行き先が空でも本数だけ入っている行があるので、
-        //   本数があればマスを作る（画面では本数だけ出る）。
-        var q20 = d.q20col == null ? null : dgrid_qty_(row[d.q20col]);
-        var q50 = d.q50col == null ? null : dgrid_qty_(row[d.q50col]);
-        if (k.text || q20 || q50) {
-          var cell = { kind: k.kind, text: k.text, q20: q20, q50: q50 };
-          // マスが依頼ナンバーなら、指図書PDFまで引いておく
-          var orders = dgrid_cellOrders_(k.text, pdfCache, shipIndex);
-          // 行き先が住所だけのマスは、出荷希望日と市区町村から推定する。
-          // 引取（←）は出荷の指図書ではないので住所からは引かない。
-          if (!orders && k.kind === '出荷') orders = dgrid_destOrders_(k.text, d.date, shipIndex);
-          if (orders) cell.orders = orders;
-          cells[d.col] = cell;
-        }
-      });
-      return { row: t.row, company: t.company, truck: t.truck, cells: cells };
-    });
-
-    // その週の本数（既存の日次集計と同じ行を読む）
-    data.totals = dgrid_readTotals_(values, block);
-  } catch (err) {
-    data.error = String(err);
-    Logger.log('配車グリッドの取得でエラー: ' + String(err));
+function getDispatchGridData(force, weekOffset) {
+  var off = Number(weekOffset) || 0;
+  if (!force) {
+    var hit = nc_peek_('dispatchGrid_' + off);
+    if (hit) return hit;
   }
+
+  var ctx;
+  try {
+    ctx = dgrid_context_();
+  } catch (err) {
+    Logger.log('配車グリッドの取得でエラー: ' + String(err));
+    return dgrid_emptyData_(off, String(err));
+  }
+
+  var out = null;
+  for (var d = -DGRID_PREFETCH; d <= DGRID_PREFETCH; d++) {
+    var w = off + d;
+    // 要求された週だけは force を効かせる。ほかは既に有るなら作り直さない
+    if (d !== 0 && nc_peek_('dispatchGrid_' + w)) continue;
+    var one;
+    try {
+      one = dgrid_buildWeek_(ctx, w);
+    } catch (err2) {
+      Logger.log('配車グリッド（' + w + '週）でエラー: ' + String(err2));
+      one = dgrid_emptyData_(w, String(err2));
+    }
+    nc_put_('dispatchGrid_' + w, one, DGRID_TTL);
+    if (d === 0) { one.cached = false; out = one; }
+  }
+  return out;
+}
+
+/* 中身のない返し方をそろえる。画面はこの形だけを見ている。 */
+function dgrid_emptyData_(weekOffset, error) {
+  return {
+    updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
+    source: null, editable: false, sheetUrl: null,
+    weekOffset: Number(weekOffset) || 0, weekLabel: null,
+    hasPrev: false, hasNext: false,
+    days: [], trucks: [], totals: {},
+    error: error || null
+  };
+}
+
+/* 週によらず同じ「重い読み取り」を1回だけやる。 */
+function dgrid_context_() {
+  var src = dgrid_getSourceSheet_();
+  if (!src.sheet) throw new Error('シート「' + DISP_GRID_CONFIG.SHEET_NAME + '」が読めません');
+  var values = src.sheet.getDataRange().getValues();
+  var blocks = dgrid_findBlocks_(values);
+  if (blocks.length === 0) throw new Error('週ブロックが見つかりません');
+  return { src: src, values: values, blocks: blocks,
+           baseIdx: dgrid_todayBlockIndex_(blocks),
+           shipIndex: shipact_index_() };   // 出荷実績シートの索引（全週で使い回す）
+}
+
+/* 今日を含むブロック。無ければ今日より後で一番近いブロック。 */
+function dgrid_todayBlockIndex_(blocks) {
+  var todayStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  for (var i = 0; i < blocks.length; i++) {
+    var ds = blocks[i].days;
+    if (ds[0].date <= todayStr && todayStr <= ds[ds.length - 1].date) return i;
+  }
+  for (var j = 0; j < blocks.length; j++) {
+    if (blocks[j].days[0].date >= todayStr) return j;
+  }
+  return blocks.length - 1;
+}
+
+/* 読み取り済みの値から1週ぶんを組み立てる（シートには触らない）。 */
+function dgrid_buildWeek_(ctx, weekOffset) {
+  var data = dgrid_emptyData_(weekOffset, null);
+  var src = ctx.src, values = ctx.values, blocks = ctx.blocks;
+  data.source = src.source;
+  data.editable = src.editable;
+  if (src.editable) data.sheetUrl = src.sheet.getParent().getUrl();
+  else data.excelName = src.name;
+
+  var idx = Math.min(blocks.length - 1, Math.max(0, ctx.baseIdx + data.weekOffset));
+  var block = blocks[idx];
+  data.hasPrev = idx > 0;
+  data.hasNext = idx < blocks.length - 1;
+  data.days = block.days;
+  data.weekLabel = block.days[0].label + '〜' + block.days[block.days.length - 1].label;
+
+  var trucks = dgrid_readTrucks_(values, block);
+  var pdfCache = {};   // 同じ依頼Noを週のあいだで何度も検索しない
+  var shipIndex = ctx.shipIndex;
+  data.trucks = trucks.map(function (t) {
+    var cells = {};
+    block.days.forEach(function (d) {
+      var row = values[t.row] || [];
+      var k = dgrid_cellKind_(row[d.col]);
+      // ★ その便の本数。行き先が空でも本数だけ入っている行があるので、
+      //   本数があればマスを作る（画面では本数だけ出る）。
+      var q20 = d.q20col == null ? null : dgrid_qty_(row[d.q20col]);
+      var q50 = d.q50col == null ? null : dgrid_qty_(row[d.q50col]);
+      if (k.text || q20 || q50) {
+        var cell = { kind: k.kind, text: k.text, q20: q20, q50: q50 };
+        // マスが依頼ナンバーなら、指図書PDFまで引いておく
+        var orders = dgrid_cellOrders_(k.text, pdfCache, shipIndex);
+        // 行き先が住所だけのマスは、出荷希望日と市区町村から推定する。
+        // 引取（←）は出荷の指図書ではないので住所からは引かない。
+        if (!orders && k.kind === '出荷') orders = dgrid_destOrders_(k.text, d.date, shipIndex);
+        if (orders) cell.orders = orders;
+        cells[d.col] = cell;
+      }
+    });
+    return { row: t.row, company: t.company, truck: t.truck, cells: cells };
+  });
+
+  // その週の本数（既存の日次集計と同じ行を読む）
+  data.totals = dgrid_readTotals_(values, block);
   return data;
 }
 
@@ -539,7 +588,7 @@ function setDispatchCell(req) {
 
     nc_forget_('dispatch');
     nc_forget_('dispatchMonthly');
-    for (var w = -4; w <= 4; w++) nc_forget_('dispatchGrid_' + w);
+    dgrid_forgetAll_();
 
     out.ok = true; out.changed = true; out.before = before; out.after = value;
     out.日付 = day.date; out.トラック = truck.truck;
@@ -572,7 +621,7 @@ function dgrid_appendEditLog_(ss, e) {
 
 // ===== 動作確認 =====
 function testDispatchGrid() {
-  var d = getDispatchGridData_uncached_(0);
+  var d = dgrid_buildWeek_(dgrid_context_(), 0);
   Logger.log('出所: ' + d.source + ' / 編集可: ' + d.editable);
   Logger.log('週: ' + d.weekLabel + '  日数' + d.days.length + '  トラック' + d.trucks.length + '台');
   if (d.error) { Logger.log('エラー: ' + d.error); return d; }
@@ -715,7 +764,7 @@ function 配車表の本物を入れ替える() {
   props.setProperty(DISP_GRID_CONFIG.PROP_BACKUP_ID, cur);
   nc_forget_('dispatch');
   nc_forget_('dispatchMonthly');
-  for (var w = -4; w <= 4; w++) nc_forget_('dispatchGrid_' + w);
+  dgrid_forgetAll_();
 
   Logger.log('入れ替えました。');
   Logger.log('');
