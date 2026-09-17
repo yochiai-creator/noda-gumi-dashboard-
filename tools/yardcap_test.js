@@ -19,6 +19,35 @@ const REPLY = {
     total: 31680, max: 39408, nearFull: 3, over: 1,
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit' }),
   getYardCapacityUrl: () => ({ url: 'https://script.google.com/a/x/exec?page=yard', error: null }),
+  // 野外置場タブ（アプリの中で一覧・編集・履歴・推移をする）
+  getYardTabData: () => ({ updated: '2026-09-17 08:00', error: null,
+    sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit',
+    totals: { a20: 15880, m20: 20000, a30: 0, m30: 0, a50: 15800, m50: 16000,
+      合計: 31680, max: 36000, 置場数: 3, 満杯に近い: 1, 超過: 1 },
+    locations: [
+      { no: 7, name: '大型製缶', position: '北・北', note: '', a20: 0, m20: 0, a30: 0, m30: 0,
+        a50: 2400, m50: 2400, 率: 1, 状態: '超過', updatedAt: '2026-09-16 10:00', updatedBy: 'y@x',
+        sizes: [{ key: '50', label: '50kg', 実績: 2400, max: 2400, 率: 1 }] },
+      { no: 8, name: '大型製缶', position: '北・南', note: '雪置場（▲300）',
+        a20: 0, m20: 0, a30: 0, m30: 0, a50: 1500, m50: 1800, 率: 0.833, 状態: '満杯に近い',
+        updatedAt: '', updatedBy: '',
+        sizes: [{ key: '50', label: '50kg', 実績: 1500, max: 1800, 率: 0.833 }] },
+      { no: 11, name: 'コンテナ', position: '西', note: '', a20: 1568, m20: 1988, a30: 0, m30: 0,
+        a50: 0, m50: 0, 率: 0.789, 状態: '', updatedAt: '', updatedBy: '',
+        sizes: [{ key: '20', label: '20kg', 実績: 1568, max: 1988, 率: 0.789 }] },
+    ] }),
+  getYardDailyTotals: () => ({ error: null, days: [
+    { 日付: '2026-09-14', '20kg': 1500, '30kg': 0, '50kg': 3800, 合計: 5300 },
+    { 日付: '2026-09-15', '20kg': 1540, '30kg': 0, '50kg': 3900, 合計: 5440 },
+    { 日付: '2026-09-16', '20kg': 1568, '30kg': 0, '50kg': 3900, 合計: 5468 },
+  ] }),
+  getYardChangeLog: () => ({ error: null, rows: [
+    { 日時: '2026-09-16 10:00', 操作者: 'y.ochiai@x', no: '7', 置場名: '大型製缶',
+      内容: '50kg_実績: 2300 → 2400' },
+    { 日時: '2026-09-15 09:00', 操作者: 'y.ochiai@x', no: '11', 置場名: 'コンテナ',
+      内容: '20kg_実績: 1500 → 1568' },
+  ] }),
+  saveYardLocation: () => ({ ok: true, error: null }),
   getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [], byKind: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
@@ -59,17 +88,47 @@ const REPLY = {
   chk('KPIに50kg実績が出る', kpi.some((t) => t.includes('15,800')), kpi);
   chk('満杯が1か所として出る', kpi.some((t) => t.includes('満杯の置場') && t.includes('1')), kpi);
 
-  const fr = await page.evaluate(() => { const f = document.querySelector('main iframe');
-    if (!f) return null; const r = f.getBoundingClientRect();
-    return { src: f.getAttribute('src'), w: Math.round(r.width), h: Math.round(r.height) }; });
-  console.log('   iframe:', JSON.stringify(fr));
-  chk('iframeが ?page=yard を読んでいる', fr && /page=yard/.test(fr.src), fr);
-  chk('iframeが画面幅いっぱい', fr && fr.w >= 300, fr);
-  chk('iframeに高さがある', fr && fr.h >= 400, fr);
+  /* ★ もとは元アプリを iframe で埋め込んでいた。入れ子のスクロールで
+        iPhoneでは扱えなかったので、一覧・編集・履歴・推移はアプリ側で作り直した。
+        敷地レイアウト図だけは元のアプリに任せる（リンクで開く）。 */
+  chk('★iframeの埋め込みをやめた',
+    await page.evaluate(() => document.querySelector('main iframe') === null));
+
+  const body = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' | '));
+  chk('置場の一覧が出る', /置場の一覧/.test(body), body.slice(0, 200));
+  chk('置場名と位置が出る', /大型製缶/.test(body) && /北・北/.test(body), body.slice(0, 400));
+  chk('サイズごとに実績とMAXが出る', /2,400 \| \/ 2,400/.test(body), body.slice(0, 600));
+  chk('★詰まっている置場に印が付く', /超過/.test(body) && /満杯に近い/.test(body), body.slice(0, 600));
+
+  // 行をタップすると本数を直す欄が開く
+  await page.locator('button', { hasText: 'コンテナ' }).first().click();
+  await page.waitForTimeout(400);
+  const edit = await page.evaluate(() => {
+    const inputs = [...document.querySelectorAll('main input')]
+      .map((i) => ({ v: i.value, w: Math.round(i.getBoundingClientRect().width) }));
+    return { inputs, 保存: [...document.querySelectorAll('main button')]
+      .some((b) => b.textContent.trim() === '保存') };
+  });
+  console.log('   編集欄:', JSON.stringify(edit));
+  chk('★タップすると今の本数が入った欄が開く',
+    edit.inputs.some((i) => i.v === '1568'), edit.inputs);
+  chk('保存ボタンが出る', edit.保存, edit);
 
   const links = await page.evaluate(() => [...document.querySelectorAll('main a')].map((a) => a.textContent.trim()));
-  chk('「別画面で開く」がある', links.includes('別画面で開く'), links);
+  chk('敷地レイアウト図は元のアプリで開ける', links.includes('敷地レイアウト図を開く'), links);
   chk('「元のシートを開く」がある', links.includes('元のシートを開く'), links);
+
+  chk('在庫の推移が出る', /在庫の推移/.test(body), body.slice(0, 900));
+  // 開いた行には、その置場だけの履歴が出る
+  chk('★開いた置場の履歴がその場で出る',
+    await page.evaluate(() => /20kg_実績: 1500 → 1568/.test(document.body.innerText)));
+
+  // 全体の変更履歴は畳んである。開いたら出る
+  await page.locator('button', { hasText: '変更履歴' }).first().click();
+  await page.waitForTimeout(300);
+  const body2 = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' | '));
+  chk('変更履歴が出る', /50kg_実績: 2300 → 2400/.test(body2), body2.slice(-500));
+  chk('誰が直したかも出る', /y\.ochiai@x/.test(body2), body2.slice(-500));
 
   const over = await page.evaluate(() => ({
     bodyScrollW: document.body.scrollWidth, clientW: document.documentElement.clientWidth }));

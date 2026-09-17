@@ -95,7 +95,7 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .gap-x-2{column-gap:.5rem}
 .mr-1{margin-right:.25rem}
 .mr-2{margin-right:.5rem}
-.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}
+.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
 </style>
 <script>
 /**
@@ -3819,16 +3819,14 @@ function InventoryTrendMini({
     fill: color,
     stroke: VIZ.surface,
     strokeWidth: "2"
-  }), /*#__PURE__*/React.createElement("text", {
+  }), /*#__PURE__*/React.createElement(VizNum, {
     x: xAt(lastI) + 8,
     y: yAt(days[lastI][dataKey]) + 3,
-    fontSize: "9",
-    fontWeight: "700",
+    anchor: "start",
+    text: vizComma(days[lastI][dataKey]),
     fill: VIZ.ink2,
-    style: {
-      fontVariantNumeric: "tabular-nums"
-    }
-  }, vizComma(days[lastI][dataKey])), sel && /*#__PURE__*/React.createElement("circle", {
+    size: 10
+  }), sel && /*#__PURE__*/React.createElement("circle", {
     cx: xAt(pick),
     cy: yAt(sel[dataKey]),
     r: "3.5",
@@ -5173,23 +5171,354 @@ function ActualsTab({
     が入っていて、もともと埋め込む前提で書かれていた。 */
 function YardCapacityTab({
   summary,
+  data,
+  daily,
+  log,
   url,
-  onRefresh
+  onSave,
+  onRefresh,
+  saving
 }) {
-  const err = summary && summary.error || url && url.error || null;
-  const src = url && url.url ? url.url : null;
+  const [keyword, setKeyword] = useState("");
+  const [onlyNearFull, setOnlyNearFull] = useState(false);
+  const [sortBy, setSortBy] = useState("no"); // "no" | "rate"
+  const [openNo, setOpenNo] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [pick, setPick] = useState(null);
+  const err = data && data.error || summary && summary.error || null;
+  const list = data && data.locations || [];
+  const totals = data && data.totals || null;
+  const shown = (() => {
+    const kw = keyword.trim().toLowerCase();
+    let out = list.filter(r => {
+      if (onlyNearFull && !r.状態) return false;
+      if (!kw) return true;
+      return [r.no, r.name, r.position, r.note].join(" ").toLowerCase().indexOf(kw) !== -1;
+    });
+    if (sortBy === "rate") out = out.slice().sort((a, b) => b.率 - a.率);
+    return out;
+  })();
+  const openEdit = r => {
+    if (openNo === r.no) {
+      setOpenNo(null);
+      setDraft(null);
+      return;
+    }
+    setOpenNo(r.no);
+    setDraft({
+      a20: String(r.a20),
+      a30: String(r.a30),
+      a50: String(r.a50),
+      note: r.note
+    });
+  };
+  const save = r => {
+    const num = v => {
+      const n = Number(String(v).replace(/[^\d.-]/g, ""));
+      return isNaN(n) ? 0 : n;
+    };
+    const updates = {
+      a20: num(draft.a20),
+      a30: num(draft.a30),
+      a50: num(draft.a50),
+      note: draft.note
+    };
+    onSave(r.no, updates, () => {
+      setOpenNo(null);
+      setDraft(null);
+    });
+  };
+  const days = daily && daily.days || [];
+  const bounds = days.length > 0 ? vizMonthBounds(days, "日付") : [];
+  const logRows = log && log.rows || [];
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
-  }, /*#__PURE__*/React.createElement(Card, {
-    className: "p-4"
-  }, /*#__PURE__*/React.createElement(SectionTitle, {
-    note: summary ? summary.locations + " か所" : ""
-  }, "\u7F6E\u5834\u5BB9\u91CF\uFF08\u5B9F\u7E3E\u6570 / \u53CE\u5BB9MAX\uFF09"), err && /*#__PURE__*/React.createElement("p", {
-    className: "text-xs text-red-700 bg-red-50 rounded-md px-3 py-2 mb-2"
-  }, "\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F\uFF1A", err), /*#__PURE__*/React.createElement("div", {
+  }, err && /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-red-700 bg-red-50 rounded-md px-3 py-2"
+  }, "\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F\uFF1A", err)), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    tone: "card",
+    title: "\u7F6E\u5834\u306E\u4E00\u89A7",
+    note: totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) : "読み込み中…",
+    closedNote: totals ? totals.置場数 + "か所" : ""
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 mb-2"
+  }, /*#__PURE__*/React.createElement("input", {
+    value: keyword,
+    onChange: e => setKeyword(e.target.value),
+    placeholder: "\u756A\u53F7\u30FB\u7F6E\u5834\u540D\u30FB\u4F4D\u7F6E\u30FB\u5099\u8003",
+    className: "flex-1 min-w-0 px-2 py-1.5 rounded-md border border-slate-200 text-xs"
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setOnlyNearFull(!onlyNearFull),
+    className: "px-2 py-1.5 rounded-md text-[11px] font-semibold shrink-0",
+    style: onlyNearFull ? {
+      background: NAVY,
+      color: "#fff"
+    } : {
+      background: "#f1f5f9",
+      color: VIZ.ink2
+    }
+  }, "\u6E80\u676F\u3061\u304B\u304F"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setSortBy(sortBy === "no" ? "rate" : "no"),
+    className: "px-2 py-1.5 rounded-md text-[11px] font-semibold bg-slate-100 shrink-0",
+    style: {
+      color: VIZ.ink2
+    }
+  }, sortBy === "no" ? "番号順" : "詰まり順")), list.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-400 py-3 text-center"
+  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : shown.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-3 text-center"
+  }, "\u3042\u3066\u306F\u307E\u308B\u7F6E\u5834\u304C\u3042\u308A\u307E\u305B\u3093\u3002") : /*#__PURE__*/React.createElement("div", {
+    className: "divide-y divide-slate-100 rounded-md border border-slate-200"
+  }, shown.map(r => {
+    const open = openNo === r.no;
+    return /*#__PURE__*/React.createElement("div", {
+      key: r.no
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => openEdit(r),
+      className: "w-full text-left px-3 py-2",
+      style: {
+        background: "none",
+        border: "none"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex items-baseline gap-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] tabular-nums shrink-0",
+      style: {
+        color: VIZ.muted
+      }
+    }, r.no), /*#__PURE__*/React.createElement("span", {
+      className: "text-[13px] font-semibold",
+      style: {
+        color: VIZ.ink
+      }
+    }, r.name), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] shrink-0",
+      style: {
+        color: VIZ.muted
+      }
+    }, r.position), r.状態 && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] px-1 rounded shrink-0",
+      style: r.状態 === "超過" ? {
+        background: "#fee2e2",
+        color: "#b91c1c"
+      } : {
+        background: "#fef3c7",
+        color: "#b45309"
+      }
+    }, r.状態), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] ml-auto shrink-0",
+      style: {
+        color: NAVY
+      }
+    }, open ? "▲" : "▼")), /*#__PURE__*/React.createElement("span", {
+      className: "block mt-1"
+    }, r.sizes.length === 0 ? /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px]",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u53CE\u5BB9\u306E\u8A2D\u5B9A\u306A\u3057") : r.sizes.map(sz => /*#__PURE__*/React.createElement("span", {
+      key: sz.key,
+      className: "flex items-center gap-2 mt-0.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] w-10 shrink-0",
+      style: {
+        color: VIZ.ink2
+      }
+    }, sz.label), /*#__PURE__*/React.createElement("span", {
+      className: "text-[12px] tabular-nums shrink-0",
+      style: {
+        color: VIZ.ink
+      }
+    }, vizComma(sz.実績)), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] tabular-nums shrink-0",
+      style: {
+        color: VIZ.muted
+      }
+    }, "/ ", vizComma(sz.max)), /*#__PURE__*/React.createElement("span", {
+      className: "flex-1 h-1.5 rounded-full",
+      style: {
+        background: "#e2e8f0"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "block h-1.5 rounded-full",
+      style: {
+        width: Math.min(100, Math.round((sz.率 || 0) * 100)) + "%",
+        background: (sz.率 || 0) >= 1 ? "#dc2626" : (sz.率 || 0) >= 0.8 ? "#f59e0b" : VIZ.s1
+      }
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] tabular-nums w-9 text-right shrink-0",
+      style: {
+        color: VIZ.muted
+      }
+    }, sz.率 == null ? "—" : Math.round(sz.率 * 100) + "%"))), r.note && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] mt-0.5",
+      style: {
+        color: VIZ.muted
+      }
+    }, r.note))), open && draft && /*#__PURE__*/React.createElement("div", {
+      className: "px-3 pb-3 bg-slate-50"
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "text-[11px] mb-1",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u4ECA\u3042\u308B\u672C\u6570\u3092\u76F4\u3059"), [["20kg", "a20", "m20"], ["30kg", "a30", "m30"], ["50kg", "a50", "m50"]].filter(([,, mk]) => r[mk] > 0 || r[mk.replace("m", "a")] > 0).map(([label, ak, mk]) => /*#__PURE__*/React.createElement("span", {
+      key: ak,
+      className: "flex items-center gap-2 mb-1.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] w-10 shrink-0",
+      style: {
+        color: VIZ.ink2
+      }
+    }, label), /*#__PURE__*/React.createElement("input", {
+      value: draft[ak],
+      inputMode: "numeric",
+      onChange: e => setDraft({
+        ...draft,
+        [ak]: e.target.value
+      }),
+      className: "w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] tabular-nums",
+      style: {
+        color: VIZ.muted
+      }
+    }, "/ ", vizComma(r[mk])))), /*#__PURE__*/React.createElement("span", {
+      className: "flex items-center gap-2 mb-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] w-10 shrink-0",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u5099\u8003"), /*#__PURE__*/React.createElement("input", {
+      value: draft.note,
+      onChange: e => setDraft({
+        ...draft,
+        note: e.target.value
+      }),
+      className: "flex-1 min-w-0 px-2 py-1 rounded-md border border-slate-200 text-xs"
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => save(r),
+      disabled: saving,
+      className: "px-3 py-1.5 rounded-md text-xs font-semibold text-white",
+      style: {
+        background: NAVY,
+        opacity: saving ? 0.5 : 1
+      }
+    }, saving ? "保存中…" : "保存"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        setOpenNo(null);
+        setDraft(null);
+      },
+      className: "px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-200",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3084\u3081\u308B"), r.updatedAt && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] ml-auto",
+      style: {
+        color: VIZ.muted
+      }
+    }, r.updatedAt, " \u66F4\u65B0")), logRows.filter(x => x.no === String(r.no)).slice(0, 5).map((x, i) => /*#__PURE__*/React.createElement("span", {
+      key: i,
+      className: "block text-[10px] mt-1",
+      style: {
+        color: VIZ.muted
+      }
+    }, x.日時, "\u3000", x.内容))));
+  })))), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    tone: "card",
+    title: "\u5728\u5EAB\u306E\u63A8\u79FB",
+    note: days.length > 0 ? days[0].日付 + "〜" : "1日1回ぶんを貯めています",
+    closedNote: days.length > 0 ? days.length + "日ぶん" : ""
+  }, days.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u307E\u3060\u63A8\u79FB\u304C\u8CAF\u307E\u3063\u3066\u3044\u307E\u305B\u3093\u3002\u591C\u306E\u53D6\u8FBC\u30671\u65E51\u884C\u305A\u3064\u6E9C\u307E\u308A\u307E\u3059 \uFF08\u3059\u3050\u59CB\u3081\u305F\u3044\u3068\u304D\u306F \u91CE\u5916\u7F6E\u5834\u306E\u4ECA\u65E5\u3076\u3093\u3092\u8A18\u9332\u3059\u308B \u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\uFF09\u3002") : days.length === 1 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, days[0].日付, " \u306E1\u65E5\u3076\u3093\u3060\u3051\u3067\u3059\uFF08\u5408\u8A08 ", vizComma(days[0].合計), " \u672C\uFF09\u3002 2\u65E5\u76EE\u304B\u3089\u30B0\u30E9\u30D5\u306B\u306A\u308A\u307E\u3059\u3002") : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(InventoryTrendMini, {
+    label: "\u5408\u8A08",
+    color: VIZ.s1,
+    dataKey: "\u5408\u8A08",
+    days: days,
+    bounds: bounds,
+    pick: pick,
+    setPick: setPick
+  }), /*#__PURE__*/React.createElement(InventoryTrendMini, {
+    label: "50kg",
+    color: VIZ.s1,
+    dataKey: "50kg",
+    days: days,
+    bounds: bounds,
+    pick: pick,
+    setPick: setPick
+  }), /*#__PURE__*/React.createElement(InventoryTrendMini, {
+    label: "20kg",
+    color: VIZ.s2,
+    dataKey: "20kg",
+    days: days,
+    bounds: bounds,
+    pick: pick,
+    setPick: setPick,
+    showX: true
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] mt-1",
+    style: {
+      color: VIZ.muted
+    }
+  }, "\u2605 \u7E26\u8EF8\u306F0\u304B\u3089\u59CB\u3081\u3066\u3044\u307E\u305B\u3093\uFF080\u304B\u3089\u3060\u3068\u7DDA\u304C\u5E73\u3089\u306B\u306A\u3063\u3066\u5897\u6E1B\u304C\u8AAD\u3081\u306A\u3044\u305F\u3081\uFF09\u3002")))), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    tone: "card",
+    title: "\u5909\u66F4\u5C65\u6B74",
+    note: "\u8AB0\u304C\u3044\u3064\u76F4\u3057\u305F\u304B",
+    closedNote: logRows.length > 0 ? logRows.length + "件" : "",
+    defaultOpen: false
+  }, logRows.length === 0 ? /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u307E\u3060\u8A18\u9332\u304C\u3042\u308A\u307E\u305B\u3093\u3002") : /*#__PURE__*/React.createElement("div", {
+    className: "divide-y divide-slate-100 rounded-md border border-slate-200"
+  }, logRows.slice(0, 30).map((x, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "px-3 py-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "flex items-baseline gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] tabular-nums shrink-0",
+    style: {
+      color: VIZ.muted
+    }
+  }, x.日時), /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] font-semibold",
+    style: {
+      color: VIZ.ink
+    }
+  }, x.置場名), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] ml-auto truncate shrink-0",
+    style: {
+      color: VIZ.muted,
+      maxWidth: 110
+    }
+  }, x.操作者)), /*#__PURE__*/React.createElement("span", {
+    className: "block text-[11px]",
+    style: {
+      color: VIZ.ink2
+    }
+  }, x.内容)))))), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap items-center gap-2"
-  }, src && /*#__PURE__*/React.createElement("a", {
-    href: src,
+  }, url && url.url && /*#__PURE__*/React.createElement("a", {
+    href: url.url,
     target: "_blank",
     rel: "noopener",
     className: "px-3 py-1.5 rounded-md text-xs font-semibold text-white",
@@ -5197,8 +5526,8 @@ function YardCapacityTab({
       background: NAVY,
       textDecoration: "none"
     }
-  }, "\u5225\u753B\u9762\u3067\u958B\u304F"), summary && summary.sheetUrl && /*#__PURE__*/React.createElement("a", {
-    href: summary.sheetUrl,
+  }, "\u6577\u5730\u30EC\u30A4\u30A2\u30A6\u30C8\u56F3\u3092\u958B\u304F"), data && data.sheetUrl && /*#__PURE__*/React.createElement("a", {
+    href: data.sheetUrl,
     target: "_blank",
     rel: "noopener",
     className: "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100",
@@ -5208,39 +5537,12 @@ function YardCapacityTab({
   }, "\u5143\u306E\u30B7\u30FC\u30C8\u3092\u958B\u304F"), /*#__PURE__*/React.createElement("button", {
     onClick: onRefresh,
     className: "px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100"
-  }, "\u6570\u5B57\u3092\u53D6\u308A\u76F4\u3059"), summary && summary.updated && /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-400 ml-auto"
-  }, summary.updated, " \u6642\u70B9"))), src ?
-  /*#__PURE__*/
-  /* ★ 画面が狭いと入れ子のスクロールがつらいので、高さは広めに取って
-        外側のページを送ってもらう。全画面で使いたいときは上の
-        「別画面で開く」を押す。長いので畳めるようにしてある。 */
-  React.createElement(Card, {
-    className: "p-3"
-  }, /*#__PURE__*/React.createElement(Collapsible, {
-    title: "\u7F6E\u5834\u306E\u4E00\u89A7\u30FB\u6577\u5730\u30EC\u30A4\u30A2\u30A6\u30C8",
-    note: "\u3053\u306E\u4E0B\u306B\u8AAD\u307F\u8FBC\u307F\u307E\u3059",
-    closedNote: summary ? "36か所ぶん" : ""
-  }, /*#__PURE__*/React.createElement("div", {
+  }, "\u53D6\u308A\u76F4\u3059"), data && data.updated && /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] ml-auto",
     style: {
-      overflow: "hidden",
-      borderRadius: 8
+      color: VIZ.muted
     }
-  }, /*#__PURE__*/React.createElement("iframe", {
-    src: src,
-    title: "\u91CE\u5916\u7F6E\u5834 \u5728\u5EAB\u7BA1\u7406",
-    style: {
-      display: "block",
-      width: "100%",
-      height: "78vh",
-      minHeight: 480,
-      border: "none"
-    }
-  })))) : /*#__PURE__*/React.createElement(Card, {
-    className: "p-4"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-xs text-slate-500"
-  }, "GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u3001\u3053\u3053\u306B\u91CE\u5916\u7F6E\u5834\u306E\u5728\u5EAB\u7BA1\u7406\u753B\u9762\u304C\u51FA\u307E\u3059\u3002")));
+  }, data.updated, " \u6642\u70B9"))));
 }
 
 /* ---------- 安全網 ---------- */
@@ -5320,6 +5622,7 @@ function App() {
   // 配車グリッドは週を切り替えるので、ほかの集計とは別に持つ
   const [gridWeek, setGridWeek] = useState(0);
   const [gridSaving, setGridSaving] = useState(false);
+  const [yardSaving, setYardSaving] = useState(false);
   const [yardLive, setYardLive] = useState({
     "50k": {},
     "20k": {}
@@ -5624,11 +5927,77 @@ function App() {
       }
     }).withFailureHandler(() => markLoaded("yardMap")).getYardMapUpdatesBothWithOrderText(q50k, q20k, force === true);
   };
+
+  /* 野外置場タブの中身。
+     ★ 起動時には取らない。置場の一覧・履歴・推移で3回呼ぶことになり、
+       最初の表示がそのぶん遅くなる。このタブを開いたときに取る。
+     ★ キャッシュも付けない。直した直後に古い数字が出ると、
+       直したつもりが直っていないように見えて一番困る。 */
+  const fetchYardTab = () => {
+    if (!isGasEnv) return;
+    google.script.run.withSuccessHandler(d => setLive(prev => ({
+      ...prev,
+      yardTab: d
+    }))).withFailureHandler(err => setLive(prev => ({
+      ...prev,
+      yardTab: {
+        error: String(err)
+      }
+    }))).getYardTabData();
+    google.script.run.withSuccessHandler(d => setLive(prev => ({
+      ...prev,
+      yardDaily: d
+    }))).withFailureHandler(err => setLive(prev => ({
+      ...prev,
+      yardDaily: {
+        error: String(err)
+      }
+    }))).getYardDailyTotals();
+    google.script.run.withSuccessHandler(d => setLive(prev => ({
+      ...prev,
+      yardLog: d
+    }))).withFailureHandler(err => setLive(prev => ({
+      ...prev,
+      yardLog: {
+        error: String(err)
+      }
+    }))).getYardChangeLog("", 60);
+  };
+
+  /* 本数を直して保存する。
+     ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存
+       できていないのに直ったように見える状態を作ってしまう（配車表と同じ考え）。 */
+  const saveYardCount = (no, updates, done) => {
+    if (!isGasEnv) return;
+    setYardSaving(true);
+    google.script.run.withSuccessHandler(r => {
+      setYardSaving(false);
+      if (r && r.error) {
+        window.alert("保存できませんでした：" + r.error);
+        return;
+      }
+      if (done) done();
+      fetchYardTab();
+      // 上のKPI（合計・満杯の置場）も取り直す
+      google.script.run.withSuccessHandler(yc => setLive(prev => ({
+        ...prev,
+        yardCap: yc
+      }))).withFailureHandler(() => {}).getYardCapacitySummary();
+    }).withFailureHandler(err => {
+      setYardSaving(false);
+      window.alert("保存できませんでした：" + String(err));
+    }).saveYardLocation(no, updates);
+  };
   useEffect(() => {
     fetchLiveData();
     const timer = setInterval(() => fetchLiveData(false), 5 * 60 * 1000); // 5分ごとに自動更新（キャッシュ利用）
     return () => clearInterval(timer);
   }, []);
+
+  // 野外置場タブを開いたときに1回だけ取る
+  useEffect(() => {
+    if (tab === "yardcap" && !live.yardTab) fetchYardTab();
+  }, [tab]);
   const dateLabel = now.toLocaleDateString("ja-JP", {
     year: "numeric",
     month: "long",
@@ -6131,8 +6500,13 @@ function App() {
     plan: live.armPlan
   }), tab === "yardcap" && /*#__PURE__*/React.createElement(YardCapacityTab, {
     summary: live.yardCap,
+    data: live.yardTab,
+    daily: live.yardDaily,
+    log: live.yardLog,
     url: live.yardCapUrl,
-    onRefresh: () => fetchLiveData(true)
+    onSave: saveYardCount,
+    onRefresh: fetchYardTab,
+    saving: yardSaving
   })), /*#__PURE__*/React.createElement("p", {
     className: "text-center text-[10px] text-slate-400 pt-2"
   }, "\u203B GAS\u74B0\u5883\u3067\u958B\u304F\u3068\u5404\u30BF\u30D6\u306E\u5B9F\u30C7\u30FC\u30BF\u306F\u6700\u65B0\u306B\u81EA\u52D5\u66F4\u65B0\u3055\u308C\u307E\u3059\uFF085\u5206\u3054\u3068\uFF09\u3002\u30D8\u30C3\u30C0\u30FC\u30FBKPI\u3082\u30BF\u30D6\u3054\u3068\u306B\u5207\u308A\u66FF\u308F\u308A\u307E\u3059\u3002")));

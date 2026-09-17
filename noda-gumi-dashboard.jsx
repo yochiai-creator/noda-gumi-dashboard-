@@ -1383,8 +1383,8 @@ function InventoryTrendMini({ label, color, dataKey, days, bounds, pick, setPick
         fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       <circle cx={xAt(lastI)} cy={yAt(days[lastI][dataKey])} r="4"
         fill={color} stroke={VIZ.surface} strokeWidth="2" />
-      <text x={xAt(lastI) + 8} y={yAt(days[lastI][dataKey]) + 3} fontSize="9" fontWeight="700"
-        fill={VIZ.ink2} style={{ fontVariantNumeric: "tabular-nums" }}>{vizComma(days[lastI][dataKey])}</text>
+      <VizNum x={xAt(lastI) + 8} y={yAt(days[lastI][dataKey]) + 3} anchor="start"
+        text={vizComma(days[lastI][dataKey])} fill={VIZ.ink2} size={10} />
       {sel && <circle cx={xAt(pick)} cy={yAt(sel[dataKey])} r="3.5"
         fill={color} stroke={VIZ.surface} strokeWidth="2" />}
 
@@ -2512,30 +2512,249 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
     中身は47KBの独自UI（敷地レイアウト図・建物編集・変更履歴）なので、Reactに
     書き直さずそのまま iframe で読み込む。旧アプリ側も setXFrameOptionsMode(ALLOWALL)
     が入っていて、もともと埋め込む前提で書かれていた。 */
-function YardCapacityTab({ summary, url, onRefresh }) {
-  const err = (summary && summary.error) || (url && url.error) || null;
-  const src = url && url.url ? url.url : null;
+function YardCapacityTab({ summary, data, daily, log, url, onSave, onRefresh, saving }) {
+  const [keyword, setKeyword] = useState("");
+  const [onlyNearFull, setOnlyNearFull] = useState(false);
+  const [sortBy, setSortBy] = useState("no");     // "no" | "rate"
+  const [openNo, setOpenNo] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [pick, setPick] = useState(null);
+
+  const err = (data && data.error) || (summary && summary.error) || null;
+  const list = (data && data.locations) || [];
+  const totals = (data && data.totals) || null;
+
+  const shown = (() => {
+    const kw = keyword.trim().toLowerCase();
+    let out = list.filter((r) => {
+      if (onlyNearFull && !r.状態) return false;
+      if (!kw) return true;
+      return [r.no, r.name, r.position, r.note].join(" ").toLowerCase().indexOf(kw) !== -1;
+    });
+    if (sortBy === "rate") out = out.slice().sort((a, b) => b.率 - a.率);
+    return out;
+  })();
+
+  const openEdit = (r) => {
+    if (openNo === r.no) { setOpenNo(null); setDraft(null); return; }
+    setOpenNo(r.no);
+    setDraft({ a20: String(r.a20), a30: String(r.a30), a50: String(r.a50), note: r.note });
+  };
+
+  const save = (r) => {
+    const num = (v) => { const n = Number(String(v).replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; };
+    const updates = { a20: num(draft.a20), a30: num(draft.a30), a50: num(draft.a50), note: draft.note };
+    onSave(r.no, updates, () => { setOpenNo(null); setDraft(null); });
+  };
+
+  const days = (daily && daily.days) || [];
+  const bounds = days.length > 0 ? vizMonthBounds(days, "日付") : [];
+  const logRows = (log && log.rows) || [];
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
-        {/* ヘッダーがすでに「野外置場」なので、ここは中身の説明にする */}
-        <SectionTitle note={summary ? summary.locations + " か所" : ""}>置場容量（実績数 / 収容MAX）</SectionTitle>
-        {err && (
-          <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2 mb-2">
-            読み込めませんでした：{err}
-          </p>
-        )}
+      {err && (
+        <Card className="p-3">
+          <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2">読み込めませんでした：{err}</p>
+        </Card>
+      )}
+
+      {/* ---- 置場の一覧。ここで本数を直す ---- */}
+      <Card className="p-3">
+        <Collapsible tone="card" title="置場の一覧"
+          note={totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) : "読み込み中…"}
+          closedNote={totals ? totals.置場数 + "か所" : ""}>
+          <div className="flex items-center gap-2 mb-2">
+            <input value={keyword} onChange={(e) => setKeyword(e.target.value)}
+              placeholder="番号・置場名・位置・備考"
+              className="flex-1 min-w-0 px-2 py-1.5 rounded-md border border-slate-200 text-xs" />
+            <button onClick={() => setOnlyNearFull(!onlyNearFull)}
+              className="px-2 py-1.5 rounded-md text-[11px] font-semibold shrink-0"
+              style={onlyNearFull ? { background: NAVY, color: "#fff" } : { background: "#f1f5f9", color: VIZ.ink2 }}>
+              満杯ちかく
+            </button>
+            <button onClick={() => setSortBy(sortBy === "no" ? "rate" : "no")}
+              className="px-2 py-1.5 rounded-md text-[11px] font-semibold bg-slate-100 shrink-0"
+              style={{ color: VIZ.ink2 }}>
+              {sortBy === "no" ? "番号順" : "詰まり順"}
+            </button>
+          </div>
+
+          {list.length === 0 ? (
+            <p className="text-xs text-slate-400 py-3 text-center">読み込み中…</p>
+          ) : shown.length === 0 ? (
+            <p className="text-xs text-slate-500 py-3 text-center">あてはまる置場がありません。</p>
+          ) : (
+            <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+              {shown.map((r) => {
+                const open = openNo === r.no;
+                return (
+                  <div key={r.no}>
+                    <button onClick={() => openEdit(r)}
+                      className="w-full text-left px-3 py-2"
+                      style={{ background: "none", border: "none" }}>
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-[11px] tabular-nums shrink-0" style={{ color: VIZ.muted }}>{r.no}</span>
+                        <span className="text-[13px] font-semibold" style={{ color: VIZ.ink }}>{r.name}</span>
+                        <span className="text-[11px] shrink-0" style={{ color: VIZ.muted }}>{r.position}</span>
+                        {r.状態 && (
+                          <span className="text-[10px] px-1 rounded shrink-0"
+                            style={r.状態 === "超過"
+                              ? { background: "#fee2e2", color: "#b91c1c" }
+                              : { background: "#fef3c7", color: "#b45309" }}>{r.状態}</span>
+                        )}
+                        <span className="text-[11px] ml-auto shrink-0" style={{ color: NAVY }}>{open ? "▲" : "▼"}</span>
+                      </span>
+                      {/* サイズごとの実績／MAXと詰まり具合。合計で割ると実態と合わない */}
+                      <span className="block mt-1">
+                        {r.sizes.length === 0 ? (
+                          <span className="text-[11px]" style={{ color: VIZ.muted }}>収容の設定なし</span>
+                        ) : r.sizes.map((sz) => (
+                          <span key={sz.key} className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[11px] w-10 shrink-0" style={{ color: VIZ.ink2 }}>{sz.label}</span>
+                            <span className="text-[12px] tabular-nums shrink-0" style={{ color: VIZ.ink }}>
+                              {vizComma(sz.実績)}
+                            </span>
+                            <span className="text-[10px] tabular-nums shrink-0" style={{ color: VIZ.muted }}>
+                              / {vizComma(sz.max)}
+                            </span>
+                            <span className="flex-1 h-1.5 rounded-full" style={{ background: "#e2e8f0" }}>
+                              <span className="block h-1.5 rounded-full" style={{
+                                width: Math.min(100, Math.round((sz.率 || 0) * 100)) + "%",
+                                background: (sz.率 || 0) >= 1 ? "#dc2626" : (sz.率 || 0) >= 0.8 ? "#f59e0b" : VIZ.s1,
+                              }} />
+                            </span>
+                            <span className="text-[10px] tabular-nums w-9 text-right shrink-0" style={{ color: VIZ.muted }}>
+                              {sz.率 == null ? "—" : Math.round(sz.率 * 100) + "%"}
+                            </span>
+                          </span>
+                        ))}
+                        {r.note && (
+                          <span className="block text-[11px] mt-0.5" style={{ color: VIZ.muted }}>{r.note}</span>
+                        )}
+                      </span>
+                    </button>
+
+                    {open && draft && (
+                      <div className="px-3 pb-3 bg-slate-50">
+                        <p className="text-[11px] mb-1" style={{ color: VIZ.ink2 }}>今ある本数を直す</p>
+                        {[["20kg", "a20", "m20"], ["30kg", "a30", "m30"], ["50kg", "a50", "m50"]]
+                          .filter(([, , mk]) => r[mk] > 0 || r[mk.replace("m", "a")] > 0)
+                          .map(([label, ak, mk]) => (
+                            <span key={ak} className="flex items-center gap-2 mb-1.5">
+                              <span className="text-[11px] w-10 shrink-0" style={{ color: VIZ.ink2 }}>{label}</span>
+                              <input value={draft[ak]} inputMode="numeric"
+                                onChange={(e) => setDraft({ ...draft, [ak]: e.target.value })}
+                                className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
+                              <span className="text-[10px] tabular-nums" style={{ color: VIZ.muted }}>
+                                / {vizComma(r[mk])}
+                              </span>
+                            </span>
+                          ))}
+                        <span className="flex items-center gap-2 mb-2">
+                          <span className="text-[11px] w-10 shrink-0" style={{ color: VIZ.ink2 }}>備考</span>
+                          <input value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+                            className="flex-1 min-w-0 px-2 py-1 rounded-md border border-slate-200 text-xs" />
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <button onClick={() => save(r)} disabled={saving}
+                            className="px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+                            style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>
+                            {saving ? "保存中…" : "保存"}
+                          </button>
+                          <button onClick={() => { setOpenNo(null); setDraft(null); }}
+                            className="px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-200"
+                            style={{ color: VIZ.ink2 }}>やめる</button>
+                          {r.updatedAt && (
+                            <span className="text-[10px] ml-auto" style={{ color: VIZ.muted }}>
+                              {r.updatedAt} 更新
+                            </span>
+                          )}
+                        </span>
+                        {/* この置場だけの履歴。直した記録がその場で見える */}
+                        {logRows.filter((x) => x.no === String(r.no)).slice(0, 5).map((x, i) => (
+                          <span key={i} className="block text-[10px] mt-1" style={{ color: VIZ.muted }}>
+                            {x.日時}　{x.内容}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Collapsible>
+      </Card>
+
+      {/* ---- 在庫の推移（日次） ---- */}
+      <Card className="p-3">
+        <Collapsible tone="card" title="在庫の推移"
+          note={days.length > 0 ? days[0].日付 + "〜" : "1日1回ぶんを貯めています"}
+          closedNote={days.length > 0 ? days.length + "日ぶん" : ""}>
+          {days.length === 0 ? (
+            <p className="text-xs text-slate-500 py-2">
+              まだ推移が貯まっていません。夜の取込で1日1行ずつ溜まります
+              （すぐ始めたいときは 野外置場の今日ぶんを記録する を実行してください）。
+            </p>
+          ) : days.length === 1 ? (
+            <p className="text-xs text-slate-500 py-2">
+              {days[0].日付} の1日ぶんだけです（合計 {vizComma(days[0].合計)} 本）。
+              2日目からグラフになります。
+            </p>
+          ) : (
+            <div>
+              <InventoryTrendMini label="合計" color={VIZ.s1} dataKey="合計" days={days}
+                bounds={bounds} pick={pick} setPick={setPick} />
+              <InventoryTrendMini label="50kg" color={VIZ.s1} dataKey="50kg" days={days}
+                bounds={bounds} pick={pick} setPick={setPick} />
+              <InventoryTrendMini label="20kg" color={VIZ.s2} dataKey="20kg" days={days}
+                bounds={bounds} pick={pick} setPick={setPick} showX />
+              <p className="text-[10px] mt-1" style={{ color: VIZ.muted }}>
+                ★ 縦軸は0から始めていません（0からだと線が平らになって増減が読めないため）。
+              </p>
+            </div>
+          )}
+        </Collapsible>
+      </Card>
+
+      {/* ---- 変更履歴（全体） ---- */}
+      <Card className="p-3">
+        <Collapsible tone="card" title="変更履歴" note="誰がいつ直したか"
+          closedNote={logRows.length > 0 ? logRows.length + "件" : ""} defaultOpen={false}>
+          {logRows.length === 0 ? (
+            <p className="text-xs text-slate-500 py-2">まだ記録がありません。</p>
+          ) : (
+            <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+              {logRows.slice(0, 30).map((x, i) => (
+                <div key={i} className="px-3 py-1.5">
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-[10px] tabular-nums shrink-0" style={{ color: VIZ.muted }}>{x.日時}</span>
+                    <span className="text-[12px] font-semibold" style={{ color: VIZ.ink }}>{x.置場名}</span>
+                    <span className="text-[10px] ml-auto truncate shrink-0" style={{ color: VIZ.muted, maxWidth: 110 }}>
+                      {x.操作者}
+                    </span>
+                  </span>
+                  <span className="block text-[11px]" style={{ color: VIZ.ink2 }}>{x.内容}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Collapsible>
+      </Card>
+
+      {/* ---- 敷地レイアウト図だけは元のアプリに任せる ---- */}
+      <Card className="p-3">
         <div className="flex flex-wrap items-center gap-2">
-          {src && (
-            <a href={src} target="_blank" rel="noopener"
+          {url && url.url && (
+            <a href={url.url} target="_blank" rel="noopener"
               className="px-3 py-1.5 rounded-md text-xs font-semibold text-white"
               style={{ background: NAVY, textDecoration: "none" }}>
-              別画面で開く
+              敷地レイアウト図を開く
             </a>
           )}
-          {summary && summary.sheetUrl && (
-            <a href={summary.sheetUrl} target="_blank" rel="noopener"
+          {data && data.sheetUrl && (
+            <a href={data.sheetUrl} target="_blank" rel="noopener"
               className="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100"
               style={{ textDecoration: "none" }}>
               元のシートを開く
@@ -2543,34 +2762,13 @@ function YardCapacityTab({ summary, url, onRefresh }) {
           )}
           <button onClick={onRefresh}
             className="px-3 py-1.5 rounded-md text-xs font-semibold text-slate-600 bg-slate-100">
-            数字を取り直す
+            取り直す
           </button>
-          {summary && summary.updated && (
-            <span className="text-[10px] text-slate-400 ml-auto">{summary.updated} 時点</span>
+          {data && data.updated && (
+            <span className="text-[10px] ml-auto" style={{ color: VIZ.muted }}>{data.updated} 時点</span>
           )}
         </div>
       </Card>
-
-      {src ? (
-        /* ★ 画面が狭いと入れ子のスクロールがつらいので、高さは広めに取って
-              外側のページを送ってもらう。全画面で使いたいときは上の
-              「別画面で開く」を押す。長いので畳めるようにしてある。 */
-        <Card className="p-3">
-          <Collapsible title="置場の一覧・敷地レイアウト" note="この下に読み込みます"
-            closedNote={summary ? "36か所ぶん" : ""}>
-            <div style={{ overflow: "hidden", borderRadius: 8 }}>
-              <iframe src={src} title="野外置場 在庫管理"
-                style={{ display: "block", width: "100%", height: "78vh", minHeight: 480, border: "none" }} />
-            </div>
-          </Collapsible>
-        </Card>
-      ) : (
-        <Card className="p-4">
-          <p className="text-xs text-slate-500">
-            GAS環境で開くと、ここに野外置場の在庫管理画面が出ます。
-          </p>
-        </Card>
-      )}
     </div>
   );
 }
@@ -2622,6 +2820,7 @@ export default function App() {
   // 配車グリッドは週を切り替えるので、ほかの集計とは別に持つ
   const [gridWeek, setGridWeek] = useState(0);
   const [gridSaving, setGridSaving] = useState(false);
+  const [yardSaving, setYardSaving] = useState(false);
   const [yardLive, setYardLive] = useState({ "50k": {}, "20k": {} });
   /* ★ 読み込み完了の判定。以前は「9件そろったら」と件数で見ていたが、
        あとから取得を足したとき（野外置場で10件になった）に数を直し忘れ、
@@ -2787,11 +2986,62 @@ export default function App() {
       .getYardMapUpdatesBothWithOrderText(q50k, q20k, force === true);
   };
 
+  /* 野外置場タブの中身。
+     ★ 起動時には取らない。置場の一覧・履歴・推移で3回呼ぶことになり、
+       最初の表示がそのぶん遅くなる。このタブを開いたときに取る。
+     ★ キャッシュも付けない。直した直後に古い数字が出ると、
+       直したつもりが直っていないように見えて一番困る。 */
+  const fetchYardTab = () => {
+    if (!isGasEnv) return;
+    google.script.run
+      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, yardTab: d })))
+      .withFailureHandler((err) => setLive((prev) => ({ ...prev, yardTab: { error: String(err) } })))
+      .getYardTabData();
+    google.script.run
+      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, yardDaily: d })))
+      .withFailureHandler((err) => setLive((prev) => ({ ...prev, yardDaily: { error: String(err) } })))
+      .getYardDailyTotals();
+    google.script.run
+      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, yardLog: d })))
+      .withFailureHandler((err) => setLive((prev) => ({ ...prev, yardLog: { error: String(err) } })))
+      .getYardChangeLog("", 60);
+  };
+
+  /* 本数を直して保存する。
+     ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存
+       できていないのに直ったように見える状態を作ってしまう（配車表と同じ考え）。 */
+  const saveYardCount = (no, updates, done) => {
+    if (!isGasEnv) return;
+    setYardSaving(true);
+    google.script.run
+      .withSuccessHandler((r) => {
+        setYardSaving(false);
+        if (r && r.error) { window.alert("保存できませんでした：" + r.error); return; }
+        if (done) done();
+        fetchYardTab();
+        // 上のKPI（合計・満杯の置場）も取り直す
+        google.script.run
+          .withSuccessHandler((yc) => setLive((prev) => ({ ...prev, yardCap: yc })))
+          .withFailureHandler(() => {})
+          .getYardCapacitySummary();
+      })
+      .withFailureHandler((err) => {
+        setYardSaving(false);
+        window.alert("保存できませんでした：" + String(err));
+      })
+      .saveYardLocation(no, updates);
+  };
+
   useEffect(() => {
     fetchLiveData();
     const timer = setInterval(() => fetchLiveData(false), 5 * 60 * 1000); // 5分ごとに自動更新（キャッシュ利用）
     return () => clearInterval(timer);
   }, []);
+
+  // 野外置場タブを開いたときに1回だけ取る
+  useEffect(() => {
+    if (tab === "yardcap" && !live.yardTab) fetchYardTab();
+  }, [tab]);
 
   const dateLabel = now.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
   const timeLabel = now.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
@@ -3132,7 +3382,9 @@ export default function App() {
           {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
-          {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} url={live.yardCapUrl} onRefresh={() => fetchLiveData(true)} />}
+          {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} data={live.yardTab}
+            daily={live.yardDaily} log={live.yardLog} url={live.yardCapUrl}
+            onSave={saveYardCount} onRefresh={fetchYardTab} saving={yardSaving} />}
         </div>
 
         <p className="text-center text-[10px] text-slate-400 pt-2">

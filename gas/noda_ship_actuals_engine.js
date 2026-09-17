@@ -304,6 +304,14 @@ function harvestDailyData() {
   //   5分を越えないところで打ち切る（途中で切られるより自分で止める）。
   var left = function () { return 5 * 60 * 1000 - (Date.now() - dailyStarted); };
 
+  // 野外置場の今日ぶんの合計を1行だけ貯める（推移グラフ用）。シート1枚読むだけ。
+  try {
+    out.yardDaily = harvestYardDailyTotals();
+  } catch (err) {
+    out.yardDaily = { error: String(err) };
+    Logger.log('野外置場の日次記録で例外: ' + String(err));
+  }
+
   // アームの月別出荷実績。元の .xlsm が変わったときだけ集計する（週1回程度）。
   // 変わっていなければフォルダを見るだけで終わる。
   try {
