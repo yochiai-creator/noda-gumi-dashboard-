@@ -66,6 +66,15 @@ const REPLY = {
         置場番号: '7', 置場名: '大型製缶', 依頼No: '26-10660', 出荷日: '2026-09-14', 備考: '' },
     ] }),
   addProdLot: () => ({ ok: true, error: null, id: 'L20260917-005', 本数: 80 }),
+  // 在庫照会CSVから取り込んだ機種マスタ
+  getContainerTypes: () => ({ updated: '2026-09-17 03:00', error: null, types: [
+    { コード: '123', 品名: '新軽量１１８Ｌ（５０ｋｇ）ＬＰガス容器', 分類コード: '012',
+      分類: '５０Ｋ ＬＰＧ容器', サイズ: '50kg', 在庫本数: 1352, 倉庫数: 1 },
+    { コード: '165', 品名: '８７Ｌ（２０ｋｇ）ＬＰガス容器（直付）', 分類コード: '009',
+      分類: '２０Ｋ ＬＰＧ容器（直付）', サイズ: '20kg', 在庫本数: 4000, 倉庫数: 2 },
+    { コード: '113', 品名: '２４Ｌ（１０ｋｇ）ＬＰガス容器（ＰＴ直付）', 分類コード: '004',
+      分類: '１０Ｋ ＬＰＧ容器', サイズ: '', 在庫本数: 141, 倉庫数: 1 },
+  ] }),
   markLotInspected: () => ({ ok: true, error: null }),
   stockInLot: () => ({ ok: true, error: null }),
   getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [], byKind: [],
@@ -170,6 +179,26 @@ const REPLY = {
   // 登録フォーム：番号を入れると本数が出る
   await page.locator('button', { hasText: '＋ 当日の生産を登録' }).first().click();
   await page.waitForTimeout(300);
+  // ★ 機種はマスタから選ぶ（手打ちさせない）
+  const sel = await page.evaluate(() => {
+    const s2 = document.querySelector('main select');
+    if (!s2) return null;
+    return { 件数: s2.options.length, 先頭: s2.options[0].textContent,
+      値: [...s2.options].map((o) => o.value) };
+  });
+  console.log('   機種の選択:', JSON.stringify(sel));
+  chk('★機種はマスタから選ぶ', sel && sel.件数 === 3, sel);
+  chk('分類と品名が出る', sel && /５０Ｋ ＬＰＧ容器｜新軽量/.test(sel.先頭), sel);
+
+  // ★ 置場の列が無い機種を選ぶと、その場で伝える（入庫してから気づくのは遅い）
+  await page.selectOption('main select', '113');
+  await page.waitForTimeout(300);
+  chk('★置場に足せない機種はその場で伝える',
+    await page.evaluate(() => /置場の在庫数には足しません/.test(document.body.innerText)),
+    await page.evaluate(() => document.body.innerText.slice(0, 300)));
+  await page.selectOption('main select', '123');
+  await page.waitForTimeout(200);
+
   // 欄はプレースホルダで選ぶ（並び順で選ぶと、置場を選ぶ欄が開いた分だけずれる）
   await page.locator('main input[placeholder="HEP"]').fill('HEP');
   await page.locator('main input[placeholder="54401"]').fill('54401');

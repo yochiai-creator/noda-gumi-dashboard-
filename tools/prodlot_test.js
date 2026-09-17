@@ -11,9 +11,19 @@ let pass = 0, fail = 0;
 const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
   else { fail++; console.log('  FAIL ' + n + (e !== undefined ? '  -> ' + JSON.stringify(e) : '')); } };
 
-const H = ['ロットID', '生産日', 'サイズ', '容器接頭辞', '容器No開始', '容器No終了', '本数',
+const H = ['ロットID', '生産日', '機種コード', '機種名', 'サイズ',
+           '容器接頭辞', '容器No開始', '容器No終了', '本数',
            '状態', '受検日', '入庫日', '置場番号', '置場名', '出荷済本数', '出荷日', '依頼No',
            '備考', '登録者', '登録日時', '更新日時'];
+
+// 在庫照会CSVから取り込んだ機種マスタ（実ファイルにあったコードを使う）
+const TYPES = [
+  { コード: '123', 品名: '新軽量１１８Ｌ（５０ｋｇ）ＬＰガス容器', 分類: '５０Ｋ ＬＰＧ容器', サイズ: '50kg' },
+  { コード: '165', 品名: '８７Ｌ（２０ｋｇ）ＬＰガス容器（直付）', 分類: '２０Ｋ ＬＰＧ容器（直付）', サイズ: '20kg' },
+  { コード: '162', 品名: '７０Ｌ（３０ｋｇ）ＬＰガス容器', 分類: '３０Ｋ ＬＰＧ容器', サイズ: '30kg' },
+  // ★ 置場容量シートに列が無いサイズ。在庫数には足さない
+  { コード: '113', 品名: '２４Ｌ（１０ｋｇ）ＬＰガス容器（ＰＴ直付）', 分類: '１０Ｋ ＬＰＧ容器', サイズ: '' },
+];
 
 function build(lotRows, locations, ranges) {
   const rows = (lotRows || []).map((r) => r.slice());
@@ -56,6 +66,7 @@ function build(lotRows, locations, ranges) {
     if (loc) Object.keys(up).forEach((k) => { loc[k] = up[k]; });
   };
   sb.shipact_index_ = () => ({ byOrder: {}, byDate: {}, addrByCode: {}, ranges: ranges || [] });
+  sb.getContainerTypes = () => ({ types: TYPES, updated: 'x', error: null });
   return sb;
 }
 
@@ -63,6 +74,7 @@ const lotRow = (o) => {
   const r = new Array(H.length).fill('');
   const set = (k, v) => { r[H.indexOf(k)] = v; };
   set('ロットID', o.id); set('生産日', o.生産日 || '2026-09-17'); set('サイズ', o.サイズ || '50kg');
+  set('機種コード', o.機種コード || '123'); set('機種名', o.機種名 || '新軽量１１８Ｌ（５０ｋｇ）ＬＰガス容器');
   set('容器接頭辞', o.pre || 'HEP'); set('容器No開始', o.a); set('容器No終了', o.b);
   set('本数', o.本数); set('状態', o.状態 || '未受検'); set('出荷済本数', o.出荷済 || 0);
   set('置場番号', o.置場番号 == null ? '' : o.置場番号); set('置場名', o.置場名 || '');
@@ -74,7 +86,7 @@ const loc = (o) => Object.assign({ no: 7, name: '大型製缶', position: '北',
 console.log('■ 生産の登録');
 {
   const s = build([], [loc({})], []);
-  const r = s.addProdLot({ 生産日: '2026-09-17', サイズ: '50kg', 接頭辞: 'hep', 開始: '54401', 終了: '54480' });
+  const r = s.addProdLot({ 生産日: '2026-09-17', 機種コード: '123', 接頭辞: 'hep', 開始: '54401', 終了: '54480' });
   chk('登録できる', r.ok === true, r);
   chk('★本数は番号から数える（人に数えさせない）', r.本数 === 80, r);
   const all = s.getProdLots('', 0).lots;
@@ -82,23 +94,47 @@ console.log('■ 生産の登録');
   chk('記号は大文字にそろえる', all[0].容器接頭辞 === 'HEP', all[0].容器接頭辞);
 
   chk('★同じ番号は二重に登録できない',
-    s.addProdLot({ 生産日: '2026-09-17', サイズ: '50kg', 接頭辞: 'HEP', 開始: '54450', 終了: '54500' }).ok === false);
+    s.addProdLot({ 生産日: '2026-09-17', 機種コード: '123', 接頭辞: 'HEP', 開始: '54450', 終了: '54500' }).ok === false);
   chk('重ならなければ登録できる',
-    s.addProdLot({ 生産日: '2026-09-17', サイズ: '50kg', 接頭辞: 'HEP', 開始: '54481', 終了: '54500' }).ok === true);
+    s.addProdLot({ 生産日: '2026-09-17', 機種コード: '123', 接頭辞: 'HEP', 開始: '54481', 終了: '54500' }).ok === true);
   chk('記号が違えば重ならない',
-    s.addProdLot({ 生産日: '2026-09-17', サイズ: '20kg', 接頭辞: 'HXP', 開始: '54401', 終了: '54410' }).ok === true);
+    s.addProdLot({ 生産日: '2026-09-17', 機種コード: '165', 接頭辞: 'HXP', 開始: '54401', 終了: '54410' }).ok === true);
 }
 console.log('■ 入力の確かめ');
 {
   const s = build([], [], []);
-  const bad = (o) => s.addProdLot(Object.assign({ 生産日: '2026-09-17', サイズ: '50kg',
+  const bad = (o) => s.addProdLot(Object.assign({ 生産日: '2026-09-17', 機種コード: '123',
     接頭辞: 'HEP', 開始: '1', 終了: '10' }, o));
   chk('生産日が無ければ断る', bad({ 生産日: '' }).ok === false);
-  chk('サイズが違えば断る', bad({ サイズ: '40kg' }).ok === false);
+  chk('★機種を選ばなければ断る', bad({ 機種コード: '' }).ok === false);
+  chk('マスタに無い機種は断る', bad({ 機種コード: '999' }).ok === false);
   chk('記号が無ければ断る', bad({ 接頭辞: '' }).ok === false);
   chk('★終わりが始まりより小さければ断る', bad({ 開始: '100', 終了: '10' }).ok === false);
   chk('★桁を間違えた大量入力を断る', bad({ 開始: '1', 終了: '99999' }).ok === false);
   chk('1本でも登録できる', bad({ 開始: '5', 終了: '5' }).ok === true);
+}
+
+console.log('■ 機種はマスタから引く');
+{
+  const s = build([], [loc({})], []);
+  s.addProdLot({ 生産日: '2026-09-17', 機種コード: '165', 接頭辞: 'HXP', 開始: '1', 終了: '50' });
+  const l = s.getProdLots('', 0).lots[0];
+  chk('★機種名はマスタから入る（手打ちさせない）',
+    l.機種名 === '８７Ｌ（２０ｋｇ）ＬＰガス容器（直付）', l.機種名);
+  chk('★サイズも分類から決まる', l.サイズ === '20kg', l.サイズ);
+  chk('機種コードを持つ', l.機種コード === '165', l.機種コード);
+}
+{
+  // 置場容量シートに列が無いサイズ（10K）は在庫数に足さない
+  const s = build([], [loc({})], []);
+  s.addProdLot({ 生産日: '2026-09-17', 機種コード: '113', 接頭辞: 'HCZ', 開始: '1', 終了: '100' });
+  const id = s.getProdLots('', 0).lots[0].ロットID;
+  s.markLotInspected(id);
+  const r = s.stockInLot(id, 7);
+  chk('入庫はできる', r.ok === true, r);
+  chk('★置場の列が無いサイズは在庫数に足さない', s.__yardCalls.length === 0, s.__yardCalls);
+  chk('足していないことを返す', r.在庫に反映 === false, r);
+  chk('置場は記録される', s.getProdLots('', 0).lots[0].置場名 === '大型製缶');
 }
 
 console.log('■ 受検と入庫');

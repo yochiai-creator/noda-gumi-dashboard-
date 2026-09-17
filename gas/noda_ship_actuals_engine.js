@@ -304,6 +304,14 @@ function harvestDailyData() {
   //   5分を越えないところで打ち切る（途中で切られるより自分で止める）。
   var left = function () { return 5 * 60 * 1000 - (Date.now() - dailyStarted); };
 
+  // 容器の機種マスタ（在庫照会CSVは毎朝入る）。CSVを1本読むだけなので軽い。
+  try {
+    out.cMaster = harvestContainerMaster();
+  } catch (err) {
+    out.cMaster = { error: String(err) };
+    Logger.log('機種マスタの取込で例外: ' + String(err));
+  }
+
   /* 生産ロットを指図書と突き合わせて、出た分を置場から引く。
      ★ 置場の日次記録より先にやる。後にすると、引く前の数字を推移に残してしまう。 */
   try {

@@ -1094,6 +1094,7 @@ const LOT_TONE = {
 };
 function ProdLotCard({
   data,
+  types,
   locations,
   onAdd,
   onInspect,
@@ -1111,10 +1112,11 @@ function ProdLotCard({
       p = n => n < 10 ? "0" + n : String(n);
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
   })();
+  const typeList = types && types.types || [];
   const openAdd = () => {
     setForm({
       生産日: today,
-      サイズ: "50kg",
+      機種コード: typeList.length > 0 ? typeList[0].コード : "",
       接頭辞: "",
       開始: "",
       終了: "",
@@ -1122,6 +1124,7 @@ function ProdLotCard({
     });
     setAdding(true);
   };
+  const pickedType = form ? typeList.filter(t => t.コード === form.機種コード)[0] : null;
   // 本数はここでも見せる。登録してから違うと気づくのは遅い
   const count = (() => {
     if (!form) return null;
@@ -1175,21 +1178,32 @@ function ProdLotCard({
       生産日: e.target.value
     }),
     className: "w-28 px-2 py-1 rounded-md border border-slate-200 text-xs tabular-nums"
-  }), ["20kg", "30kg", "50kg"].map(sz => /*#__PURE__*/React.createElement("button", {
-    key: sz,
-    onClick: () => setForm({
-      ...form,
-      サイズ: sz
-    }),
-    className: "px-2 py-1 rounded-md text-[11px] font-semibold",
-    style: form.サイズ === sz ? {
-      background: NAVY,
-      color: "#fff"
-    } : {
-      background: "#e2e8f0",
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "flex items-center gap-2 mb-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] w-12 shrink-0",
+    style: {
       color: VIZ.ink2
     }
-  }, sz))), /*#__PURE__*/React.createElement("span", {
+  }, "\u6A5F\u7A2E"), typeList.length === 0 ? /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px]",
+    style: {
+      color: "#b45309"
+    }
+  }, types && types.error || "機種を読み込み中…") : /*#__PURE__*/React.createElement("select", {
+    value: form.機種コード,
+    onChange: e => setForm({
+      ...form,
+      機種コード: e.target.value
+    }),
+    className: "flex-1 min-w-0 px-2 py-1 rounded-md border border-slate-200 text-xs",
+    style: {
+      background: "#fff"
+    }
+  }, typeList.map(t => /*#__PURE__*/React.createElement("option", {
+    key: t.コード,
+    value: t.コード
+  }, t.分類, "\uFF5C", t.品名)))), /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-1.5 mb-1.5"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] w-12 shrink-0",
@@ -1233,10 +1247,15 @@ function ProdLotCard({
     style: {
       color: count == null ? VIZ.muted : VIZ.ink
     }
-  }, count == null ? "番号を入れると本数が出ます" : "本数 " + vizComma(count) + " 本"), /*#__PURE__*/React.createElement("span", {
+  }, count == null ? "番号を入れると本数が出ます" : "本数 " + vizComma(count) + " 本"), pickedType && !pickedType.サイズ && /*#__PURE__*/React.createElement("span", {
+    className: "block text-[10px] mb-1.5",
+    style: {
+      color: "#b45309"
+    }
+  }, "\u3053\u306E\u6A5F\u7A2E\u306F\u7F6E\u5834\u306E\u5728\u5EAB\u6570\u306B\u306F\u8DB3\u3057\u307E\u305B\u3093\uFF08\u7F6E\u5834\u5BB9\u91CF\u306B ", pickedType.分類, " \u306E\u6B04\u304C\u306A\u3044\u305F\u3081\uFF09\u3002 \u6D41\u308C\u3060\u3051\u8A18\u9332\u3057\u307E\u3059\u3002"), /*#__PURE__*/React.createElement("span", {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("button", {
-    disabled: saving || count == null,
+    disabled: saving || count == null || !form.機種コード,
     onClick: () => onAdd(form, () => {
       setAdding(false);
       setForm(null);
@@ -1244,7 +1263,7 @@ function ProdLotCard({
     className: "px-3 py-1.5 rounded-md text-xs font-semibold text-white",
     style: {
       background: NAVY,
-      opacity: saving || count == null ? 0.5 : 1
+      opacity: saving || count == null || !form.機種コード ? 0.5 : 1
     }
   }, saving ? "登録中…" : "登録"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
@@ -1282,7 +1301,7 @@ function ProdLotCard({
       style: {
         color: VIZ.ink
       }
-    }, l.サイズ), /*#__PURE__*/React.createElement("span", {
+    }, l.サイズ || (l.機種コード ? "#" + l.機種コード : "—")), /*#__PURE__*/React.createElement("span", {
       className: "text-[13px] tabular-nums",
       style: {
         color: VIZ.ink
@@ -1299,7 +1318,12 @@ function ProdLotCard({
       style: {
         color: VIZ.muted
       }
-    }, l.生産日)), /*#__PURE__*/React.createElement("span", {
+    }, l.生産日)), l.機種名 && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] truncate",
+      style: {
+        color: VIZ.ink2
+      }
+    }, l.機種名), /*#__PURE__*/React.createElement("span", {
       className: "block text-[11px] tabular-nums",
       style: {
         color: VIZ.ink2
@@ -5459,6 +5483,7 @@ function YardCapacityTab({
   daily,
   log,
   lotData,
+  types,
   url,
   onSave,
   onRefresh,
@@ -5534,6 +5559,7 @@ function YardCapacityTab({
     closedNote: lotData && lotData.totals ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済) : ""
   }, /*#__PURE__*/React.createElement(ProdLotCard, {
     data: lotData,
+    types: types,
     locations: list,
     onAdd: onAddLot,
     onInspect: onInspectLot,
@@ -6273,6 +6299,15 @@ function App() {
         error: String(err)
       }
     }))).getProdLots("", 60);
+    google.script.run.withSuccessHandler(d => setLive(prev => ({
+      ...prev,
+      cTypes: d
+    }))).withFailureHandler(err => setLive(prev => ({
+      ...prev,
+      cTypes: {
+        error: String(err)
+      }
+    }))).getContainerTypes();
   };
 
   /* 生産の流れ（登録・受検・入庫）。
@@ -6302,7 +6337,7 @@ function App() {
   };
   const addLot = (form, done) => runLotAction(run => run.addProdLot({
     生産日: form.生産日,
-    サイズ: form.サイズ,
+    機種コード: form.機種コード,
     接頭辞: form.接頭辞,
     開始: form.開始,
     終了: form.終了,
@@ -6851,6 +6886,7 @@ function App() {
     daily: live.yardDaily,
     log: live.yardLog,
     lotData: live.lots,
+    types: live.cTypes,
     url: live.yardCapUrl,
     onSave: saveYardCount,
     onRefresh: fetchYardTab,

@@ -28,12 +28,15 @@
 
 var LOT_CONFIG = {
   SHEET: '生産ロット',
-  HEADERS: ['ロットID', '生産日', 'サイズ', '容器接頭辞', '容器No開始', '容器No終了', '本数',
+  HEADERS: ['ロットID', '生産日', '機種コード', '機種名', 'サイズ',
+            '容器接頭辞', '容器No開始', '容器No終了', '本数',
             '状態', '受検日', '入庫日', '置場番号', '置場名', '出荷済本数', '出荷日', '依頼No',
             '備考', '登録者', '登録日時', '更新日時'],
   // 状態は4つだけ。増やすと現場が迷う。
   STATES: ['未受検', '受検済', '入庫済', '出荷済'],
-  // 置場容量シートの実績列。サイズと対応させる
+  /* 置場容量シートの実績列。サイズと対応させる。
+     ★ 置場容量シートは20/30/50の3列しか無い。2K・5K・8K・10Kはここに無く、
+       置場の在庫数には足さない（無い列に足せない）。流れだけ追う。 */
   SIZE_KEY: { '20kg': 'a20', '30kg': 'a30', '50kg': 'a50' },
   MAX_LOT: 5000   // 1ロットの上限。桁を間違えた入力を弾く
 };
@@ -81,12 +84,13 @@ function lot_totals_(list) {
 
 // ===== 公開関数：当日生産分を登録する =====
 /**
- * @param {Object} lot { 生産日, サイズ, 接頭辞, 開始, 終了, 備考 }
+ * @param {Object} lot { 生産日, 機種コード, 接頭辞, 開始, 終了, 備考 }
  *   ★ 本数は開始〜終了から出す。人に数えさせると必ずずれる。
+ *   ★ 品名とサイズは機種マスタから引く。手で打たせると表記がぶれて集計が合わない。
  */
 function addProdLot(lot) {
   try {
-    var v = lot_validate_(lot || {});
+    var v = lot_validate_(lot || {}, lot_typeMap_());
     if (v.error) return { ok: false, error: v.error };
 
     var lock = LockService.getScriptLock();
@@ -101,10 +105,11 @@ function addProdLot(lot) {
       }
       var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
       var id = lot_newId_(sheet);
-      sheet.appendRow([id, v.生産日, v.サイズ, v.接頭辞, v.開始, v.終了, v.本数,
+      sheet.appendRow([id, v.生産日, v.機種コード, v.機種名, v.サイズ,
+                       v.接頭辞, v.開始, v.終了, v.本数,
                        '未受検', '', '', '', '', 0, '', '', v.備考,
                        lot_user_(), now, now]);
-      return { ok: true, error: null, id: id, 本数: v.本数 };
+      return { ok: true, error: null, id: id, 本数: v.本数, 機種名: v.機種名 };
     } finally {
       lock.releaseLock();
     }
@@ -114,12 +119,15 @@ function addProdLot(lot) {
   }
 }
 
-/* 入力を確かめて、数えた本数を返す（純関数）。 */
-function lot_validate_(lot) {
+/* 入力を確かめて、数えた本数を返す（純関数）。
+   @param types 機種コード → { 品名, サイズ } のマップ */
+function lot_validate_(lot, types) {
   var d = String(lot.生産日 || '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: '生産日を入れてください（2026-09-17の形）' };
-  var size = String(lot.サイズ || '').trim();
-  if (!LOT_CONFIG.SIZE_KEY[size]) return { error: 'サイズは 20kg / 30kg / 50kg のどれかです' };
+
+  var code = String(lot.機種コード || '').trim();
+  var t = types && types[code];
+  if (!t) return { error: '機種を選んでください' };
 
   var pre = String(lot.接頭辞 || '').trim().toUpperCase();
   if (!/^[A-Z]{2,4}$/.test(pre)) return { error: '容器番号の記号（HEPなど）を入れてください' };
@@ -137,8 +145,19 @@ function lot_validate_(lot) {
   // 桁数は入力に合わせて揃える（HEP54401 と HEP054401 を混ぜない）
   var keta = Math.max(a.length, b.length);
   var pad = function (x) { var s = String(x); while (s.length < keta) s = '0' + s; return s; };
-  return { 生産日: d, サイズ: size, 接頭辞: pre, 開始: pad(na), 終了: pad(nb), 本数: n,
+  return { 生産日: d, 機種コード: code, 機種名: t.品名, サイズ: t.サイズ || '',
+           接頭辞: pre, 開始: pad(na), 終了: pad(nb), 本数: n,
            備考: String(lot.備考 || '').trim(), error: null };
+}
+
+/* 機種マスタを「コード → {品名, サイズ}」の形で引く。 */
+function lot_typeMap_() {
+  var map = {};
+  var r = getContainerTypes();
+  (r.types || []).forEach(function (t) {
+    map[String(t.コード)] = { 品名: t.品名, サイズ: t.サイズ, 分類: t.分類 };
+  });
+  return map;
 }
 
 /* 番号が重なっているロットを探す（純関数）。接頭辞が同じものだけ見る。 */
@@ -182,8 +201,12 @@ function stockInLot(id, locationNo) {
       }
       var key = LOT_CONFIG.SIZE_KEY[found.lot.サイズ];
       var add = found.lot.本数 - found.lot.出荷済本数;
-      var r = lot_moveYard_(loc, key, add);
-      if (r.error) return { ok: false, error: r.error };
+      /* ★ 置場容量シートに列が無いサイズ（2K・5K・8K・10K）は在庫数に足さない。
+           入庫したことだけ記録する。無い列に足すと数字が壊れる。 */
+      if (key) {
+        var r = lot_moveYard_(loc, key, add);
+        if (r.error) return { ok: false, error: r.error };
+      }
 
       var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
       lot_writeRow_(found.rowNo, function (row, H) {
@@ -193,7 +216,8 @@ function stockInLot(id, locationNo) {
         row[H['置場名']] = loc.name;
         row[H['更新日時']] = now;
       });
-      return { ok: true, error: null, 置場: loc.name, 本数: add };
+      return { ok: true, error: null, 置場: loc.name, 本数: add,
+               在庫に反映: key ? true : false };
     } finally {
       lock.releaseLock();
     }
@@ -281,10 +305,11 @@ function lot_applyShipped_(lot, hit) {
     if (found.lot.出荷済本数 >= hit.累計) return { error: null, 出荷済: false };
 
     var sub = hit.累計 - found.lot.出荷済本数;
-    if (found.lot.置場番号) {
+    var key = LOT_CONFIG.SIZE_KEY[found.lot.サイズ];
+    if (key && found.lot.置場番号) {
       var loc = lot_findLocation_(found.lot.置場番号);
       if (loc) {
-        var r = lot_moveYard_(loc, LOT_CONFIG.SIZE_KEY[found.lot.サイズ], -sub);
+        var r = lot_moveYard_(loc, key, -sub);
         if (r.error) return { error: r.error };
       }
     }
@@ -392,6 +417,8 @@ function lot_shapeRows_(values) {
     out.push({
       ロットID: id,
       生産日: lot_dateText_(r[H['生産日']]),
+      機種コード: String(r[H['機種コード']] == null ? '' : r[H['機種コード']]).trim(),
+      機種名: String(r[H['機種名']] || ''),
       サイズ: String(r[H['サイズ']] || ''),
       容器接頭辞: String(r[H['容器接頭辞']] || '').toUpperCase(),
       容器No開始: String(r[H['容器No開始']] || ''),
