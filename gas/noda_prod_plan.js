@@ -16,10 +16,11 @@
  * ★ どの月の計画かはファイル名で決める（更新日時では決めない）
  *   古いファイルを開き直すだけで更新日時が動くため。出荷予定表と同じ考え方。
  *
- * ★ 工場ごとの「当日◯本」は工程ごとの最大を採る
+ * ★ 工場ごとの「当日◯本」は【処理】の本数を出す
  *   同じ本数が加工→品質→処理と流れるので、足すと三重になる。
- *   当月計画のPDFも 50k加 と 50k品 に同じ数が並び、計は12,600（倍ではない）。
- *   同じ数え方にそろえてある。
+ *   そのうち処理が最終工程で、ここを通ったぶんが置場に入る。置場の話と
+ *   並べて見るのだから、置場に入ってくる本数を出すのが筋。
+ *   処理の行が無い工場（特殊など）は、その工場の最後の工程を採る。
  *
  * 名前の衝突に注意：GASは全ファイルが同一グローバルスコープなので、
  * このファイルの内部関数はすべて pplan_ 接頭辞にしてある。
@@ -101,16 +102,28 @@ function pplan_parseDaily_(values) {
                 社員: pplan_num_(row[C.社員]), 協力: pplan_num_(row[C.協力]) };
     out.rows.push(rec);
 
-    if (!byPlant[cur]) byPlant[cur] = { 工場: cur, 計画数: 0, 社員: 0, 協力: 0, 工程: [] };
+    if (!byPlant[cur]) byPlant[cur] = { 工場: cur, 計画数: 0, 基準: '', 社員: 0, 協力: 0, 工程: [] };
     var p = byPlant[cur];
-    // ★ 同じ本数が工程を流れるので、足さずに最大を採る
-    if (n > p.計画数) p.計画数 = n;
     p.社員 += rec.社員 || 0;
     p.協力 += rec.協力 || 0;
     p.工程.push({ 工程: step, 計画数: n });
   }
 
-  PPLAN_CONFIG.工場.forEach(function (k) { if (byPlant[k]) out.工場.push(byPlant[k]); });
+  PPLAN_CONFIG.工場.forEach(function (k) {
+    if (!byPlant[k]) return;
+    var p = byPlant[k];
+    /* ★ 足さずに【処理】の1つを採る。同じ本数が工程を流れるので足すと三重になる。
+         処理が最終工程で、ここを通ったぶんが置場に入る。
+         処理の行が無い工場（特殊など）は最後の工程で代える。 */
+    var hit = null;
+    for (var i = 0; i < p.工程.length; i++) {
+      if (p.工程[i].工程 === '処理') hit = p.工程[i];
+    }
+    if (!hit && p.工程.length > 0) hit = p.工程[p.工程.length - 1];
+    p.計画数 = hit ? hit.計画数 : 0;
+    p.基準 = hit ? hit.工程 : '';
+    out.工場.push(p);
+  });
   out.合計 = out.工場.reduce(function (a, b) { return a + b.計画数; }, 0);
   out.人員 = out.工場.reduce(function (a, b) { return a + b.社員 + b.協力; }, 0);
   if (out.rows.length === 0) out.error = '当日計画の行が読めませんでした';

@@ -345,7 +345,11 @@ function ProdPlanCard({ plan }) {
         <div className="flex flex-wrap gap-1.5 mb-2">
           {工場.map((p) => (
             <span key={p.工場} className="px-2 py-1 rounded-md" style={{ background: "#f1f5f9" }}>
-              <span className="block text-[10px]" style={{ color: VIZ.ink2 }}>{p.工場}</span>
+              {/* ★ どの工程の数かを添える。工場ごとに採った工程が違うことがある
+                     （処理の行が無い工場は最後の工程で代えている） */}
+              <span className="block text-[10px]" style={{ color: VIZ.ink2 }}>
+                {p.工場}{p.基準 ? "　" + p.基準 : ""}
+              </span>
               <span className="block text-[15px] font-bold tabular-nums" style={{ color: NAVY }}>
                 {vizComma(p.計画数)}<span className="text-[10px] font-normal"> 本</span>
               </span>
@@ -2965,7 +2969,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       {/* ---- 今日と今月どれだけ作るか ---- */}
       <Card className="p-3">
         <Collapsible tone="card" title="生産計画"
-          note="当日と当月。置場に入る余地があるかの目安"
+          note="当日は処理（最終工程）の本数。置場に入ってくるぶん"
           closedNote={plan && plan.daily && plan.daily.合計
             ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""}>
           <ProdPlanCard plan={plan} />

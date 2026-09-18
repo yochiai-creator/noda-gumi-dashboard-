@@ -1139,7 +1139,7 @@ function ProdPlanCard({
     style: {
       color: VIZ.ink2
     }
-  }, p.工場), /*#__PURE__*/React.createElement("span", {
+  }, p.工場, p.基準 ? "　" + p.基準 : ""), /*#__PURE__*/React.createElement("span", {
     className: "block text-[15px] font-bold tabular-nums",
     style: {
       color: NAVY
@@ -5796,7 +5796,7 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u751F\u7523\u8A08\u753B",
-    note: "\u5F53\u65E5\u3068\u5F53\u6708\u3002\u7F6E\u5834\u306B\u5165\u308B\u4F59\u5730\u304C\u3042\u308B\u304B\u306E\u76EE\u5B89",
+    note: "\u5F53\u65E5\u306F\u51E6\u7406\uFF08\u6700\u7D42\u5DE5\u7A0B\uFF09\u306E\u672C\u6570\u3002\u7F6E\u5834\u306B\u5165\u3063\u3066\u304F\u308B\u3076\u3093",
     closedNote: plan && plan.daily && plan.daily.合計 ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""
   }, /*#__PURE__*/React.createElement(ProdPlanCard, {
     plan: plan
