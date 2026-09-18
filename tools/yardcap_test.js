@@ -82,6 +82,24 @@ const REPLY = {
   markLotInspected: () => ({ ok: true, error: null }),
   stockInLot: () => ({ ok: true, error: null }),
   cancelProdLot: () => ({ ok: true, error: null }),
+  // 生産計画（当日ぶん・当月ぶん）
+  getProdPlanData: () => ({ updated: '2026-09-18 08:00', error: null,
+    daily: { error: null, 日付ラベル: '9月18日', fileName: '工場別当日計画(26.9.18).xlsx',
+      fileDate: '2026-09-18', fileUrl: 'https://drive.google.com/file/d/x/view', 今日: true,
+      合計: 3600, 人員: 24,
+      rows: [], 工場: [
+        { 工場: '50k', 計画数: 1000, 社員: 18, 協力: 8,
+          工程: [{ 工程: '加工', 計画数: 1000 }, { 工程: '品質', 計画数: 1000 },
+                 { 工程: '処理', 計画数: 1000 }] },
+        { 工場: '20k', 計画数: 2600, 社員: 3, 協力: 1,
+          工程: [{ 工程: 'コイル', 計画数: 2600 }, { 工程: '加工', 計画数: 0 }] },
+        { 工場: '特殊', 計画数: 0, 社員: 1, 協力: 1, 工程: [{ 工程: '加工', 計画数: 0 }] },
+      ] },
+    monthly: { error: null, 月: '2026-09', 仮: false, 合計: 21400,
+      fileName: '２６年９月容器班別日程計画 Rev0.pdf',
+      fileUrl: 'https://drive.google.com/file/d/y/view',
+      行: [{ サイズ: '50kg', 月計: 12600, 日別が読めた: true, 日別: [] },
+           { サイズ: '20kg', 月計: 8800, 日別が読めた: true, 日別: [] }] } }),
   getArmShipPlan: () => ({ updated: 'x', error: null, total: 0, days: [], byKind: [],
     sourceName: null, snapshotAt: null, stale: false, pdfUrl: null, pdfName: null }),
   getArmMonthlyData: () => ({ updated: 'x', error: null, months: [], kinds: [], total: 0,
@@ -153,6 +171,25 @@ const REPLY = {
   chk('「元のシートを開く」がある', links.includes('元のシートを開く'), links);
 
   chk('在庫の推移が出る', /在庫の推移/.test(body), body.slice(0, 900));
+
+  /* ---- 生産計画 ---- */
+  {
+    const t = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' | '));
+    console.log('   生産計画:', JSON.stringify(t.slice(t.indexOf('生産計画'), t.indexOf('生産計画') + 320)));
+    chk('★生産計画が野外置場タブに出る', /生産計画/.test(t), t.slice(0, 200));
+    chk('当日の日付が出る', /9月18日/.test(t), t);
+    chk('★工場ごとの当日計画が出る（50k 1,000 / 20k 2,600）',
+      /1,000/.test(t) && /2,600/.test(t), t);
+    chk('★工程ごとの内訳も出す（上の数字が最大だと分かるように）',
+      /加工 1,000・品質 1,000・処理 1,000/.test(t), t);
+    chk('★当月計画の月計が出る（50kg 12,600 / 20kg 8,800）',
+      /12,600/.test(t) && /8,800/.test(t), t);
+    chk('当月の合計が出る', /21,400/.test(t), t);
+    const links = await page.evaluate(() => [...document.querySelectorAll('main a')]
+      .map((a) => a.textContent.trim()));
+    chk('元のファイルを開ける',
+      links.includes('当日計画を開く') && links.includes('当月計画を開く'), links);
+  }
 
   /* ---- 収容数（MAX）を直す ---- */
   // ★ 置場の使い方が変わったとき（20kg用だった所を50kg用にするなど）に

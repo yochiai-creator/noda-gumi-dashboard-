@@ -1,0 +1,151 @@
+// 生産計画（当日ぶん・当月ぶん）の読み取りテスト。
+//
+// ★ 元データは実物から起こしてある
+//   当日 … 工場別当日計画(26.9.18).xlsx
+//   当月 … ２６年９月容器班別日程計画 Rev0.pdf の本文テキスト
+const fs = require('fs');
+const vm = require('vm');
+const GAS = __dirname + '/../gas/';
+
+let pass = 0, fail = 0;
+const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
+  else { fail++; console.log('  FAIL ' + n + (e !== undefined ? '  -> ' + JSON.stringify(e) : '')); } };
+
+function sb() {
+  const s = {
+    Logger: { log: (m) => s.__logs.push(String(m)) },
+    Utilities: { formatDate: (d, tz, f) => {
+      const p = (n) => String(n).padStart(2, '0');
+      const x = new Date(d.getTime() + 9 * 3600000);
+      if (f === 'yyyy') return String(x.getUTCFullYear());
+      if (f === 'MM') return p(x.getUTCMonth() + 1);
+      return x.getUTCFullYear() + '-' + p(x.getUTCMonth() + 1) + '-' + p(x.getUTCDate()) +
+        (f.indexOf('HH') >= 0 ? ' 00:00' : '');
+    } },
+    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {}, remove: () => {} }) },
+    DriveApp: {}, SpreadsheetApp: {}, PropertiesService: {},
+    JSON, Object, Number, String, Math, Date, RegExp, Array, isNaN, Boolean, Error,
+  };
+  s.__logs = [];
+  vm.createContext(s);
+  vm.runInContext(fs.readFileSync(GAS + 'noda_common_cache.js', 'utf8'), s);
+  vm.runInContext(fs.readFileSync(GAS + 'noda_prod_plan.js', 'utf8'), s);
+  return s;
+}
+
+// ---- 当日計画：実ファイルの並び（B=工場 C=工程 D=計画数 E=社員 H=協力）----
+const r = (b, c, d, e, h) => { const a = new Array(12).fill(''); 
+  a[1] = b; a[2] = c; a[3] = d; a[4] = e; a[7] = h; return a; };
+const DAILY = [
+  ['26.9.18 400', '', '工場別当日計画', '', '', '', '', '', '', '', '', ''],
+  ['', '', '', '', '', '', '', '', '', '', '稼働日', '9月18日(Fri)'],
+  r('工場', '工程', '計画数 (本)', '面着人員', ''),
+  r('', '', '', '社員', '協力'),
+  r('50k', '加工', 1000, 8, 1),
+  r('', '', '', '合計　9.0　人', ''),
+  r('', '品質', 1000, 10, 7),
+  r('', '処理', 1000, '', ''),
+  r('', '', '', '合計　17.0　人', ''),
+  r('20k', 'コイル', 2600, 2, 0),
+  r('', '加工', 0, '', ''),
+  r('', '', '', '合計　2.0　人', ''),
+  r('', '品質', 0, 1, 1),
+  r('', '処理', 0, '', ''),
+  r('特殊', '加工', 0, 1, 1),
+  r('', '', '', '合計　2.0　人', ''),
+];
+
+console.log('■ 当日計画');
+{
+  const s = sb();
+  const d = s.pplan_parseDaily_(DAILY);
+  chk('日付が出る', d.日付ラベル === '9月18日', d.日付ラベル);
+  chk('工場が3つ', d.工場.length === 3, d.工場.map((x) => x.工場));
+  chk('★工場の欄が空でも上から引き継ぐ（20kの品質が20kになる）',
+    d.rows.filter((x) => x.工場 === '20k').length === 4, d.rows);
+  const by = {}; d.工場.forEach((x) => { by[x.工場] = x; });
+  chk('★50kは工程ごとに足さず最大を採る（1000。3000ではない）',
+    by['50k'].計画数 === 1000, by['50k']);
+  chk('20kはコイルの2600', by['20k'].計画数 === 2600, by['20k']);
+  chk('特殊は0でも行として残す', by['特殊'] && by['特殊'].計画数 === 0, by['特殊']);
+  chk('工程の内訳を持つ', by['50k'].工程.length === 3, by['50k'].工程);
+  chk('人員を足す（社員8+10、協力1+7）',
+    by['50k'].社員 === 18 && by['50k'].協力 === 8, by['50k']);
+  chk('★合計は工場ごとの最大の和（1000+2600+0）', d.合計 === 3600, d.合計);
+  chk('「合計 9.0 人」の行は計画数として拾わない',
+    d.rows.every((x) => typeof x.計画数 === 'number'), d.rows);
+  chk('エラーなし', d.error === null, d.error);
+}
+
+console.log('■ 当日計画：読めないとき');
+{
+  const s = sb();
+  const d = s.pplan_parseDaily_([['', '', ''], ['', 'なにか', '']]);
+  chk('★行が無ければ黙って0本にせずエラーにする', !!d.error, d);
+  chk('画面が期待する形は保つ', Array.isArray(d.rows) && Array.isArray(d.工場), d);
+}
+
+console.log('■ ファイル名の日付');
+{
+  const s = sb();
+  chk('半角カッコ', s.pplan_dateKeyFromName_('工場別当日計画(26.9.18).xlsx') === '2026-09-18');
+  chk('★全角カッコも通す（実際に混ざっている）',
+    s.pplan_dateKeyFromName_('工場別当日計画(26.8.27）.xlsx') === '2026-08-27');
+  chk('1桁の月日をそろえる',
+    s.pplan_dateKeyFromName_('工場別当日計画(26.9.1).xlsx') === '2026-09-01');
+  chk('日付が無ければ null', s.pplan_dateKeyFromName_('残業の連絡.xls') === null);
+  chk('★並べ替えで9.2より9.10が後になる',
+    s.pplan_dateKeyFromName_('工場別当日計画(26.9.10).xlsx') >
+    s.pplan_dateKeyFromName_('工場別当日計画(26.9.2).xlsx'));
+}
+
+console.log('■ 月のファイル名（全角）');
+{
+  const s = sb();
+  chk('2026年9月 →「２６年９月」', s.pplan_kanjiMonth_(2026, 9) === '２６年９月');
+  chk('2026年10月 →「２６年１０月」', s.pplan_kanjiMonth_(2026, 10) === '２６年１０月');
+}
+
+// ---- 当月計画：実PDFの本文から該当行を抜き出したもの ----
+const M50 = '50kg=6台 ＋0 0 0 900 900 0 0 0 0 1000 1000 1000 0 0 0 1200 1200 0 1200 0 0 0 0 0 1200 0 600 0 0 1200 1200 0 12,600';
+const M20 = '20kg ＋0 1000 1100 0 0 600 0 1200 1200 0 0 0 800 0 1100 0 0 1200 0 0 0 0 0 0 0 600 0 0 0 0 0 0 8,800';
+
+console.log('■ 当月計画');
+{
+  const s = sb();
+  const m = s.pplan_parseMonthly_([M50, '関係ない行', M20].join('\n'), 30);
+  chk('2サイズぶん読む', m.行.length === 2, m.行.map((x) => x.サイズ));
+  const by = {}; m.行.forEach((x) => { by[x.サイズ] = x; });
+  chk('★50kgの月計 12,600', by['50kg'].月計 === 12600, by['50kg'].月計);
+  chk('★20kgの月計 8,800', by['20kg'].月計 === 8800, by['20kg'].月計);
+  chk('合計 21,400', m.合計 === 21400, m.合計);
+  chk('★日別を拾えている', by['50kg'].日別が読めた === true, by['50kg']);
+  chk('★日別の合計が月計と一致する（ここがずれたら日別は捨てる）',
+    by['50kg'].日別.reduce((a, b) => a + b, 0) === 12600, by['50kg'].日別);
+  chk('20kgも一致', by['20kg'].日別.reduce((a, b) => a + b, 0) === 8800);
+  chk('★台数（=6台）や＋0を日別に混ぜない（9月は30日ぶん）',
+    by['50kg'].日別.length === 30 && by['20kg'].日別.length === 30,
+    [by['50kg'].日別.length, by['20kg'].日別.length]);
+
+  // 品質の行は同じ数字で続くが、1サイズ1本だけ採る（倍にしない）
+  const m2 = s.pplan_parseMonthly_([M50, M50, M20, M20].join('\n'), 30);
+  chk('★同じサイズが2行あっても倍にしない', m2.合計 === 21400, m2.合計);
+}
+
+console.log('■ 当月計画：合わないとき');
+{
+  const s = sb();
+  // 日別の合計が月計と合わない（1200が1300に化けた）
+  const bad = M50.replace('0 0 1200 1200 0 12,600', '0 0 1300 1200 0 12,600');
+  const m = s.pplan_parseMonthly_(bad, 30);
+  chk('月計は出す', m.行[0].月計 === 12600, m.行[0]);
+  chk('★合わない日別は捨てる（ずれたまま見せない）',
+    m.行[0].日別が読めた === false, m.行[0]);
+  chk('読めなかったとはっきりさせる', m.行[0].日別 === null, m.行[0]);
+
+  const e = s.pplan_parseMonthly_('なにも無い', 30);
+  chk('該当行が無ければエラーにする', !!e.error, e);
+}
+
+console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
+process.exit(fail ? 1 : 0);

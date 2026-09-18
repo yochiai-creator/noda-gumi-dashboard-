@@ -310,6 +310,111 @@ const LOT_TONE = {
   出荷済: { bg: "#f1f5f9", fg: "#64748b" },
 };
 
+/* 生産計画（当日ぶんと当月ぶん）。
+   ★ 置場の話と並べる意味
+     「今日どれだけ作るか」が分かると、置場に入る余地があるかをその場で判断できる。
+     置場の本数だけ見ていても、今日の入荷ぶんは読めない。 */
+function ProdPlanCard({ plan }) {
+  if (!plan) return <p className="text-xs text-slate-500 py-2">読み込み中…</p>;
+  if (plan.error) return <p className="text-xs text-amber-700 py-2">{plan.error}</p>;
+  const d = plan.daily || {};
+  const m = plan.monthly || {};
+  const 工場 = d.工場 || [];
+  const 月行 = m.行 || [];
+
+  return (
+    <div>
+      {/* ---- 当日 ---- */}
+      <span className="flex items-baseline gap-2 mb-1">
+        <span className="text-[11px] font-semibold" style={{ color: VIZ.ink2 }}>
+          当日計画{d.日付ラベル ? "　" + d.日付ラベル : ""}
+        </span>
+        {/* ★ 今日のファイルが無い日がある（休日・作成前）。黙って前の日を出すと
+               今日の計画だと思ってしまうので、いつのぶんかを必ず言う */}
+        {d.fileDate && !d.今日 && (
+          <span className="text-[10px]" style={{ color: "#b45309" }}>
+            今日のぶんはまだありません（{d.fileDate} のぶん）
+          </span>
+        )}
+      </span>
+      {d.error ? (
+        <p className="text-xs text-amber-700 py-1">{d.error}</p>
+      ) : 工場.length === 0 ? (
+        <p className="text-xs text-slate-500 py-1">当日計画がありません。</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {工場.map((p) => (
+            <span key={p.工場} className="px-2 py-1 rounded-md" style={{ background: "#f1f5f9" }}>
+              <span className="block text-[10px]" style={{ color: VIZ.ink2 }}>{p.工場}</span>
+              <span className="block text-[15px] font-bold tabular-nums" style={{ color: NAVY }}>
+                {vizComma(p.計画数)}<span className="text-[10px] font-normal"> 本</span>
+              </span>
+              <span className="block text-[10px] tabular-nums" style={{ color: VIZ.muted }}>
+                社員{p.社員} 協力{p.協力}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* 工程ごとの内訳。同じ本数が流れるので、上の数字は工程の最大 */}
+      {工場.length > 0 && (
+        <span className="block text-[10px] mb-2" style={{ color: VIZ.muted }}>
+          {工場.map((p) => p.工場 + "：" +
+            p.工程.map((x) => x.工程 + " " + vizComma(x.計画数)).join("・")).join("　")}
+        </span>
+      )}
+
+      {/* ---- 当月 ---- */}
+      <span className="flex items-baseline gap-2 mb-1">
+        <span className="text-[11px] font-semibold" style={{ color: VIZ.ink2 }}>
+          当月計画{m.月 ? "　" + Number(m.月.slice(0, 4)) + "年" + Number(m.月.slice(5, 7)) + "月" : ""}
+        </span>
+        {m.仮 && (
+          <span className="text-[10px] px-1 rounded"
+            style={{ background: "#fef3c7", color: "#b45309" }}>仮</span>
+        )}
+      </span>
+      {m.error ? (
+        <p className="text-xs text-amber-700 py-1">{m.error}</p>
+      ) : 月行.length === 0 ? (
+        <p className="text-xs text-slate-500 py-1">当月計画がありません。</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {月行.map((x) => (
+            <span key={x.サイズ} className="px-2 py-1 rounded-md" style={{ background: "#f1f5f9" }}>
+              <span className="block text-[10px]" style={{ color: VIZ.ink2 }}>{x.サイズ}</span>
+              <span className="block text-[15px] font-bold tabular-nums" style={{ color: NAVY }}>
+                {vizComma(x.月計)}<span className="text-[10px] font-normal"> 本</span>
+              </span>
+            </span>
+          ))}
+          <span className="px-2 py-1 rounded-md" style={{ background: "#e2e8f0" }}>
+            <span className="block text-[10px]" style={{ color: VIZ.ink2 }}>合計</span>
+            <span className="block text-[15px] font-bold tabular-nums" style={{ color: NAVY }}>
+              {vizComma(m.合計)}<span className="text-[10px] font-normal"> 本</span>
+            </span>
+          </span>
+        </div>
+      )}
+
+      <span className="block text-[10px] mt-2" style={{ color: VIZ.muted }}>
+        {d.fileName ? "当日：" + d.fileName : ""}
+        {m.fileName ? "　当月：" + m.fileName : ""}
+      </span>
+      <span className="flex flex-wrap gap-3 mt-1">
+        {d.fileUrl && (
+          <a href={d.fileUrl} target="_blank" rel="noreferrer"
+            className="text-[11px] underline" style={{ color: NAVY }}>当日計画を開く</a>
+        )}
+        {m.fileUrl && (
+          <a href={m.fileUrl} target="_blank" rel="noreferrer"
+            className="text-[11px] underline" style={{ color: NAVY }}>当月計画を開く</a>
+        )}
+      </span>
+    </div>
+  );
+}
+
 function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, saving }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(null);
@@ -2800,7 +2905,7 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
     書き直さずそのまま iframe で読み込む。旧アプリ側も setXFrameOptionsMode(ALLOWALL)
     が入っていて、もともと埋め込む前提で書かれていた。 */
 function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSave, onRefresh,
-                          onAddLot, onInspectLot, onStockInLot, onCancelLot, saving }) {
+                          onAddLot, onInspectLot, onStockInLot, onCancelLot, plan, saving }) {
   const [keyword, setKeyword] = useState("");
   const [onlyNearFull, setOnlyNearFull] = useState(false);
   const [sortBy, setSortBy] = useState("no");     // "no" | "rate"
@@ -2857,6 +2962,16 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       )}
 
       {/* ---- 生産の流れ。作った→検査→入庫→出荷 ---- */}
+      {/* ---- 今日と今月どれだけ作るか ---- */}
+      <Card className="p-3">
+        <Collapsible tone="card" title="生産計画"
+          note="当日と当月。置場に入る余地があるかの目安"
+          closedNote={plan && plan.daily && plan.daily.合計
+            ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""}>
+          <ProdPlanCard plan={plan} />
+        </Collapsible>
+      </Card>
+
       <Card className="p-3">
         <Collapsible tone="card" title="生産の流れ"
           note="作った → 受検 → 入庫 → 指図書で自動的に出荷。置場の本数は置いた時点で増えます"
@@ -3351,6 +3466,10 @@ export default function App() {
       .withSuccessHandler((d) => setLive((prev) => ({ ...prev, cTypes: d })))
       .withFailureHandler((err) => setLive((prev) => ({ ...prev, cTypes: { error: String(err) } })))
       .getContainerTypes();
+    google.script.run
+      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, plan: d })))
+      .withFailureHandler((err) => setLive((prev) => ({ ...prev, plan: { error: String(err) } })))
+      .getProdPlanData(false);
   };
 
   /* 生産の流れ（登録・受検・入庫）。
@@ -3761,7 +3880,7 @@ export default function App() {
             url={live.yardCapUrl}
             onSave={saveYardCount} onRefresh={fetchYardTab}
             onAddLot={addLot} onInspectLot={inspectLot} onStockInLot={stockInLot}
-            onCancelLot={cancelLot}
+            onCancelLot={cancelLot} plan={live.plan}
             saving={yardSaving} />}
         </div>
 
