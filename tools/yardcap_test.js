@@ -58,6 +58,10 @@ const REPLY = {
       { ロットID: 'L20260916-002', 生産日: '2026-09-16', サイズ: '50kg', 容器接頭辞: 'HEP',
         容器No開始: '54301', 容器No終了: '54350', 本数: 50, 状態: '受検済', 出荷済本数: 0,
         置場番号: '', 置場名: '', 依頼No: '', 出荷日: '', 備考: '' },
+      // 登録のときに置場を決めてあるロット（入庫は押すだけで済む）
+      { ロットID: 'L20260916-005', 生産日: '2026-09-16', サイズ: '50kg', 容器接頭辞: 'HEP',
+        容器No開始: '54351', 容器No終了: '54400', 本数: 50, 状態: '受検済', 出荷済本数: 0,
+        置場番号: '8', 置場名: '大型製缶', 依頼No: '', 出荷日: '', 備考: '' },
       { ロットID: 'L20260915-003', 生産日: '2026-09-15', サイズ: '50kg', 容器接頭辞: 'HEP',
         容器No開始: '54201', 容器No終了: '54280', 本数: 80, 状態: '入庫済', 出荷済本数: 0,
         置場番号: '7', 置場名: '大型製缶', 依頼No: '', 出荷日: '', 備考: '' },
@@ -199,14 +203,21 @@ const REPLY = {
     /指図書が出たら自動で引かれます/.test(flow.t), flow.btns);
   chk('出荷済には依頼Noが出る', /26-10660/.test(flow.t), flow.t.slice(0, 900));
 
+  // 置場は作った時点で決める。決めてあれば入庫は押すだけ
+  chk('★置場が決まっていれば「◯◯ に入庫」で押すだけ',
+    flow.btns.includes('大型製缶 に入庫'), flow.btns);
+  chk('置き場所を変える道も残す', flow.btns.includes('別の置場へ'), flow.btns);
+  chk('★置場が決まっていないロットは今までどおり選ばせる',
+    flow.btns.includes('入庫する'), flow.btns);
+
   // 打ち間違いを直せる。出て行った容器には出さない
   chk('★打ち間違いの取消ボタンが出る', flow.btns.includes('打ち間違い'), flow.btns);
-  chk('★取消ボタンは出荷済ぶんのないロットだけ（3件）',
-    flow.btns.filter((b) => b === '打ち間違い').length === 3, flow.btns);
+  chk('★取消ボタンは出荷済ぶんのないロットだけ（4件）',
+    flow.btns.filter((b) => b === '打ち間違い').length === 4, flow.btns);
   {
     // 入庫済のロットで押すと、置場から何本戻すのかを先に見せる
     const cancels = page.locator('main button', { hasText: '打ち間違い' });
-    await cancels.nth(2).click();     // 3件目＝入庫済 L20260915-003（80本）
+    await cancels.nth(3).click();     // 4件目＝入庫済 L20260915-003（80本）
     await page.waitForTimeout(300);
     const t2 = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' | '));
     chk('★押す前に置場から引き戻す本数を見せる', /置場から 80 本 引き戻します/.test(t2),
@@ -243,6 +254,17 @@ const REPLY = {
       値: [...s2.options].map((o) => o.value) };
   });
   console.log('   機種の選択:', JSON.stringify(sel));
+  {
+    const f = await page.evaluate(() => {
+      const t = document.body.innerText.replace(/\n/g, ' | ');
+      return { 置場を聞く: /どこに置きますか/.test(t),
+        置場ボタン: [...document.querySelectorAll('main button')]
+          .map((b) => b.textContent.trim()).filter((x) => /^\d+\s+(大型製缶|コンテナ)$/.test(x)) };
+    });
+    console.log('   登録時の置場:', JSON.stringify(f));
+    chk('★登録のときに置場を聞く（受検まで待たない）', f.置場を聞く, f);
+    chk('置場を選べる', f.置場ボタン.length >= 3, f.置場ボタン);
+  }
   chk('★機種はマスタから選ぶ', sel && sel.件数 === 3, sel);
   chk('分類と品名が出る', sel && /５０Ｋ ＬＰＧ容器｜新軽量/.test(sel.先頭), sel);
 

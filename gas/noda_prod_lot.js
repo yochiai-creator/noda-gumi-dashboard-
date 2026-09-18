@@ -111,13 +111,24 @@ function addProdLot(lot) {
         return { ok: false, error: '容器番号が既に登録されています（' + dup.ロットID + ' / ' +
                  dup.容器接頭辞 + dup.容器No開始 + '〜' + dup.容器No終了 + '）' };
       }
+      /* ★ 置場は作った時点で入れる。現場は作ってすぐ置場に置くので、
+           受検が済むまで置場が分からない状態にすると、実物と帳簿がずれる。
+           ただし野外置場の実績数に足すのは入庫のときのまま。
+           未受検のものを在庫に混ぜるとダブるため。 */
+      var loc = null;
+      if (v.置場番号) {
+        loc = lot_findLocation_(v.置場番号);
+        if (!loc) return { ok: false, error: '置場「' + v.置場番号 + '」が見つかりません' };
+      }
       var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
       var id = lot_newId_(sheet);
       sheet.appendRow([id, v.生産日, v.機種コード, v.機種名, v.サイズ,
                        v.接頭辞, v.開始, v.終了, v.本数,
-                       '未受検', '', '', '', '', 0, '', '', v.備考,
+                       '未受検', '', '', loc ? loc.no : '', loc ? loc.name : '',
+                       0, '', '', v.備考,
                        lot_user_(), now, now]);
-      return { ok: true, error: null, id: id, 本数: v.本数, 機種名: v.機種名 };
+      return { ok: true, error: null, id: id, 本数: v.本数, 機種名: v.機種名,
+               置場: loc ? loc.name : '' };
     } finally {
       lock.releaseLock();
     }
@@ -155,6 +166,7 @@ function lot_validate_(lot, types) {
   var pad = function (x) { var s = String(x); while (s.length < keta) s = '0' + s; return s; };
   return { 生産日: d, 機種コード: code, 機種名: t.品名, サイズ: t.サイズ || '',
            接頭辞: pre, 開始: pad(na), 終了: pad(nb), 本数: n,
+           置場番号: String(lot.置場 == null ? '' : lot.置場).trim(),
            備考: String(lot.備考 || '').trim(), error: null };
 }
 
@@ -195,11 +207,6 @@ function markLotInspected(id) {
  */
 function stockInLot(id, locationNo) {
   try {
-    var no = String(locationNo || '').trim();
-    if (!no) return { ok: false, error: '置場を選んでください' };
-    var loc = lot_findLocation_(no);
-    if (!loc) return { ok: false, error: '置場「' + no + '」が見つかりません' };
-
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
@@ -208,6 +215,12 @@ function stockInLot(id, locationNo) {
       if (found.lot.状態 !== '受検済') {
         return { ok: false, error: '受検済のロットだけ入庫できます（今は「' + found.lot.状態 + '」）' };
       }
+      /* ★ 置場は登録のときに入っているのが普通。入庫で選び直すのは
+           置き場所を変えたときだけ。毎回選ばせると押し間違いが増える。 */
+      var no = String(locationNo || '').trim() || String(found.lot.置場番号 || '').trim();
+      if (!no) return { ok: false, error: '置場を選んでください' };
+      var loc = lot_findLocation_(no);
+      if (!loc) return { ok: false, error: '置場「' + no + '」が見つかりません' };
       var key = LOT_CONFIG.SIZE_KEY[found.lot.サイズ];
       var add = found.lot.本数 - found.lot.出荷済本数;
       /* ★ 置場容量シートに列が無いサイズ（2K・5K・8K・10K）は在庫数に足さない。

@@ -327,7 +327,7 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
   const typeList = (types && types.types) || [];
   const openAdd = () => {
     setForm({ 生産日: today, 機種コード: typeList.length > 0 ? typeList[0].コード : "",
-              接頭辞: "", 開始: "", 終了: "", 備考: "" });
+              接頭辞: "", 開始: "", 終了: "", 置場: "", 備考: "" });
     setAdding(true);
   };
   const pickedType = form ? typeList.filter((t) => t.コード === form.機種コード)[0] : null;
@@ -417,6 +417,24 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
               流れだけ記録します。
             </span>
           )}
+          {/* ★ 置場は作った時点で選ぶ。現場は作ってすぐ置くので、受検まで
+                 置場が決まらない形にすると実物と帳簿がずれる。
+                 野外置場の実績数に足すのは入庫のときのまま。 */}
+          <span className="block text-[11px] mb-1" style={{ color: VIZ.ink2 }}>
+            どこに置きますか{form.置場 ? "" : "（後で決めてもかまいません）"}
+          </span>
+          <span className="flex flex-wrap gap-1 mb-2">
+            {locations.map((loc) => (
+              <button key={loc.no}
+                onClick={() => setForm({ ...form, 置場: form.置場 === loc.no ? "" : loc.no })}
+                className="px-2 py-1 rounded-md text-[11px]"
+                style={form.置場 === loc.no
+                  ? { background: NAVY, color: "#fff" }
+                  : { background: "#f1f5f9", color: VIZ.ink2 }}>
+                {loc.no} {loc.name}
+              </button>
+            ))}
+          </span>
           <span className="flex items-center gap-2">
             <button disabled={saving || count == null || !form.機種コード}
               onClick={() => onAdd(form, () => { setAdding(false); setForm(null); })}
@@ -479,7 +497,22 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
                     className="mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white"
                     style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>受検OK</button>
                 )}
-                {l.状態 === "受検済" && (
+                {l.状態 === "受検済" && l.置場番号 && pickFor !== l.ロットID && (
+                  /* ★ 登録のときに置場が決まっているので、入庫は押すだけ。
+                         置き場所を変えたときだけ「別の置場へ」を使う。 */
+                  <span className="flex flex-wrap items-center gap-2 mt-1">
+                    <button disabled={saving}
+                      onClick={() => onStockIn(l.ロットID, l.置場番号)}
+                      className="px-3 py-1 rounded-md text-[11px] font-semibold text-white"
+                      style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>
+                      {l.置場名} に入庫
+                    </button>
+                    <button onClick={() => setPickFor(l.ロットID)}
+                      className="px-2 py-1 rounded-md text-[11px] bg-slate-100"
+                      style={{ color: VIZ.muted }}>別の置場へ</button>
+                  </span>
+                )}
+                {l.状態 === "受検済" && (!l.置場番号 || pickFor === l.ロットID) && (
                   pickFor === l.ロットID ? (
                     <span className="block mt-1">
                       <span className="block text-[10px] mb-1" style={{ color: VIZ.ink2 }}>

@@ -111,6 +111,51 @@ console.log('■ 生産の登録');
   chk('記号が違えば重ならない',
     s.addProdLot({ 生産日: '2026-09-17', 機種コード: '165', 接頭辞: 'HXP', 開始: '54401', 終了: '54410' }).ok === true);
 }
+console.log('■ 置場は作った時点で入れる');
+{
+  const s = build([], [loc({ no: 7, name: '大型製缶' }), loc({ no: 11, name: 'コンテナ' })], []);
+  const r = s.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
+                           開始: '60001', 終了: '60100', 置場: 7 });
+  chk('登録のときに置場を入れられる', r.ok === true && r.置場 === '大型製缶', r);
+  const l = s.getProdLots('', 0).lots[0];
+  chk('★未受検のうちから置場が入る', l.置場番号 === '7' && l.置場名 === '大型製缶', l);
+  chk('★まだ野外置場の実績には足さない（受検前を在庫に混ぜない）',
+    s.__yardCalls.length === 0 && s.__locs[0].a50 === 0, s.__locs[0]);
+
+  // 受検 → 入庫。置場を選び直さなくても、登録した置場に入る
+  chk('受検OK', s.markLotInspected(l.ロットID).ok === true);
+  const st = s.stockInLot(l.ロットID);
+  chk('★置場を選び直さずに入庫できる', st.ok === true && st.置場 === '大型製缶', st);
+  chk('★ここで初めて実績に足す', s.__locs[0].a50 === 100, s.__locs[0]);
+
+  // 置き場所を変えたときは入庫で選び直せる
+  const s2 = build([], [loc({ no: 7, name: '大型製缶' }), loc({ no: 11, name: 'コンテナ', a50: 0 })], []);
+  const r2 = s2.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
+                             開始: '60001', 終了: '60010', 置場: 7 });
+  const id2 = s2.getProdLots('', 0).lots[0].ロットID;
+  s2.markLotInspected(id2);
+  chk('★入庫のときに置き場所を変えられる',
+    s2.stockInLot(id2, 11).置場 === 'コンテナ');
+  chk('変えた先に足す', s2.__locs[1].a50 === 10 && s2.__locs[0].a50 === 0,
+    [s2.__locs[0].a50, s2.__locs[1].a50]);
+  chk('ロットの置場も書き換わる', s2.getProdLots('', 0).lots[0].置場名 === 'コンテナ');
+
+  // 置場なしでも登録はできる（後から決める現場もある）
+  const s3 = build([], [loc({})], []);
+  chk('置場を入れずに登録できる',
+    s3.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
+                    開始: '1', 終了: '10' }).ok === true);
+  const id3 = s3.getProdLots('', 0).lots[0].ロットID;
+  s3.markLotInspected(id3);
+  chk('★その場合は入庫で置場を聞く', s3.stockInLot(id3).ok === false);
+  chk('選べば入庫できる', s3.stockInLot(id3, 7).ok === true);
+
+  // 無い置場は断る
+  chk('★無い置場は登録のときに断る',
+    build([], [loc({})], []).addProdLot({ 生産日: '2026-09-18', 機種コード: '123',
+      接頭辞: 'HEP', 開始: '1', 終了: '10', 置場: 99 }).ok === false);
+}
+
 console.log('■ 入力の確かめ');
 {
   const s = build([], [], []);
