@@ -2765,6 +2765,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
   const [sortBy, setSortBy] = useState("no");     // "no" | "rate"
   const [openNo, setOpenNo] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [editMax, setEditMax] = useState(false);   // 収容数（MAX）も直すかどうか
   const [pick, setPick] = useState(null);
 
   const err = (data && data.error) || (summary && summary.error) || null;
@@ -2783,15 +2784,23 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
   })();
 
   const openEdit = (r) => {
-    if (openNo === r.no) { setOpenNo(null); setDraft(null); return; }
+    if (openNo === r.no) { setOpenNo(null); setDraft(null); setEditMax(false); return; }
     setOpenNo(r.no);
-    setDraft({ a20: String(r.a20), a30: String(r.a30), a50: String(r.a50), note: r.note });
+    setEditMax(false);
+    setDraft({ a20: String(r.a20), a30: String(r.a30), a50: String(r.a50),
+               m20: String(r.m20), m30: String(r.m30), m50: String(r.m50), note: r.note });
   };
 
   const save = (r) => {
     const num = (v) => { const n = Number(String(v).replace(/[^\d.-]/g, "")); return isNaN(n) ? 0 : n; };
     const updates = { a20: num(draft.a20), a30: num(draft.a30), a50: num(draft.a50), note: draft.note };
-    onSave(r.no, updates, () => { setOpenNo(null); setDraft(null); });
+    /* ★ 収容数は普段いじらせない（毎日直すのは今ある本数のほう）。
+         ただし置場の使い方が変わったとき——20kg用だった所を50kg用にしたときなど——
+         ここで直せないと、スプレッドシートを開くしかなくなる。 */
+    if (editMax) {
+      updates.m20 = num(draft.m20); updates.m30 = num(draft.m30); updates.m50 = num(draft.m50);
+    }
+    onSave(r.no, updates, () => { setOpenNo(null); setDraft(null); setEditMax(false); });
   };
 
   const days = (daily && daily.days) || [];
@@ -2897,20 +2906,44 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
 
                     {open && draft && (
                       <div className="px-3 pb-3 bg-slate-50">
-                        <p className="text-[11px] mb-1" style={{ color: VIZ.ink2 }}>今ある本数を直す</p>
+                        <span className="flex items-baseline gap-2 mb-1">
+                          <span className="text-[11px]" style={{ color: VIZ.ink2 }}>
+                            {editMax ? "今ある本数と収容数を直す" : "今ある本数を直す"}
+                          </span>
+                          <button onClick={() => setEditMax(!editMax)}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-200 ml-auto"
+                            style={{ color: VIZ.ink2 }}>
+                            {editMax ? "本数だけにする" : "収容数も直す"}
+                          </button>
+                        </span>
+                        {/* ★ 収容数を直すときは3サイズとも出す。今0のサイズを隠すと、
+                               20kg用だった置場を50kg用にする、という直し方ができない。 */}
                         {[["20kg", "a20", "m20"], ["30kg", "a30", "m30"], ["50kg", "a50", "m50"]]
-                          .filter(([, , mk]) => r[mk] > 0 || r[mk.replace("m", "a")] > 0)
+                          .filter(([, ak, mk]) => editMax || r[mk] > 0 || r[ak] > 0)
                           .map(([label, ak, mk]) => (
                             <span key={ak} className="flex items-center gap-2 mb-1.5">
                               <span className="text-[11px] w-10 shrink-0" style={{ color: VIZ.ink2 }}>{label}</span>
                               <input value={draft[ak]} inputMode="numeric"
                                 onChange={(e) => setDraft({ ...draft, [ak]: e.target.value })}
                                 className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
-                              <span className="text-[10px] tabular-nums" style={{ color: VIZ.muted }}>
-                                / {vizComma(r[mk])}
-                              </span>
+                              <span className="text-[10px] tabular-nums shrink-0" style={{ color: VIZ.muted }}>/</span>
+                              {editMax ? (
+                                <input value={draft[mk]} inputMode="numeric"
+                                  onChange={(e) => setDraft({ ...draft, [mk]: e.target.value })}
+                                  className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums"
+                                  style={{ background: "#fffbeb" }} />
+                              ) : (
+                                <span className="text-[10px] tabular-nums" style={{ color: VIZ.muted }}>
+                                  {vizComma(r[mk])}
+                                </span>
+                              )}
                             </span>
                           ))}
+                        {editMax && (
+                          <span className="block text-[10px] mb-1.5" style={{ color: "#b45309" }}>
+                            右の色が付いた欄が収容数です。置場の使い方が変わったときだけ直してください。
+                          </span>
+                        )}
                         <span className="flex items-center gap-2 mb-2">
                           <span className="text-[11px] w-10 shrink-0" style={{ color: VIZ.ink2 }}>備考</span>
                           <input value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })}

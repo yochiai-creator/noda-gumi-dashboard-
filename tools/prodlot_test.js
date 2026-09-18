@@ -25,19 +25,30 @@ const TYPES = [
   { コード: '113', 品名: '２４Ｌ（１０ｋｇ）ＬＰガス容器（ＰＴ直付）', 分類: '１０Ｋ ＬＰＧ容器', サイズ: '' },
 ];
 
-function build(lotRows, locations, ranges) {
+function build(lotRows, locations, ranges, headRow) {
   const rows = (lotRows || []).map((r) => r.slice());
   const locs = (locations || []).map((r) => Object.assign({}, r));
+  // 1行目は見出し。古い並びのまま残っているシートも作れるようにしてある
+  const head = (headRow || H).slice();
   const sheet = {
     getLastRow: () => (rows.length === 0 ? 1 : rows.length + 1),
+    getLastColumn: () => head.length,
+    getMaxColumns: () => head.length,
+    insertColumnsAfter: (after, n) => { for (let i = 0; i < n; i++) head.push(''); },
     setFrozenRows: () => {},
     appendRow: (r) => rows.push(r.slice()),
     getRange: (rr, c, nr, nc) => ({
-      getValues: () => rows.slice(rr - 2, rr - 2 + nr).map((x) => x.slice(c - 1, c - 1 + (nc || H.length))),
-      setValues: (v) => { v.forEach((row, i) => { rows[rr - 2 + i] = row.slice(); }); },
+      getValues: () => (rr === 1
+        ? [head.slice(c - 1, c - 1 + (nc || H.length))]
+        : rows.slice(rr - 2, rr - 2 + nr).map((x) => x.slice(c - 1, c - 1 + (nc || H.length)))),
+      setValues: (v) => {
+        if (rr === 1) { v[0].forEach((x, i) => { head[c - 1 + i] = x; }); return; }
+        v.forEach((row, i) => { rows[rr - 2 + i] = row.slice(); });
+      },
       setFontWeight: () => {},
     }),
   };
+  sheet.__head = head;
   const ss = { getSheetByName: (n) => (n === '生産ロット' ? sheet : null),
                insertSheet: () => sheet, getUrl: () => 'u' };
   const sb = {
@@ -54,7 +65,7 @@ function build(lotRows, locations, ranges) {
     CacheService: { getScriptCache: () => ({ get: () => null, put: () => {}, remove: () => {} }) },
     JSON, Object, Number, String, Math, Date, RegExp, Array, isNaN, Boolean, Error,
   };
-  sb.__logs = []; sb.__rows = rows; sb.__locs = locs; sb.__yardCalls = [];
+  sb.__logs = []; sb.__rows = rows; sb.__locs = locs; sb.__yardCalls = []; sb.__sheet = sheet;
   vm.createContext(sb);
   vm.runInContext(fs.readFileSync(GAS + 'noda_common_cache.js', 'utf8'), sb);
   vm.runInContext(fs.readFileSync(GAS + 'noda_prod_lot.js', 'utf8'), sb);
@@ -231,6 +242,27 @@ console.log('■ 状態ごとの本数');
   chk('入庫済', t.入庫済 === 80, t);
   chk('★状態でしぼれる', s.getProdLots('入庫済', 0).lots.length === 1);
   chk('しぼっても合計は全部ぶん', s.getProdLots('入庫済', 0).totals.未受検 === 100);
+}
+
+console.log('■ 古い見出しのシート');
+{
+  // 機種マスタを足した回に「機種コード」「機種名」が増えた。それ以前に作られた
+  // シートは見出しが2列足りず、人が見ると列がずれて見える。
+  const OLD = H.filter((h) => h !== '機種コード' && h !== '機種名');
+  const s = build([lotRow({ id: 'L1', a: '1', b: '10', 本数: 10, 状態: '入庫済', 置場番号: 7 })],
+    [loc({})], [], OLD);
+  chk('古い見出しで始められる', s.__sheet.__head.length === H.length - 2);
+  const r = s.getProdLots('', 0);
+  chk('★中身は今の並びで読めている（データは壊れていない）',
+    r.lots[0].容器接頭辞 === 'HEP' && r.lots[0].本数 === 10, r.lots[0]);
+  chk('★見出しを今の並びに直す', s.__sheet.__head.join(',') === H.join(','), s.__sheet.__head);
+  chk('直したことをログに残す',
+    s.__logs.some((x) => /見出しを今の並びに直しました/.test(x)), s.__logs);
+
+  // 既に正しい見出しなら触らない
+  const s2 = build([], [loc({})], []);
+  s2.getProdLots('', 0);
+  chk('正しい見出しは触らない', !s2.__logs.some((x) => /見出し/.test(x)), s2.__logs);
 }
 
 console.log('■ 打ち間違えたロットの取消');

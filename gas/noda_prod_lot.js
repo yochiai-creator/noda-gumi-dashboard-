@@ -453,10 +453,28 @@ function lot_sheet_() {
   var ss = yardGetSpreadsheet_();
   var sheet = ss.getSheetByName(LOT_CONFIG.SHEET);
   if (!sheet) sheet = ss.insertSheet(LOT_CONFIG.SHEET);
+  var n = LOT_CONFIG.HEADERS.length;
   if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, LOT_CONFIG.HEADERS.length).setValues([LOT_CONFIG.HEADERS]);
-    sheet.getRange(1, 1, 1, LOT_CONFIG.HEADERS.length).setFontWeight('bold');
+    sheet.getRange(1, 1, 1, n).setValues([LOT_CONFIG.HEADERS]);
+    sheet.getRange(1, 1, 1, n).setFontWeight('bold');
     sheet.setFrozenRows(1);
+    return sheet;
+  }
+  /* ★ 見出しが古いままだと、シートを人が見たときに列がずれて見える。
+       （機種マスタを足した回に「機種コード」「機種名」の2列が増えており、
+         それ以前に作られたシートの見出しは2列足りない。）
+       中身は LOT_CONFIG.HEADERS の並びで読み書きしているのでデータは正しい。
+       見出しだけ現在の並びに直す。 */
+  var head = sheet.getRange(1, 1, 1, Math.max(n, sheet.getLastColumn())).getValues()[0];
+  var same = true;
+  for (var i = 0; i < n; i++) {
+    if (String(head[i] == null ? '' : head[i]).trim() !== LOT_CONFIG.HEADERS[i]) { same = false; break; }
+  }
+  if (!same) {
+    if (sheet.getMaxColumns() < n) sheet.insertColumnsAfter(sheet.getMaxColumns(), n - sheet.getMaxColumns());
+    sheet.getRange(1, 1, 1, n).setValues([LOT_CONFIG.HEADERS]);
+    sheet.getRange(1, 1, 1, n).setFontWeight('bold');
+    Logger.log('生産ロットの見出しを今の並びに直しました');
   }
   return sheet;
 }

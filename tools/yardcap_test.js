@@ -150,6 +150,35 @@ const REPLY = {
 
   chk('在庫の推移が出る', /在庫の推移/.test(body), body.slice(0, 900));
 
+  /* ---- 収容数（MAX）を直す ---- */
+  // ★ 置場の使い方が変わったとき（20kg用だった所を50kg用にするなど）に
+  //   ここで直せないと、iPhoneからはスプレッドシートを開くしかなくなる。
+  {
+    // 置場11「コンテナ」の編集欄は上で開いたまま。20kgだけ設定があり、50kgは隠れている
+    const t = await page.evaluate(() => document.body.innerText);
+    chk('★既定では本数だけ直す（収容数は出さない）', /今ある本数を直す/.test(t));
+    const toggle = page.locator('main button', { hasText: '収容数も直す' }).first();
+    chk('★「収容数も直す」がある', await toggle.count() > 0);
+    await toggle.click();
+    await page.waitForTimeout(300);
+    const box = await page.evaluate(() => {
+      const panel = [...document.querySelectorAll('main div')]
+        .filter((d) => /今ある本数と収容数を直す/.test(d.innerText)).pop();
+      if (!panel) return null;
+      return { 入力欄: panel.querySelectorAll('input[inputmode="numeric"]').length,
+               本文: panel.innerText.replace(/\n/g, ' | ') };
+    });
+    console.log('   収容数の編集:', JSON.stringify(box));
+    chk('★3サイズとも出す（今0のサイズも直せないと使い方を変えられない）',
+      box && box.入力欄 === 6, box);
+    chk('収容数だと分かるように書く', box && /収容数/.test(box.本文), box);
+    await page.locator('main button', { hasText: '本数だけにする' }).first().click();
+    await page.waitForTimeout(300);
+    chk('元に戻せる',
+      await page.evaluate(() => /今ある本数を直す/.test(document.body.innerText)));
+    // ★ 編集欄は開いたままにしておく（このあとの履歴のテストが見ている）
+  }
+
   /* ---- 生産の流れ ---- */
   const flow = await page.evaluate(() => {
     const t = document.body.innerText.replace(/\n/g, ' | ');
