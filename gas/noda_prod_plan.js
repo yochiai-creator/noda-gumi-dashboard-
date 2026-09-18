@@ -80,7 +80,13 @@ function pplan_parseDaily_(values) {
     var row = values[r] || [];
     if (!out.日付ラベル) {
       for (var c = 0; c < row.length; c++) {
-        var m = String(row[c] == null ? '' : row[c]).match(/(\d{1,2})月(\d{1,2})日/);
+        var v = row[c];
+        if (v instanceof Date) {
+          // ★ 「9月18日(Fri)」のセルが日付として返ってくることがある
+          out.日付ラベル = (v.getMonth() + 1) + '月' + v.getDate() + '日';
+          break;
+        }
+        var m = String(v == null ? '' : v).match(/(\d{1,2})月(\d{1,2})日/);
         if (m) { out.日付ラベル = m[0]; break; }
       }
     }
@@ -161,47 +167,57 @@ function pplan_monthly_() {
 }
 
 /* PDFの本文から、サイズごとの月計と日別を拾う（純関数）。
-   ★ 行の形：「50kg=6台 ＋0 0 0 900 … 1200 0 12,600」
-     最後のカンマ付きの数が月計。その手前の並びが日別。
-     頭には「=6台」「＋0」の数字が混ざるので、末尾から日数ぶんだけ採る。
+   ★ 行で区切って探さない
+     PDFから起こしたテキストは、どこで改行が入るかが変換のしかたで変わる。
+     行頭が「50kg」である保証は無いので、本文全体から形で探す。
+   ★ 探す形：「50kg=6台 ＋0 0 0 900 … 1200 0 12,600」
+     ・サイズの直後（12文字以内）に「＋」が来るものだけが計画の行。
+       「20kg3P」や「残20kg 600 …」には＋が続かないので引っかからない。
+     ・＋の直後の数は前月からの繰り越しで、日別ではない。
+     ・日別は3桁までなのでカンマが付かない。最初に出るカンマ付きの数が月計。
+       そこで打ち切るので、後ろに続く別の行の数字を巻き込まない。
    ★ 日別の合計が月計と合わないときは日別を捨てる。ずれたまま見せるより、
      月計だけ出して「日別は読めなかった」と言うほうがいい。
    ★ 日別が「何日ぶん」かは分かるが「何日の分か」は当てにしない。
-     PDFから起こしたテキストは並びが崩れており、先頭が1日とは限らない。
-     画面には月計だけを出し、日別は数えるためだけに持っている。 */
+     並びが崩れており、先頭が1日とは限らない。画面には月計だけを出す。 */
 function pplan_parseMonthly_(text, daysInMonth) {
   var out = { 行: [], error: null };
-  var lines = String(text || '').split(/[\r\n]+/);
-  var want = [
-    { key: '50kg', re: /^\s*50kg(?:=[^\s]*)?\s*[＋+]/ },
-    { key: '20kg', re: /^\s*20kg(?:=[^\s]*)?\s*[＋+]/ }
-  ];
-  lines.forEach(function (ln) {
-    want.forEach(function (w) {
-      if (!w.re.test(ln)) return;
-      if (out.行.some(function (x) { return x.サイズ === w.key; })) return;   // 最初の1本だけ
-      /* ★ 「50kg=6台」の 50 や 6 を日別に混ぜないため、「＋」から後ろだけを読む。
-           ＋の直後の数（＋0 の 0）は前月からの繰り越しなので日別ではない。 */
-      var after = ln.substring(ln.search(/[＋+]/) + 1);
-      var nums = (after.match(/-?[\d,]+/g) || []).map(function (x) {
-        return Number(String(x).replace(/,/g, ''));
-      }).filter(function (n) { return !isNaN(n); });
-      if (nums.length < 3) return;
-      var total = nums[nums.length - 1];            // 末尾が月計
-      var days = nums.slice(1, nums.length - 1);    // 先頭の繰り越しと末尾の月計を外す
-      /* 日数より1つ多い並びで出てくる（末尾に表の外の列が1つ混じる）。
-         頭から日数ぶんを採り、合計が月計と合うかで確かめる。 */
-      var dim = Number(daysInMonth) || 31;
-      var sum = function (a) { return a.reduce(function (x, y) { return x + y; }, 0); };
-      var head = days.slice(0, dim);
-      var pick = sum(head) === total ? head : (sum(days) === total ? days : null);
-      out.行.push({ サイズ: w.key, 月計: total,
-                    日別: pick, 日別が読めた: pick != null });
-    });
+  var t = String(text || '').replace(/[\r\n]+/g, ' ');
+  var dim = Number(daysInMonth) || 31;
+  var sum = function (a) { return a.reduce(function (x, y) { return x + y; }, 0); };
+
+  ['50kg', '20kg'].forEach(function (size) {
+    var re = new RegExp(size + '[^＋+]{0,12}[＋+]', 'g');
+    var m;
+    while ((m = re.exec(t)) !== null) {
+      var hit = pplan_readPlanRow_(t.substring(m.index + m[0].length), dim, sum);
+      if (!hit) continue;
+      hit.サイズ = size;
+      out.行.push(hit);
+      return;   // 同じサイズは最初の1本だけ。加工と品質に同じ数が並ぶので倍にしない
+    }
   });
+
   if (out.行.length === 0) out.error = '当月計画の行が読めませんでした';
   out.合計 = out.行.reduce(function (a, b) { return a + b.月計; }, 0);
   return out;
+}
+
+/* 「＋」の直後から、カンマ付きの数（＝月計）に当たるまで数を拾う。 */
+function pplan_readPlanRow_(rest, dim, sum) {
+  var tk = /(\d{1,3}(?:,\d{3})+)|(\d+)/g;
+  var nums = [], total = null, m;
+  while ((m = tk.exec(rest)) !== null) {
+    if (m[1]) { total = Number(m[1].replace(/,/g, '')); break; }
+    nums.push(Number(m[2]));
+    if (nums.length > 70) break;   // 月計に当たらないまま流れた＝別の行
+  }
+  if (total == null || nums.length < 3) return null;
+
+  var days = nums.slice(1);        // 先頭は前月からの繰り越し
+  var head = days.slice(0, dim);
+  var pick = sum(head) === total ? head : (sum(days) === total ? days : null);
+  return { 月計: total, 日別: pick, 日別が読めた: pick != null };
 }
 
 /* その月のPDFのうち、Rev番号が一番大きいもの。無ければ「仮」を使う。 */
@@ -250,6 +266,21 @@ function 生産計画を確かめる() {
     Logger.log('  ' + x.サイズ + '  月計 ' + x.月計 + '本  日別' +
                (x.日別が読めた ? x.日別.length + '日ぶん' : '読めず'));
   });
-  if (m.error) Logger.log('  エラー: ' + m.error);
+  if (m.error) {
+    Logger.log('  エラー: ' + m.error);
+    /* ★ 読めなかったときは本文の手がかりを出す。PDFの変換のされ方が変わると
+         探す形が合わなくなるので、直すには実際の本文が要る。 */
+    try {
+      var f = pplan_latestMonthly_(
+        Number(Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy')),
+        Number(Utilities.formatDate(new Date(), 'Asia/Tokyo', 'MM')));
+      if (f) {
+        var t = String(shipact_pdfToText_(f.file) || '').replace(/[\r\n]+/g, ' ');
+        var at = t.indexOf('50kg');
+        Logger.log('  本文の長さ ' + t.length + ' / 「50kg」の位置 ' + at);
+        Logger.log('  手がかり: ' + t.substring(Math.max(0, at - 60), at + 400));
+      }
+    } catch (err) { Logger.log('  手がかりも取れず: ' + String(err)); }
+  }
   return r;
 }
