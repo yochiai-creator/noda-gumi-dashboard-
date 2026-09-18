@@ -206,6 +206,8 @@ const REPLY = {
   // 置場は作った時点で決める。決めてあれば入庫は押すだけ
   chk('★置場が決まっていれば「◯◯ に入庫」で押すだけ',
     flow.btns.includes('大型製缶 に入庫'), flow.btns);
+  chk('★入庫前でも置場の本数に入っていると書く',
+    /大型製缶 の本数には入っています/.test(flow.t), flow.t.slice(0, 1200));
   chk('置き場所を変える道も残す', flow.btns.includes('別の置場へ'), flow.btns);
   chk('★置場が決まっていないロットは今までどおり選ばせる',
     flow.btns.includes('入庫する'), flow.btns);
@@ -263,6 +265,8 @@ const REPLY = {
     });
     console.log('   登録時の置場:', JSON.stringify(f));
     chk('★登録のときに置場を聞く（受検まで待たない）', f.置場を聞く, f);
+    chk('★置いた時点で本数に足すと書いてある（数字の意味が変わるので黙って変えない）',
+      await page.evaluate(() => /その置場の本数にすぐ足されます/.test(document.body.innerText)));
     chk('置場を選べる', f.置場ボタン.length >= 3, f.置場ボタン);
   }
   chk('★機種はマスタから選ぶ', sel && sel.件数 === 3, sel);

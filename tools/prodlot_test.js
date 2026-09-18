@@ -111,7 +111,7 @@ console.log('■ 生産の登録');
   chk('記号が違えば重ならない',
     s.addProdLot({ 生産日: '2026-09-17', 機種コード: '165', 接頭辞: 'HXP', 開始: '54401', 終了: '54410' }).ok === true);
 }
-console.log('■ 置場は作った時点で入れる');
+console.log('■ 置場は作った時点で入れ、その時点で在庫に足す');
 {
   const s = build([], [loc({ no: 7, name: '大型製缶' }), loc({ no: 11, name: 'コンテナ' })], []);
   const r = s.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
@@ -119,41 +119,68 @@ console.log('■ 置場は作った時点で入れる');
   chk('登録のときに置場を入れられる', r.ok === true && r.置場 === '大型製缶', r);
   const l = s.getProdLots('', 0).lots[0];
   chk('★未受検のうちから置場が入る', l.置場番号 === '7' && l.置場名 === '大型製缶', l);
-  chk('★まだ野外置場の実績には足さない（受検前を在庫に混ぜない）',
-    s.__yardCalls.length === 0 && s.__locs[0].a50 === 0, s.__locs[0]);
+  chk('★置いた時点で野外置場の実績に足す', s.__locs[0].a50 === 100, s.__locs[0]);
+  chk('在庫に反映したと返す', r.在庫に反映 === true, r);
 
-  // 受検 → 入庫。置場を選び直さなくても、登録した置場に入る
+  // 受検 → 入庫。もう足してあるので二重に足さない
   chk('受検OK', s.markLotInspected(l.ロットID).ok === true);
   const st = s.stockInLot(l.ロットID);
-  chk('★置場を選び直さずに入庫できる', st.ok === true && st.置場 === '大型製缶', st);
-  chk('★ここで初めて実績に足す', s.__locs[0].a50 === 100, s.__locs[0]);
+  chk('置場を選び直さずに入庫できる', st.ok === true && st.置場 === '大型製缶', st);
+  chk('★入庫で二重に足さない', s.__locs[0].a50 === 100, s.__locs[0]);
 
-  // 置き場所を変えたときは入庫で選び直せる
-  const s2 = build([], [loc({ no: 7, name: '大型製缶' }), loc({ no: 11, name: 'コンテナ', a50: 0 })], []);
-  const r2 = s2.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
-                             開始: '60001', 終了: '60010', 置場: 7 });
+  // 置き場所を変えたら、前の置場から引いて新しい置場に足す
+  const s2 = build([], [loc({ no: 7, name: '大型製缶' }), loc({ no: 11, name: 'コンテナ' })], []);
+  s2.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
+                  開始: '60001', 終了: '60010', 置場: 7 });
   const id2 = s2.getProdLots('', 0).lots[0].ロットID;
+  chk('登録で7に10本', s2.__locs[0].a50 === 10, s2.__locs[0]);
   s2.markLotInspected(id2);
-  chk('★入庫のときに置き場所を変えられる',
-    s2.stockInLot(id2, 11).置場 === 'コンテナ');
-  chk('変えた先に足す', s2.__locs[1].a50 === 10 && s2.__locs[0].a50 === 0,
-    [s2.__locs[0].a50, s2.__locs[1].a50]);
+  chk('入庫で置き場所を変えられる', s2.stockInLot(id2, 11).置場 === 'コンテナ');
+  chk('★前の置場から引く', s2.__locs[0].a50 === 0, s2.__locs[0]);
+  chk('★新しい置場に足す', s2.__locs[1].a50 === 10, s2.__locs[1]);
   chk('ロットの置場も書き換わる', s2.getProdLots('', 0).lots[0].置場名 === 'コンテナ');
 
-  // 置場なしでも登録はできる（後から決める現場もある）
-  const s3 = build([], [loc({})], []);
+  // 置場なしで登録 → 入庫のときに初めて足す
+  const s3 = build([], [loc({ no: 7, name: '大型製缶' })], []);
   chk('置場を入れずに登録できる',
     s3.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
                     開始: '1', 終了: '10' }).ok === true);
+  chk('置場が無ければ足さない', s3.__locs[0].a50 === 0, s3.__locs[0]);
   const id3 = s3.getProdLots('', 0).lots[0].ロットID;
   s3.markLotInspected(id3);
-  chk('★その場合は入庫で置場を聞く', s3.stockInLot(id3).ok === false);
+  chk('その場合は入庫で置場を聞く', s3.stockInLot(id3).ok === false);
   chk('選べば入庫できる', s3.stockInLot(id3, 7).ok === true);
+  chk('★そこで初めて足す', s3.__locs[0].a50 === 10, s3.__locs[0]);
+
+  // 未受検のまま取り消しても、置場から引き戻す
+  const s4 = build([], [loc({ no: 7, name: '大型製缶' })], []);
+  s4.addProdLot({ 生産日: '2026-09-18', 機種コード: '123', 接頭辞: 'HEP',
+                  開始: '1', 終了: '10', 置場: 7 });
+  const id4 = s4.getProdLots('', 0).lots[0].ロットID;
+  chk('未受検でも足してある', s4.__locs[0].a50 === 10, s4.__locs[0]);
+  const c4 = s4.cancelProdLot(id4, '番号違い');
+  chk('★未受検のまま取り消せる', c4.ok === true, c4);
+  chk('★取り消したら置場から引き戻す（残ると数字が合わない）',
+    s4.__locs[0].a50 === 0, s4.__locs[0]);
+  chk('戻した本数を返す', c4.戻した本数 === 10, c4);
+
+  // 置場容量に列が無いサイズ（10K）は足さない
+  const s5 = build([], [loc({ no: 7, name: '大型製缶' })], []);
+  const r5 = s5.addProdLot({ 生産日: '2026-09-18', 機種コード: '113', 接頭辞: 'HEP',
+                             開始: '1', 終了: '10', 置場: 7 });
+  chk('列が無いサイズでも登録できる', r5.ok === true, r5);
+  chk('★列が無いサイズは在庫に足さない', s5.__yardCalls.length === 0, s5.__yardCalls);
+  chk('足していないと返す', r5.在庫に反映 === false, r5);
+  chk('取り消しても置場は触らない',
+    s5.cancelProdLot(s5.getProdLots('', 0).lots[0].ロットID).ok === true &&
+    s5.__yardCalls.length === 0, s5.__yardCalls);
 
   // 無い置場は断る
+  const s6 = build([], [loc({})], []);
   chk('★無い置場は登録のときに断る',
-    build([], [loc({})], []).addProdLot({ 生産日: '2026-09-18', 機種コード: '123',
+    s6.addProdLot({ 生産日: '2026-09-18', 機種コード: '123',
       接頭辞: 'HEP', 開始: '1', 終了: '10', 置場: 99 }).ok === false);
+  chk('断ったら在庫も動かさない', s6.__yardCalls.length === 0, s6.__yardCalls);
 }
 
 console.log('■ 入力の確かめ');

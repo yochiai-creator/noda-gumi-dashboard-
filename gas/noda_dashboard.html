@@ -1256,11 +1256,16 @@ function ProdLotCard({
       color: "#b45309"
     }
   }, "\u3053\u306E\u6A5F\u7A2E\u306F\u7F6E\u5834\u306E\u5728\u5EAB\u6570\u306B\u306F\u8DB3\u3057\u307E\u305B\u3093\uFF08\u7F6E\u5834\u5BB9\u91CF\u306B ", pickedType.分類, " \u306E\u6B04\u304C\u306A\u3044\u305F\u3081\uFF09\u3002 \u6D41\u308C\u3060\u3051\u8A18\u9332\u3057\u307E\u3059\u3002"), /*#__PURE__*/React.createElement("span", {
-    className: "block text-[11px] mb-1",
+    className: "block text-[11px]",
     style: {
       color: VIZ.ink2
     }
   }, "\u3069\u3053\u306B\u7F6E\u304D\u307E\u3059\u304B", form.置場 ? "" : "（後で決めてもかまいません）"), /*#__PURE__*/React.createElement("span", {
+    className: "block text-[10px] mb-1",
+    style: {
+      color: VIZ.muted
+    }
+  }, "\u9078\u3076\u3068\u3001\u305D\u306E\u7F6E\u5834\u306E\u672C\u6570\u306B\u3059\u3050\u8DB3\u3055\u308C\u307E\u3059\uFF08\u53D7\u691C\u3092\u5F85\u3061\u307E\u305B\u3093\uFF09"), /*#__PURE__*/React.createElement("span", {
     className: "flex flex-wrap gap-1 mb-2"
   }, locations.map(loc => /*#__PURE__*/React.createElement("button", {
     key: loc.no,
@@ -1419,7 +1424,12 @@ function ProdLotCard({
       style: {
         color: VIZ.muted
       }
-    }, "\u6307\u56F3\u66F8\u304C\u51FA\u305F\u3089\u81EA\u52D5\u3067\u5F15\u304B\u308C\u307E\u3059"), l.出荷済本数 === 0 && l.状態 !== "出荷済" && (cancelFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
+    }, "\u6307\u56F3\u66F8\u304C\u51FA\u305F\u3089\u81EA\u52D5\u3067\u5F15\u304B\u308C\u307E\u3059"), l.状態 !== "入庫済" && l.状態 !== "出荷済" && l.置場名 && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mt-0.5",
+      style: {
+        color: VIZ.muted
+      }
+    }, l.置場名, " \u306E\u672C\u6570\u306B\u306F\u5165\u3063\u3066\u3044\u307E\u3059"), l.出荷済本数 === 0 && l.状態 !== "出荷済" && (cancelFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
       className: "flex flex-wrap items-center gap-2 mt-1"
     }, /*#__PURE__*/React.createElement("span", {
       className: "text-[10px]",
@@ -5642,7 +5652,7 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u751F\u7523\u306E\u6D41\u308C",
-    note: "\u4F5C\u3063\u305F \u2192 \u53D7\u691C \u2192 \u5165\u5EAB \u2192 \u6307\u56F3\u66F8\u3067\u81EA\u52D5\u7684\u306B\u51FA\u8377",
+    note: "\u4F5C\u3063\u305F \u2192 \u53D7\u691C \u2192 \u5165\u5EAB \u2192 \u6307\u56F3\u66F8\u3067\u81EA\u52D5\u7684\u306B\u51FA\u8377\u3002\u7F6E\u5834\u306E\u672C\u6570\u306F\u7F6E\u3044\u305F\u6642\u70B9\u3067\u5897\u3048\u307E\u3059",
     closedNote: lotData && lotData.totals ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済) : ""
   }, /*#__PURE__*/React.createElement(ProdLotCard, {
     data: lotData,

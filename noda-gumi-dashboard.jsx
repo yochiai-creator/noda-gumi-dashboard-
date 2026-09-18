@@ -420,8 +420,11 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
           {/* ★ 置場は作った時点で選ぶ。現場は作ってすぐ置くので、受検まで
                  置場が決まらない形にすると実物と帳簿がずれる。
                  野外置場の実績数に足すのは入庫のときのまま。 */}
-          <span className="block text-[11px] mb-1" style={{ color: VIZ.ink2 }}>
+          <span className="block text-[11px]" style={{ color: VIZ.ink2 }}>
             どこに置きますか{form.置場 ? "" : "（後で決めてもかまいません）"}
+          </span>
+          <span className="block text-[10px] mb-1" style={{ color: VIZ.muted }}>
+            選ぶと、その置場の本数にすぐ足されます（受検を待ちません）
           </span>
           <span className="flex flex-wrap gap-1 mb-2">
             {locations.map((loc) => (
@@ -541,6 +544,11 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
                 {l.状態 === "入庫済" && (
                   <span className="block text-[10px] mt-0.5" style={{ color: VIZ.muted }}>
                     指図書が出たら自動で引かれます
+                  </span>
+                )}
+                {l.状態 !== "入庫済" && l.状態 !== "出荷済" && l.置場名 && (
+                  <span className="block text-[10px] mt-0.5" style={{ color: VIZ.muted }}>
+                    {l.置場名} の本数には入っています
                   </span>
                 )}
                 {/* ★ 打ち間違いを直す手段。無いと置場の数字が間違ったまま残り、
@@ -2851,7 +2859,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       {/* ---- 生産の流れ。作った→検査→入庫→出荷 ---- */}
       <Card className="p-3">
         <Collapsible tone="card" title="生産の流れ"
-          note="作った → 受検 → 入庫 → 指図書で自動的に出荷"
+          note="作った → 受検 → 入庫 → 指図書で自動的に出荷。置場の本数は置いた時点で増えます"
           closedNote={lotData && lotData.totals
             ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済)
             : ""}>

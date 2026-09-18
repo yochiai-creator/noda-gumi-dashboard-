@@ -18,9 +18,20 @@
  *   照合は毎晩走る。ロットごとに「もう何本引いたか」(出荷済本数)を持ち、
  *   前回からの差ぶんだけ置場から引く。何度走らせても結果は同じ。
  *
+ * ★ 野外置場の数字は「今そこに物理的に何本あるか」
+ *   置場に置いた時点（登録時）で足す。受検が済むのを待たない。現場は作って
+ *   すぐ置くので、待つと画面の数字と実物がずれる。
+ *   つまり野外置場の実績には未受検のものも入っている。「出せる在庫」は
+ *   状態（未受検／受検済／入庫済）のほうで見る。
+ *
  * ★ 置場の数字は1か所で持つ
- *   入庫・出荷の増減は yardUpdateLocation() を通す。置場容量シートが正で、
- *   変更履歴にも残る。このシートは「流れ」だけを持ち、在庫数は持たない。
+ *   増減は yardUpdateLocation() を通す。置場容量シートが正で、変更履歴にも残る。
+ *   このシートは「流れ」だけを持ち、在庫数は持たない。
+ *
+ * ★ 足したか足していないかの決まり
+ *   「置場番号が入っている＝その置場に本数ぶん足してある」。この1本の決まりで
+ *   二重に足す・引き忘れるを防ぐ。置場番号を書き換えるときは必ず前の置場から
+ *   引いてから新しい置場に足す。
  *
  * 名前の衝突に注意：GASは全ファイルが同一グローバルスコープなので、
  * このファイルの内部関数はすべて lot_ 接頭辞にしてある。
@@ -127,8 +138,26 @@ function addProdLot(lot) {
                        '未受検', '', '', loc ? loc.no : '', loc ? loc.name : '',
                        0, '', '', v.備考,
                        lot_user_(), now, now]);
+
+      /* ★ 置いた時点で野外置場の実績に足す。受検を待たない。
+           先に行を作ってから足す。足せなかったときは置場だけ消して、
+           「置場番号が入っている＝足してある」を崩さない。 */
+      var 反映 = false;
+      if (loc) {
+        var mv = lot_yardMove_(loc.no, v.サイズ, v.本数);
+        if (mv.error) {
+          var found = lot_findRow_(id);
+          if (found) {
+            lot_writeRow_(found.rowNo, function (row, H) {
+              row[H['置場番号']] = ''; row[H['置場名']] = '';
+            });
+          }
+          return { ok: false, error: mv.error };
+        }
+        反映 = mv.反映;
+      }
       return { ok: true, error: null, id: id, 本数: v.本数, 機種名: v.機種名,
-               置場: loc ? loc.name : '' };
+               置場: loc ? loc.name : '', 在庫に反映: 反映 };
     } finally {
       lock.releaseLock();
     }
@@ -221,14 +250,27 @@ function stockInLot(id, locationNo) {
       if (!no) return { ok: false, error: '置場を選んでください' };
       var loc = lot_findLocation_(no);
       if (!loc) return { ok: false, error: '置場「' + no + '」が見つかりません' };
-      var key = LOT_CONFIG.SIZE_KEY[found.lot.サイズ];
-      var add = found.lot.本数 - found.lot.出荷済本数;
-      /* ★ 置場容量シートに列が無いサイズ（2K・5K・8K・10K）は在庫数に足さない。
-           入庫したことだけ記録する。無い列に足すと数字が壊れる。 */
-      if (key) {
-        var r = lot_moveYard_(loc, key, add);
-        if (r.error) return { ok: false, error: r.error };
+      /* ★ 置場に置いた時点で既に足してある。入庫でもう一度足すと二重になる。
+           ここで動かすのは置き場所が変わったときだけ。 */
+      var prev = String(found.lot.置場番号 || '').trim();
+      var qty = found.lot.本数 - found.lot.出荷済本数;
+      var 反映 = false;
+      if (prev !== String(loc.no)) {
+        if (prev) {
+          var back = lot_yardMove_(prev, found.lot.サイズ, -qty);
+          if (back.error) return { ok: false, error: back.error };
+        }
+        var fwd = lot_yardMove_(loc.no, found.lot.サイズ, qty);
+        if (fwd.error) {
+          // 新しい置場に足せなかったら、元の置場に戻してから断る
+          if (prev) lot_yardMove_(prev, found.lot.サイズ, qty);
+          return { ok: false, error: fwd.error };
+        }
+        反映 = fwd.反映;
+      } else {
+        反映 = !!LOT_CONFIG.SIZE_KEY[found.lot.サイズ];
       }
+      var add = qty;
 
       var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
       lot_writeRow_(found.rowNo, function (row, H) {
@@ -238,8 +280,7 @@ function stockInLot(id, locationNo) {
         row[H['置場名']] = loc.name;
         row[H['更新日時']] = now;
       });
-      return { ok: true, error: null, 置場: loc.name, 本数: add,
-               在庫に反映: key ? true : false };
+      return { ok: true, error: null, 置場: loc.name, 本数: add, 在庫に反映: 反映 };
     } finally {
       lock.releaseLock();
     }
@@ -278,16 +319,13 @@ function cancelProdLot(id, reason) {
                  '本が出荷済です。出た容器は取り消せません。' };
       }
 
-      // 入庫済なら、入庫のときに足したぶんを置場から引き戻す
+      /* ★ 置場番号が入っていれば、状態によらず足してある（置いた時点で足すため）。
+           未受検のまま取り消す場合も引き戻さないと置場の数字が残ってしまう。 */
       var 戻し = 0, 置場 = '';
-      var key = LOT_CONFIG.SIZE_KEY[lot.サイズ];
-      if (lot.状態 === '入庫済' && key && lot.置場番号) {
-        var loc = lot_findLocation_(lot.置場番号);
-        if (!loc) return { ok: false, error: '置場「' + lot.置場番号 + '」が見つかりません' };
-        var r = lot_moveYard_(loc, key, -lot.本数);
-        if (r.error) return { ok: false, error: r.error };
-        戻し = lot.本数;
-        置場 = loc.name;
+      if (lot.置場番号) {
+        var mv = lot_yardMove_(lot.置場番号, lot.サイズ, -lot.本数);
+        if (mv.error) return { ok: false, error: mv.error };
+        if (mv.反映) { 戻し = lot.本数; 置場 = mv.name; }
       }
 
       var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
@@ -423,6 +461,20 @@ function lot_moveYard_(loc, key, delta) {
   up[key] = next;
   yardUpdateLocation(loc.no, up);
   return { error: null, before: cur, after: next };
+}
+
+/* ロット1本ぶんを、指定の置場で増減する。
+   ★ 置場容量シートに列が無いサイズ（2K・5K・8K・10K）は何もしない。
+     無い列に足すと数字が壊れるため。流れだけ追う。 */
+function lot_yardMove_(locationNo, size, delta) {
+  var key = LOT_CONFIG.SIZE_KEY[size];
+  var no = String(locationNo == null ? '' : locationNo).trim();
+  if (!key || !no || !delta) return { error: null, 反映: false, name: '' };
+  var loc = lot_findLocation_(no);
+  if (!loc) return { error: '置場「' + no + '」が見つかりません' };
+  var r = lot_moveYard_(loc, key, delta);
+  if (r.error) return { error: r.error };
+  return { error: null, 反映: true, name: loc.name };
 }
 
 function lot_findLocation_(no) {
