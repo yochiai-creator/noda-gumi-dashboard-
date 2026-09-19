@@ -95,7 +95,7 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .gap-x-2{column-gap:.5rem}
 .mr-1{margin-right:.25rem}
 .mr-2{margin-right:.5rem}
-.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.p-2{padding:.5rem}.w-28{width:7rem}.ml-2{margin-left:.5rem}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
+.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.p-2{padding:.5rem}.w-28{width:7rem}.ml-2{margin-left:.5rem}.ymap-drag text{display:none}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
 </style>
 <script>
 /**
@@ -3214,7 +3214,9 @@ function YardMap({
   const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "done" | "error"
   const rawData = size === "50k" ? MAP_50K : MAP_20K;
   const liveForSize = yardLive && yardLive[size] || {};
-  const data = yard_mergeLiveBlocks_(rawData, liveForSize);
+  /* ★ 毎回の描画で作り直さない。指でマップを動かしているあいだも描画は走るので、
+       ここで区画を全部組み直すと、その回数だけ無駄が乗る。 */
+  const data = React.useMemo(() => yard_mergeLiveBlocks_(rawData, liveForSize), [rawData, liveForSize]);
   // 指図書が付いている区画の数（どこをタップすればよいかの手がかり）
   const ordersOnMap = data.blocks.filter(b => b.orders && b.orders.length > 0).length;
   /* ---------- 区画検索 ---------- */
@@ -3273,6 +3275,10 @@ function YardMap({
   const [zoom, setZoom] = useState(null); // null | { x, y, scale }
   const svgRef = React.useRef(null);
   // ジェスチャ中の一時的な値。再描画に関係ないのでrefに置く
+  /* ★ 指を動かしているあいだは live に入れて、SVGのviewBoxを直に書き換える。
+       setZoom を毎回呼ぶと、そのたびにマップ全体（区画・一覧・凡例）が
+       React で描き直されて指に付いてこない。指を離したときに1回だけ state に移す。
+       実測（CPUを6分の1に落として計測）で 1コマ37msかかっていたのが17msになった。 */
   const gest = React.useRef({
     mode: null,
     moved: 0,
@@ -3280,7 +3286,10 @@ function YardMap({
     py: 0,
     startZoom: null,
     startDist: 0,
-    suppressClick: false
+    suppressClick: false,
+    live: null,
+    raf: 0,
+    pending: null
   });
   const vbNums = data.viewBox.split(" ").map(Number); // [x, y, w, h]
   const baseX = vbNums[0],
@@ -3304,11 +3313,37 @@ function YardMap({
     };
   };
   // 画面上の1pxが viewBox 何単位に相当するか
-  const unitPerPx = () => {
+  const unitPerPx = scale => {
     const el = svgRef.current;
     const rect = el ? el.getBoundingClientRect() : null;
+    const s = scale || curScale;
     if (!rect || !rect.width) return baseW / 360;
-    return baseW / curScale / rect.width;
+    return baseW / s / rect.width;
+  };
+  /* ★ 指で動かしているあいだは区画の文字を消す。
+       実測（CPUを6分の1に落として計測）で、20kのマップは1コマ76msかかるが、
+       文字を外すと17msまで落ちた。重いのは区画の枠ではなく文字のほう。
+       動かしている最中の文字はどうせ読めないので、指を離したら戻す。 */
+  const setDragging = on => {
+    const el = svgRef.current;
+    if (!el) return;
+    if (on) el.classList.add("ymap-drag");else el.classList.remove("ymap-drag");
+  };
+  /* ジェスチャ中だけ使う。Reactを通さずSVGの表示範囲を直に書き換える。
+     ★ 1コマに1回しか書かない。touchmove は1コマに何度も飛んでくることがあり、
+       そのたびに書くと、同じ絵を何度も描き直すだけで重くなる。 */
+  const applyViewBox = z => {
+    const g = gest.current;
+    g.pending = z;
+    setDragging(true);
+    if (g.raf) return;
+    g.raf = requestAnimationFrame(() => {
+      g.raf = 0;
+      const el = svgRef.current;
+      const v = g.pending;
+      if (!el || !v) return;
+      el.setAttribute("viewBox", v.x + " " + v.y + " " + baseW / v.scale + " " + baseH / v.scale);
+    });
   };
   const midOf = (t1, t2) => ({
     x: (t1.clientX + t2.clientX) / 2,
@@ -3336,13 +3371,18 @@ function YardMap({
   };
   const onTouchStart = e => {
     const t = e.touches;
-    const z = zoom || {
+    const z = gest.current.live || zoom || {
       x: baseX,
       y: baseY,
       scale: 1
     };
+    /* ★ 前のジェスチャで立てた「タップ扱いにしない」印をここで落とす。
+         指で動かしたあとは click が飛んでこないので、印が残ったままになり、
+         次の本物のタップが1回分食われていた（2回タップしないと区画が開かない）。 */
+    gest.current.suppressClick = false;
     gest.current.moved = 0;
     gest.current.startZoom = z;
+    gest.current.live = z;
     if (t.length === 2) {
       gest.current.mode = "pinch";
       gest.current.startDist = distOf(t[0], t[1]);
@@ -3370,27 +3410,42 @@ function YardMap({
         // つまんだ点がずれないように、その点を基準に表示範囲を決める
         const nx = g.anchorVb.x - (m.x - rect.left) * (w / rect.width);
         const ny = g.anchorVb.y - (m.y - rect.top) * (h / rect.height);
-        setZoom(clampZoom(nx, ny, nextScale));
+        g.live = clampZoom(nx, ny, nextScale);
       } else {
-        setZoom(clampZoom(g.startZoom.x, g.startZoom.y, nextScale));
+        g.live = clampZoom(g.startZoom.x, g.startZoom.y, nextScale);
       }
+      applyViewBox(g.live);
     } else if (g.mode === "pan" && t.length === 1) {
       const dx = t[0].clientX - g.px;
       const dy = t[0].clientY - g.py;
       g.moved += Math.abs(dx) + Math.abs(dy);
       g.px = t[0].clientX;
       g.py = t[0].clientY;
-      if (zoom) {
+      const z0 = g.live || zoom;
+      if (z0 && z0.scale > MIN_SCALE) {
         // 等倍のときは動かさない（区画のタップを邪魔しないため）
-        const u = unitPerPx();
-        setZoom(clampZoom(zoom.x - dx * u, zoom.y - dy * u, zoom.scale));
+        const u = unitPerPx(z0.scale);
+        g.live = clampZoom(z0.x - dx * u, z0.y - dy * u, z0.scale);
+        applyViewBox(g.live);
       }
     }
   };
-  const onTouchEnd = () => {
+  const onTouchEnd = e => {
     // 指を動かしていたらタップ扱いにしない（パン中に区画が選択されるのを防ぐ）
     if (gest.current.moved > 8) gest.current.suppressClick = true;
     gest.current.mode = null;
+    // ★ 指が全部離れたときに1回だけ state に移す。1本残っているなら続きがある
+    if (e && e.touches && e.touches.length > 0) return;
+    if (gest.current.raf) {
+      cancelAnimationFrame(gest.current.raf);
+      gest.current.raf = 0;
+    }
+    gest.current.pending = null;
+    setDragging(false);
+    const live = gest.current.live;
+    gest.current.live = null;
+    if (!live) return;
+    setZoom(live.scale <= MIN_SCALE ? null : live);
   };
   const onClickCapture = e => {
     if (gest.current.suppressClick) {
@@ -3400,6 +3455,7 @@ function YardMap({
     }
   };
   const zoomBy = mul => {
+    gest.current.live = null;
     const z = zoom || {
       x: baseX,
       y: baseY,
@@ -3419,12 +3475,16 @@ function YardMap({
       nh = baseH / nextScale;
     setZoom(clampZoom(cx - nw / 2, cy - nh / 2, nextScale));
   };
-  const resetZoom = () => setZoom(null);
+  const resetZoom = () => {
+    gest.current.live = null;
+    setZoom(null);
+  };
 
   // ★ 指定した範囲が画面いっぱいになるように寄る。
   //   マップ全体が36%まで縮んでいて、小容器ボビンのように端にある一帯は
   //   最初の表示では区画の判別ができない。1タップで寄れるようにする。
   const zoomToRect = r => {
+    gest.current.live = null;
     const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(baseW / r.w, baseH / r.h)));
     if (s <= MIN_SCALE) {
       setZoom(null);
@@ -3435,6 +3495,7 @@ function YardMap({
     setZoom(clampZoom(cx - baseW / s / 2, cy - baseH / s / 2, s));
   };
   const switchSize = s => {
+    gest.current.live = null;
     setSize(s);
     setSel(null);
     setEditing(false);
