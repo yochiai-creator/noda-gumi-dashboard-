@@ -63,27 +63,35 @@ function yardtab_shape_(r) {
     { key: '30', label: '30kg', 実績: n(r.a30), max: n(r.m30) },
     { key: '50', label: '50kg', 実績: n(r.a50), max: n(r.m50) }
   ].filter(function (s) { return s.max > 0 || s.実績 > 0; });
-  var rate = 0;
+  var rate = 0, 未設定 = false;
   sizes.forEach(function (s) {
     s.率 = s.max > 0 ? s.実績 / s.max : null;
     if (s.率 != null && s.率 > rate) rate = s.率;
+    /* ★ 本数は入っているのに収容数が0の置場。率が出せないので今までは「—」と
+         出るだけで、満杯の数にも入らず、見た目には何の問題も無いように見えた。
+         実際は「あと何本置けるか」が分からない置場なので、はっきり印を付ける。 */
+    if (s.max === 0 && s.実績 > 0) 未設定 = true;
   });
   return {
     no: r.no, name: r.name || '', position: r.position || '', note: r.note || '',
     a20: n(r.a20), m20: n(r.m20), a30: n(r.a30), m30: n(r.m30), a50: n(r.a50), m50: n(r.m50),
-    sizes: sizes, 率: rate,
-    状態: rate >= 1 ? '超過' : rate >= 0.8 ? '満杯に近い' : '',
+    sizes: sizes, 率: rate, 収容数なし: 未設定,
+    /* 超過・満杯のほうが急ぎなので、そちらが立っていればそちらを出す。 */
+    状態: rate >= 1 ? '超過' : rate >= 0.8 ? '満杯に近い' : (未設定 ? '収容数なし' : ''),
     updatedAt: r.updatedAt || '', updatedBy: r.updatedBy || ''
   };
 }
 
 function yardtab_totals_(list) {
   var t = { a20: 0, m20: 0, a30: 0, m30: 0, a50: 0, m50: 0,
-            合計: 0, max: 0, 置場数: list.length, 満杯に近い: 0, 超過: 0 };
+            合計: 0, max: 0, 置場数: list.length, 満杯に近い: 0, 超過: 0, 収容数なし: 0 };
   list.forEach(function (r) {
     ['a20', 'm20', 'a30', 'm30', 'a50', 'm50'].forEach(function (k) { t[k] += r[k]; });
     if (r.状態 === '超過') t.超過 += 1;
     else if (r.状態 === '満杯に近い') t.満杯に近い += 1;
+    /* ★ 超過・満杯と重なっていても数える。「収容数を入れ忘れている置場が
+         何か所あるか」を知りたいので、状態の分類とは別に数える。 */
+    if (r.収容数なし) t.収容数なし += 1;
   });
   t.合計 = t.a20 + t.a30 + t.a50;
   t.max = t.m20 + t.m30 + t.m50;

@@ -23,7 +23,7 @@ const REPLY = {
   getYardTabData: () => ({ updated: '2026-09-17 08:00', error: null,
     sheetUrl: 'https://docs.google.com/spreadsheets/d/x/edit',
     totals: { a20: 15880, m20: 20000, a30: 0, m30: 0, a50: 15800, m50: 16000,
-      合計: 31680, max: 36000, 置場数: 3, 満杯に近い: 1, 超過: 1 },
+      合計: 31680, max: 36000, 置場数: 4, 満杯に近い: 1, 超過: 1, 収容数なし: 1 },
     locations: [
       { no: 7, name: '大型製缶', position: '北・北', note: '', a20: 0, m20: 0, a30: 0, m30: 0,
         a50: 2400, m50: 2400, 率: 1, 状態: '超過', updatedAt: '2026-09-16 10:00', updatedBy: 'y@x',
@@ -33,8 +33,12 @@ const REPLY = {
         updatedAt: '', updatedBy: '',
         sizes: [{ key: '50', label: '50kg', 実績: 1500, max: 1800, 率: 0.833 }] },
       { no: 11, name: 'コンテナ', position: '西', note: '', a20: 1568, m20: 1988, a30: 0, m30: 0,
-        a50: 0, m50: 0, 率: 0.789, 状態: '', updatedAt: '', updatedBy: '',
+        a50: 0, m50: 0, 率: 0.789, 状態: '', 収容数なし: false, updatedAt: '', updatedBy: '',
         sizes: [{ key: '20', label: '20kg', 実績: 1568, max: 1988, 率: 0.789 }] },
+      // ★ 本数は入っているのに収容数が0（実際に置場14で起きた）
+      { no: 14, name: '資材倉庫', position: '北', note: '', a20: 600, m20: 0, a30: 0, m30: 0,
+        a50: 0, m50: 0, 率: 0, 状態: '収容数なし', 収容数なし: true, updatedAt: '', updatedBy: '',
+        sizes: [{ key: '20', label: '20kg', 実績: 600, max: 0, 率: null }] },
     ] }),
   getYardDailyTotals: () => ({ error: null, days: [
     { 日付: '2026-09-14', '20kg': 1500, '30kg': 0, '50kg': 3800, 合計: 5300 },
@@ -150,6 +154,10 @@ const REPLY = {
 
   const body = await page.evaluate(() => document.body.innerText.replace(/\n/g, ' | '));
   chk('置場の一覧が出る', /置場の一覧/.test(body), body.slice(0, 200));
+  chk('★本数はあるのに収容数が0の置場を名指しする',
+    /収容数が入っていない置場が 1 か所あります/.test(body) && /14 資材倉庫/.test(body),
+    body.slice(body.indexOf('置場の一覧'), body.indexOf('置場の一覧') + 400));
+  chk('どうすればよいか書く', /「収容数も直す」から入れてください/.test(body), body);
   chk('置場名と位置が出る', /大型製缶/.test(body) && /北・北/.test(body), body.slice(0, 400));
   chk('サイズごとに実績とMAXが出る', /2,400 \| \/ 2,400/.test(body), body.slice(0, 600));
   chk('★詰まっている置場に印が付く', /超過/.test(body) && /満杯に近い/.test(body), body.slice(0, 600));

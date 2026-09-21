@@ -5843,6 +5843,11 @@ function YardCapacityTab({
       setEditMax(false);
     });
   };
+
+  /* ★ 本数は入っているのに収容数が0の置場。率が出せず「—」と出るだけなので、
+         見た目には何の問題も無いように見えてしまう。実際は「あと何本置けるか」が
+         分からない置場なので、一覧の上で名指しする。 */
+  const 収容数なし = list.filter(r => r.収容数なし);
   const days = daily && daily.days || [];
   const bounds = days.length > 0 ? vizMonthBounds(days, "日付") : [];
   const logRows = log && log.rows || [];
@@ -5907,7 +5912,27 @@ function YardCapacityTab({
     style: {
       color: VIZ.ink2
     }
-  }, sortBy === "no" ? "番号順" : "詰まり順")), list.length === 0 ? /*#__PURE__*/React.createElement("p", {
+  }, sortBy === "no" ? "番号順" : "詰まり順")), 収容数なし.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-md p-2 mb-2",
+    style: {
+      background: "#f1f5f9"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "block text-[11px] font-semibold",
+    style: {
+      color: "#b45309"
+    }
+  }, "\u53CE\u5BB9\u6570\u304C\u5165\u3063\u3066\u3044\u306A\u3044\u7F6E\u5834\u304C ", 収容数なし.length, " \u304B\u6240\u3042\u308A\u307E\u3059"), /*#__PURE__*/React.createElement("span", {
+    className: "block text-[10px]",
+    style: {
+      color: VIZ.ink2
+    }
+  }, 収容数なし.map(r => r.no + " " + r.name).join("・")), /*#__PURE__*/React.createElement("span", {
+    className: "block text-[10px] mt-0.5",
+    style: {
+      color: VIZ.muted
+    }
+  }, "\u672C\u6570\u306F\u5165\u3063\u3066\u3044\u307E\u3059\u304C\u300C\u3042\u3068\u4F55\u672C\u7F6E\u3051\u308B\u304B\u300D\u304C\u5206\u304B\u308A\u307E\u305B\u3093\u3002 \u884C\u3092\u3072\u3089\u3044\u3066\u300C\u53CE\u5BB9\u6570\u3082\u76F4\u3059\u300D\u304B\u3089\u5165\u308C\u3066\u304F\u3060\u3055\u3044\u3002")), list.length === 0 ? /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-400 py-3 text-center"
   }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026") : shown.length === 0 ? /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-500 py-3 text-center"
@@ -5946,6 +5971,9 @@ function YardCapacityTab({
       style: r.状態 === "超過" ? {
         background: "#fee2e2",
         color: "#b91c1c"
+      } : r.状態 === "収容数なし" ? {
+        background: "#e2e8f0",
+        color: "#475569"
       } : {
         background: "#fef3c7",
         color: "#b45309"

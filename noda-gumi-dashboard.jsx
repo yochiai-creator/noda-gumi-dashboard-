@@ -3012,6 +3012,11 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
     onSave(r.no, updates, () => { setOpenNo(null); setDraft(null); setEditMax(false); });
   };
 
+  /* ★ 本数は入っているのに収容数が0の置場。率が出せず「—」と出るだけなので、
+         見た目には何の問題も無いように見えてしまう。実際は「あと何本置けるか」が
+         分からない置場なので、一覧の上で名指しする。 */
+  const 収容数なし = list.filter((r) => r.収容数なし);
+
   const days = (daily && daily.days) || [];
   const bounds = days.length > 0 ? vizMonthBounds(days, "日付") : [];
   const logRows = (log && log.rows) || [];
@@ -3068,6 +3073,23 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
             </button>
           </div>
 
+          {/* ★ 本数は入っているのに収容数が0の置場。率が「—」になるだけで
+                 満杯の数にも入らないので、放っておくと気づけない。名指しする。 */}
+          {収容数なし.length > 0 && (
+            <div className="rounded-md p-2 mb-2" style={{ background: "#f1f5f9" }}>
+              <span className="block text-[11px] font-semibold" style={{ color: "#b45309" }}>
+                収容数が入っていない置場が {収容数なし.length} か所あります
+              </span>
+              <span className="block text-[10px]" style={{ color: VIZ.ink2 }}>
+                {収容数なし.map((r) => r.no + " " + r.name).join("・")}
+              </span>
+              <span className="block text-[10px] mt-0.5" style={{ color: VIZ.muted }}>
+                本数は入っていますが「あと何本置けるか」が分かりません。
+                行をひらいて「収容数も直す」から入れてください。
+              </span>
+            </div>
+          )}
+
           {list.length === 0 ? (
             <p className="text-xs text-slate-400 py-3 text-center">読み込み中…</p>
           ) : shown.length === 0 ? (
@@ -3089,7 +3111,9 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
                           <span className="text-[10px] px-1 rounded shrink-0"
                             style={r.状態 === "超過"
                               ? { background: "#fee2e2", color: "#b91c1c" }
-                              : { background: "#fef3c7", color: "#b45309" }}>{r.状態}</span>
+                              : r.状態 === "収容数なし"
+                                ? { background: "#e2e8f0", color: "#475569" }
+                                : { background: "#fef3c7", color: "#b45309" }}>{r.状態}</span>
                         )}
                         <span className="text-[11px] ml-auto shrink-0" style={{ color: NAVY }}>{open ? "▲" : "▼"}</span>
                       </span>
