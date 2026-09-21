@@ -21,10 +21,12 @@ function build(snap, opt) {
     outFiles.push({ name: 'arm_pdf_snapshot.json', text: JSON.stringify(snap),
                     updated: o.snapAt || new Date('2026-09-13T06:33:00+09:00') });
   }
-  if (!o.noPdf) {
+  if (o.pdfFiles) {
+    o.pdfFiles.forEach((f) => outFiles.push(f));
+  } else if (!o.noPdf) {
     outFiles.push({ name: (o.pdfName || 'アーム機種別出荷明細_2026-09-13.pdf'),
                     updated: new Date('2026-09-13T06:33:00+09:00'), url: 'https://drive/pdf' });
-    // 紛らわしい別ファイル。接頭辞で弾けているかを見る
+    // 紛らわしい別ファイル。アームの明細ではないので拾ってはいけない
     outFiles.push({ name: '発注書.pdf', updated: new Date('2026-09-20T00:00:00+09:00'), url: 'https://drive/x' });
   }
   const srcFiles = o.srcFiles || [
@@ -346,6 +348,67 @@ console.log('■ 今月の「予定こみ」も返す');
   chk('先月は入らない', !cur.months.some((m) => m.年月 === '2026-08'), cur.months.map((m) => m.年月));
   const act = s.arm_monthsFromRows_(rows, '2026-09', '2026-09-13');
   chk('実績のほうは8台のまま', act.months[0].台数 === 8, act.months[0]);
+}
+
+console.log('■ 明細PDFの名前が変わっても拾う');
+{
+  const s = build(SNAP);
+  // 実際に起きた改名。前方一致で見ていたので、この日から新しいPDFが出なくなった
+  chk('★新しい名前を明細と認める',
+    s.arm_isPdfName_('アーム出荷明細(9/18)_2026-09-21.pdf') === true);
+  chk('前の名前も認める',
+    s.arm_isPdfName_('アーム機種別出荷明細_2026-09-19.pdf') === true);
+  chk('★よその資料は拾わない', s.arm_isPdfName_('発注書.pdf') === false);
+  chk('アームでも明細でなければ拾わない',
+    s.arm_isPdfName_('アーム組立手順.pdf') === false);
+  chk('PDF以外は拾わない',
+    s.arm_isPdfName_('アーム出荷明細(9/18)_2026-09-21.xlsx') === false);
+
+  // 名前の中の日付で新しさを決める
+  chk('作った日を採る', s.arm_pdfDateKey_('アーム機種別出荷明細_2026-09-19.pdf') === 20260919);
+  chk('★日付が2つあるときは後ろ（作った日）を採る',
+    s.arm_pdfDateKey_('アーム出荷明細(9/18)_2026-09-21.pdf') === 20260921);
+  chk('日付が無ければ -1', s.arm_pdfDateKey_('アーム出荷明細.pdf') === -1);
+  chk('★9/2より9/21が後になる',
+    s.arm_pdfDateKey_('アーム出荷明細_2026-09-21.pdf') >
+    s.arm_pdfDateKey_('アーム出荷明細_2026-09-02.pdf'));
+}
+
+console.log('■ 一番新しい明細PDFを選ぶ');
+{
+  // ★ 実際のフォルダの中身。新しい名前のものが一番新しい
+  const 実物 = [
+    { name: 'アーム出荷明細(9/18)_2026-09-21.pdf',
+      updated: new Date('2026-09-21T07:31:00+09:00'), url: 'https://drive/new' },
+    { name: 'アーム機種別出荷明細_2026-09-19.pdf',
+      updated: new Date('2026-09-19T11:36:00+09:00'), url: 'https://drive/old19' },
+    { name: 'アーム機種別出荷明細_2026-09-17.pdf',
+      updated: new Date('2026-09-17T09:10:00+09:00'), url: 'https://drive/old17' },
+    { name: '発注書.pdf', updated: new Date('2026-09-25T00:00:00+09:00'), url: 'https://drive/x' },
+  ];
+  const s = build(SNAP, { pdfFiles: 実物 });
+  const p = s.arm_latestPdf_();
+  chk('★名前が変わった新しいPDFが選ばれる', p && p.name === 'アーム出荷明細(9/18)_2026-09-21.pdf', p);
+  chk('URLもそれ', p && p.url === 'https://drive/new', p);
+
+  // 更新日時が新しいだけの古いPDFに引っぱられない（開き直すと日時は動く）
+  const s2 = build(SNAP, { pdfFiles: [
+    { name: 'アーム出荷明細(9/18)_2026-09-21.pdf',
+      updated: new Date('2026-09-21T07:31:00+09:00'), url: 'https://drive/new' },
+    { name: 'アーム機種別出荷明細_2026-09-17.pdf',
+      updated: new Date('2026-09-30T00:00:00+09:00'), url: 'https://drive/old17' },
+  ] });
+  chk('★開き直して更新日時が動いた古いPDFを選ばない',
+    s2.arm_latestPdf_().name === 'アーム出荷明細(9/18)_2026-09-21.pdf');
+
+  // 日付の読めない名前しか無ければ、更新日時で代える
+  const s3 = build(SNAP, { pdfFiles: [
+    { name: 'アーム出荷明細.pdf', updated: new Date('2026-09-10T00:00:00+09:00'), url: 'https://drive/a' },
+    { name: 'アーム出荷明細（最新）.pdf', updated: new Date('2026-09-20T00:00:00+09:00'), url: 'https://drive/b' },
+  ] });
+  chk('日付が読めないときは更新日時で代える', s3.arm_latestPdf_().url === 'https://drive/b');
+
+  chk('1件も無ければ null', build(SNAP, { pdfFiles: [] }).arm_latestPdf_() === null);
 }
 
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');

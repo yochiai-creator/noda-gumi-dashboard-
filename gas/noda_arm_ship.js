@@ -30,7 +30,13 @@ var ARM_CONFIG = {
   // PDFとJSONの置き場（「①出荷作業用」）
   OUT_FOLDER_ID: '1-RrriADJSmBt2a7HsYpb_c8TUHHJpxkz',
   SNAPSHOT_NAME: 'arm_pdf_snapshot.json',
-  PDF_PREFIX: 'アーム機種別出荷明細_',
+  /* ★ PDFの名前は前方一致で見ない。名前は実際に変わる
+       （「アーム機種別出荷明細_2026-09-19.pdf」→
+         「アーム出荷明細(9/18)_2026-09-21.pdf」）。
+       前方一致にしていたせいで、名前が変わった日から新しいPDFが出なくなった。
+       語が全部入っていれば拾う、という見方にする。 */
+  PDF_KEYWORDS: ['アーム', '出荷明細'],
+  PDF_EXT: '.pdf',
 
   // 元の .xlsm 置き場（「'001_アーム出荷明細」）。新しさの確認だけに使う。
   SRC_FOLDER_ID: '1NS4WoClO0xlGWSxvFimFcqFGUT0jOKQL',
@@ -224,16 +230,45 @@ function arm_dateKeyFromName_(name) {
   return (2000 + Number(m[1])) * 10000 + Number(m[2]) * 100 + Number(m[3]);
 }
 
+/* 名前がアームの出荷明細PDFらしいか（純関数）。
+   ★ 前方一致にしない。「アーム機種別出荷明細_…」でも
+     「アーム出荷明細(9/18)_…」でも拾えるようにする。 */
+function arm_isPdfName_(name) {
+  var nm = String(name || '');
+  if (nm.toLowerCase().slice(-ARM_CONFIG.PDF_EXT.length) !== ARM_CONFIG.PDF_EXT) return false;
+  for (var i = 0; i < ARM_CONFIG.PDF_KEYWORDS.length; i++) {
+    if (nm.indexOf(ARM_CONFIG.PDF_KEYWORDS[i]) < 0) return false;
+  }
+  return true;
+}
+
+/* ファイル名の中の「2026-09-21」を日付の数にする（純関数）。
+   ★ 名前に日付が2つ入ることがある（「アーム出荷明細(9/18)_2026-09-21.pdf」の
+     (9/18)は元の日程表の日付、後ろが作った日）。作った日で新しさを決めたいので
+     yyyy-mm-dd の形のものだけを見て、一番後ろのものを採る。 */
+function arm_pdfDateKey_(name) {
+  var all = String(name || '').match(/(\d{4})-(\d{1,2})-(\d{1,2})/g);
+  if (!all || all.length === 0) return -1;
+  var m = all[all.length - 1].match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]);
+}
+
 // ===== 内部：一番新しいアーム出荷明細PDF =====
+// ★ 名前の日付で選ぶ。更新日時では選ばない（古いPDFを開き直すだけで動くため）。
+//   日付が読めないものしか無いときだけ更新日時で代える。
 function arm_latestPdf_() {
   var folder = DriveApp.getFolderById(ARM_CONFIG.OUT_FOLDER_ID);
-  var it = folder.getFiles(), best = null;
+  var it = folder.getFiles();
+  var best = null, bestKey = -1, fallback = null;
   while (it.hasNext()) {
     var f = it.next();
-    if (f.getName().indexOf(ARM_CONFIG.PDF_PREFIX) !== 0) continue;
-    if (!best || f.getLastUpdated().getTime() > best.getLastUpdated().getTime()) best = f;
+    if (!arm_isPdfName_(f.getName())) continue;
+    if (!fallback || f.getLastUpdated().getTime() > fallback.getLastUpdated().getTime()) fallback = f;
+    var k = arm_pdfDateKey_(f.getName());
+    if (k > bestKey) { bestKey = k; best = f; }
   }
-  return best ? { name: best.getName(), url: best.getUrl() } : null;
+  var pick = bestKey >= 0 ? best : fallback;
+  return pick ? { name: pick.getName(), url: pick.getUrl() } : null;
 }
 
 // ===== 公開関数：中身を確かめる（診断用） =====
