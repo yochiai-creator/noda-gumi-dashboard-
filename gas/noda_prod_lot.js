@@ -397,16 +397,30 @@ function lot_shipRanges_(idx) {
 function lot_matchOne_(lot, ships) {
   var pre = String(lot.容器接頭辞).toUpperCase();
   var a = Number(lot.容器No開始), b = Number(lot.容器No終了);
-  var covered = 0, nos = [], dates = [];
+  var spans = [], nos = [], dates = [];
   ships.forEach(function (s) {
     if (s.prefix !== pre) return;
     var lo = Math.max(a, s.a), hi = Math.min(b, s.b);
     if (hi < lo) return;
-    covered += hi - lo + 1;
-    nos.push(s.no);
+    spans.push([lo, hi]);
+    if (nos.indexOf(s.no) < 0) nos.push(s.no);
     if (s.date) dates.push(s.date);
   });
-  if (covered > lot.本数) covered = lot.本数;     // 指図書が重複していても本数は超えない
+  /* ★ 重なっている範囲は1回だけ数える。足し合わせると、同じ容器が2枚の指図書に
+       載っていたときに2回引いてしまう（置場の数字が実物より減る）。
+       同じ依頼Noの版違いや、指図書を全部の行から持つようにしたことで起きうる。 */
+  spans.sort(function (x, y) { return x[0] - y[0]; });
+  var covered = 0, curLo = null, curHi = null;
+  spans.forEach(function (sp) {
+    if (curHi === null || sp[0] > curHi + 1) {
+      if (curHi !== null) covered += curHi - curLo + 1;
+      curLo = sp[0]; curHi = sp[1];
+    } else if (sp[1] > curHi) {
+      curHi = sp[1];
+    }
+  });
+  if (curHi !== null) covered += curHi - curLo + 1;
+  if (covered > lot.本数) covered = lot.本数;     // 念のため本数は超えない
   var nokori = covered - lot.出荷済本数;
   dates.sort();
   return { 本数: nokori > 0 ? nokori : 0, 累計: covered,

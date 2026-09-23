@@ -1232,11 +1232,32 @@ function shipact_index_() {
       SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
       var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
       var best = {};   // 依頼No_枝番 → 最新バージョンの1件
+      /* ★ 容器番号の範囲は、版でまとめずに全部の行から持つ。
+           同じ依頼No・同じ枝番でも、別の容器を載せた指図書が何枚もあることがある。
+           26-60619 は 54839〜54900（62本）と 54901〜54957（57本）の2枚があり、
+           最新の版だけ残すと前の1枚（入込場 50k#16 の容器）が消えていた。
+           26-60602 は同じ番号の行が13行ある。
+           ★ 全く同じ範囲は1つにまとめる（同じ指図書の版違いで二重にしないため）。 */
+      var rangeSeen = {};
       values.forEach(function (r) {
         var fileId = String(r[H['fileId']] || '');
         if (!fileId) return;
         var no = String(r[H['依頼No']] || '').trim();
         if (!no) return;
+        var rp = String(r[H['容器接頭辞']] || '').toUpperCase();
+        var ra = r[H['容器No開始']] === '' ? null : Number(r[H['容器No開始']]);
+        var rb = r[H['容器No終了']] === '' ? null : Number(r[H['容器No終了']]);
+        if (rp && ra != null && rb != null && !isNaN(ra) && !isNaN(rb)) {
+          var rk = no + '|' + rp + '|' + ra + '|' + rb;
+          if (!rangeSeen[rk]) {
+            rangeSeen[rk] = true;
+            idx.ranges.push({ no: no, prefix: rp, a: ra, b: rb,
+                              date: shipact_dateKey_(r[H['出荷希望日']]),
+                              size: String(r[H['サイズ']] || ''),
+                              qty: Number(r[H['数量']]) || 0,
+                              check: String(r[H['検算']] || '') });
+          }
+        }
         var key = no + '_' + String(r[H['枝番']]);
         var ver = Number(r[H['バージョン']]) || 0;
         if (best[key] && best[key].ver >= ver) return;
@@ -1261,12 +1282,7 @@ function shipact_index_() {
       Object.keys(best).forEach(function (k) {
         var e = best[k];
         idx.rows++;
-        if (e.prefix && e.cnoStart != null && e.cnoEnd != null) {
-          /* ★ サイズも持たせる。入込場の区画と容器番号で突き合わせるとき、
-               番号だけだと接頭辞が違う別サイズの指図書と重なってしまう。 */
-          idx.ranges.push({ no: e.no, prefix: e.prefix, a: e.cnoStart, b: e.cnoEnd,
-                            date: e.date, size: e.size, qty: e.qty, check: e.check });
-        }
+        // ★ 容器番号の範囲は上で全部の行から集めている（版でまとめると消えるため）
         // 依頼Noは年度付き（26-10660）で入っている。年度を外した形でも引けるようにする。
         shipact_putOrder_(idx.byOrder, e.no, e);
         var bare = e.no.replace(/^\d{2}-/, '');

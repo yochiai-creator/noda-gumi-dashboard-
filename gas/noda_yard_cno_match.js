@@ -83,6 +83,14 @@ function ycno_match_(sizeKey, range, ranges) {
     out.push({ no: s.no, prefix: s.prefix, date: s.date,
                重なり: hi - lo + 1, a: s.a, b: s.b });
   });
+  /* ★ 同じ依頼Noは1件にする（重なりの大きいほうを残す）。
+       索引は全部の行から範囲を持つので、同じ依頼Noが何本も当たることがある。 */
+  var byNo = {};
+  out.forEach(function (h) {
+    var k = String(h.no).replace(/^\d{2}-/, '');
+    if (!byNo[k] || h.重なり > byNo[k].重なり) byNo[k] = h;
+  });
+  out = Object.keys(byNo).map(function (k) { return byNo[k]; });
   // 重なりが大きいもの、次に新しいものを先に
   out.sort(function (x, y) {
     if (y.重なり !== x.重なり) return y.重なり - x.重なり;

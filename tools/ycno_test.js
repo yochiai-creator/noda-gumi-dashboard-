@@ -255,5 +255,22 @@ console.log('■ 区画に足す（手入力と番号の両方を出す）');
     r2['50k'][0].orders[0].url === null, r2['50k'][0].orders[0]);
 }
 
+console.log('■ 同じ依頼Noが何本当たっても1件');
+{
+  /* ★ 26-60619 は2枚ある（54839〜54900 と 54901〜54957）。どちらも区画に
+       重なると同じ依頼Noが2件出るので、1件にまとめる。 */
+  const s = sb();
+  const two = [
+    ok({ no: '26-60619', prefix: 'HEP', a: 54839, b: 54900, date: '2026-09-10', size: '50kg' }),
+    ok({ no: '26-60619', prefix: 'HEP', a: 54880, b: 54957, date: '2026-09-11', size: '50kg' }),
+  ];
+  const h = s.ycno_match_('50k', { a: 54801, b: 54900 }, two);
+  chk('★同じ依頼Noは1件にする', h.length === 1, h);
+  chk('重なりの大きいほうを残す（62本）', h[0].重なり === 62, h[0]);
+  // 50k#16 の手入力 60619 が番号でも当たるようになる
+  const g = s.ycno_grade_([{ size: '50k', pos: 16, range: '54801〜54900', orders: ['60619'] }], two);
+  chk('★50k#16 は手入力と番号がぴったり一致する', g.一致 === 1, g);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

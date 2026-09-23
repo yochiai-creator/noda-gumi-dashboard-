@@ -16,7 +16,12 @@ const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
 
 const s = { Logger: { log: () => {} },
   JSON, Object, Number, String, Math, Date, RegExp, Array, isNaN, Boolean, Error };
+s.Utilities = { formatDate: (d) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); } };
 vm.createContext(s);
+// 索引づくりは日付の書式に共通の関数を使う
+vm.runInContext(fs.readFileSync(GAS + 'noda_common_cache.js', 'utf8'), s);
 vm.runInContext(fs.readFileSync(GAS + 'noda_ship_actuals_engine.js', 'utf8'), s);
 const fix = (list, qty) => s.shipact_dropDigitShadows_(list.slice().sort((a, b) => a - b), qty);
 const span = (r) => r.list[r.list.length - 1] - r.list[0] + 1;
@@ -268,6 +273,38 @@ console.log('■ 人がPDFで確かめた値は読み直さない');
   // 役目を終えた名指しの読み直しは消してある（もう一度実行すると値を揺らすため）
   chk('★「緩い判定で直した行を見直す」は消した', typeof s.緩い判定で直した行を見直す === 'undefined');
   chk('★「組の両方を外した行を戻す」は消した', typeof s.組の両方を外した行を戻す === 'undefined');
+}
+
+console.log('■ 索引は版でまとめずに全部の行の範囲を持つ');
+{
+  /* ★ 26-60619 は同じ依頼No・同じ枝番で2枚（54839〜54900 と 54901〜54957）。
+       最新の版だけ残すと、前の1枚（入込場 50k#16 の容器）が消えていた。 */
+  const HEAD = s.SHIP_ACT_CONFIG.HEADERS;
+  const row = (o) => HEAD.map((h) => (o[h] === undefined ? '' : o[h]));
+  const rows = [
+    row({ fileId: 'F1', 依頼No: '26-60619', 枝番: 0, バージョン: 1, サイズ: '50kg', 数量: 62,
+          検算: '一致', 容器接頭辞: 'HEP', 容器No開始: 54839, 容器No終了: 54900 }),
+    row({ fileId: 'F2', 依頼No: '26-60619', 枝番: 0, バージョン: 2, サイズ: '50kg', 数量: 57,
+          検算: '一致', 容器接頭辞: 'HEP', 容器No開始: 54901, 容器No終了: 54957 }),
+    // 全く同じ範囲の版違い。二重にしない
+    row({ fileId: 'F3', 依頼No: '26-60619', 枝番: 0, バージョン: 3, サイズ: '50kg', 数量: 57,
+          検算: '一致', 容器接頭辞: 'HEP', 容器No開始: 54901, 容器No終了: 54957 }),
+  ];
+  s.SHIPACT_INDEX_MEMO_ = null;
+  s.shipact_getSheet_ = () => ({
+    getLastRow: () => rows.length + 1,
+    getRange: () => ({ getValues: () => rows }),
+  });
+  const idx = s.shipact_index_();
+  if (idx.error) console.log('   索引のエラー:', idx.error);
+  const r619 = idx.ranges.filter((x) => x.no === '26-60619').map((x) => x.a + '〜' + x.b);
+  chk('★版でまとめずに2枚とも持つ', r619.indexOf('54839〜54900') >= 0 && r619.indexOf('54901〜54957') >= 0, r619);
+  chk('★全く同じ範囲は1つにまとめる', r619.length === 2, r619);
+  chk('サイズ・数量・検算も持つ',
+    idx.ranges.every((x) => x.size === '50kg' && x.check === '一致' && x.qty > 0), idx.ranges);
+  chk('依頼Noから引く索引は今までどおり最新の版', idx.byOrder['26-60619'] &&
+    idx.byOrder['26-60619'].fileId === 'F3', idx.byOrder['26-60619']);
+  s.SHIPACT_INDEX_MEMO_ = null;
 }
 
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
