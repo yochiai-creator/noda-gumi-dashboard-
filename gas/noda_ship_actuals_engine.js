@@ -1150,6 +1150,7 @@ function shipact_index_() {
           size: String(r[H['サイズ']] || ''),
           qty: Number(r[H['数量']]) || 0,
           // 生産ロットとの突き合わせに使う容器Noのレンジ
+          check: String(r[H['検算']] || ''),
           prefix: String(r[H['容器接頭辞']] || '').toUpperCase(),
           cnoStart: r[H['容器No開始']] === '' ? null : Number(r[H['容器No開始']]),
           cnoEnd: r[H['容器No終了']] === '' ? null : Number(r[H['容器No終了']])
@@ -1167,7 +1168,7 @@ function shipact_index_() {
           /* ★ サイズも持たせる。入込場の区画と容器番号で突き合わせるとき、
                番号だけだと接頭辞が違う別サイズの指図書と重なってしまう。 */
           idx.ranges.push({ no: e.no, prefix: e.prefix, a: e.cnoStart, b: e.cnoEnd,
-                            date: e.date, size: e.size, qty: e.qty });
+                            date: e.date, size: e.size, qty: e.qty, check: e.check });
         }
         // 依頼Noは年度付き（26-10660）で入っている。年度を外した形でも引けるようにする。
         shipact_putOrder_(idx.byOrder, e.no, e);

@@ -22,13 +22,14 @@ function sb() {
 }
 
 // 実データに近いレンジ。番号帯が接頭辞をまたいで重なっているのがポイント
+const ok = (o) => Object.assign({ check: '一致', qty: (o.b - o.a + 1) }, o);
 const R = [
-  { no: '26-10001', prefix: 'HEP', a: 46201, b: 46300, date: '2026-09-20', size: '50kg' },
-  { no: '26-10002', prefix: 'HEP', a: 46250, b: 46400, date: '2026-09-21', size: '50kg' },
+  ok({ no: '26-10001', prefix: 'HEP', a: 46201, b: 46300, date: '2026-09-20', size: '50kg' }),
+  ok({ no: '26-10002', prefix: 'HEP', a: 46250, b: 46400, date: '2026-09-21', size: '50kg' }),
   // ★ 50kの区画と番号が重なる20kgの指図書。サイズを見ないとこれを拾ってしまう
-  { no: '26-20001', prefix: 'HXP', a: 46150, b: 46350, date: '2026-09-21', size: '20kg' },
-  { no: '26-20002', prefix: 'HXP', a: 76151, b: 76200, date: '2026-09-19', size: '20kg' },
-  { no: '26-30001', prefix: 'HBB', a: 77846, b: 78830, date: '2026-09-18', size: '20kg' },
+  ok({ no: '26-20001', prefix: 'HXP', a: 46150, b: 46350, date: '2026-09-21', size: '20kg' }),
+  ok({ no: '26-20002', prefix: 'HXP', a: 76151, b: 76200, date: '2026-09-19', size: '20kg' }),
+  ok({ no: '26-30001', prefix: 'HBB', a: 77846, b: 78830, date: '2026-09-18', size: '20kg' }),
 ];
 
 console.log('■ 容器番号の範囲を読む');
@@ -60,6 +61,44 @@ console.log('■ サイズで絞る');
     s.ycno_match_('50k', { a: 99000, b: 99100 }, R).length === 0);
   chk('知らないサイズは当てない', s.ycno_match_('30k', { a: 46201, b: 46300 }, R).length === 0);
   chk('範囲が無ければ当てない', s.ycno_match_('50k', null, R).length === 0);
+}
+
+console.log('■ 壊れた容器No範囲を使わない');
+{
+  /* ★ 実際に起きた：50kの区画のほとんどに同じ3件（30458/30459/10647）が
+       付いていた。取込時の検算に通っていない＝範囲が壊れている指図書。 */
+  const s = sb();
+  const 壊れ = [
+    // 検算が通っていない
+    { no: '26-30458', prefix: 'HEP', a: 54801, b: 58700, date: '2026-09-01',
+      size: '50kg', qty: 100, check: '不一致' },
+    { no: '26-30459', prefix: 'HEP', a: 54000, b: 59000, date: '2026-09-01',
+      size: '50kg', qty: 60, check: 'レンジ異常' },
+    { no: '26-10647', prefix: 'HEP', a: 55000, b: 59000, date: '2026-09-01',
+      size: '50kg', qty: null, check: '要確認' },
+    // 検算は通っているが幅が数量の5倍を大きく超える
+    { no: '26-99999', prefix: 'HEP', a: 54801, b: 58700, date: '2026-09-01',
+      size: '50kg', qty: 100, check: '一致' },
+    // これが本物
+    ok({ no: '26-60114', prefix: 'HEP', a: 57601, b: 57700, date: '2026-09-20', size: '50kg' }),
+  ];
+  chk('★検算が通っていない範囲は使わない',
+    s.ycno_trustRange_(壊れ[0]) === false && s.ycno_trustRange_(壊れ[1]) === false, 壊れ[0]);
+  chk('数量が分からず幅も広いものは使わない', s.ycno_trustRange_(壊れ[2]) === false);
+  chk('★検算は通っていても数量の5倍を超える幅は使わない',
+    s.ycno_trustRange_(壊れ[3]) === false, 壊れ[3]);
+  chk('まともな範囲は使う', s.ycno_trustRange_(壊れ[4]) === true, 壊れ[4]);
+  chk('「レンジ採用」も使う',
+    s.ycno_trustRange_({ a: 1, b: 100, qty: 100, check: 'レンジ採用' }) === true);
+  chk('小さい範囲は数量が0でも通す（200本まで）',
+    s.ycno_trustRange_({ a: 1, b: 50, qty: 0, check: '一致' }) === true);
+
+  const hits = s.ycno_match_('50k', { a: 57601, b: 57700 }, 壊れ).map((h) => h.no);
+  chk('★区画に当たるのは本物だけになる', hits.join(',') === '26-60114', hits);
+
+  // 壊れた範囲を弾いたことで、隣の区画にも巻き添えが出ない
+  const h2 = s.ycno_match_('50k', { a: 54801, b: 54900 }, 壊れ);
+  chk('★範囲外の区画には何も当たらない（巻き添えを消す）', h2.length === 0, h2);
 }
 
 console.log('■ 手入力の依頼Noと見比べる');
@@ -97,8 +136,8 @@ console.log('■ 1区画に出す件数の上限');
   const s = sb();
   const many = [];
   for (let i = 0; i < 20; i++) {
-    many.push({ no: '26-1' + (1000 + i), prefix: 'HEP', a: 46201, b: 46300,
-                date: '2026-09-01', size: '50kg' });
+    many.push(ok({ no: '26-1' + (1000 + i), prefix: 'HEP', a: 46201, b: 46300,
+                   date: '2026-09-01', size: '50kg' }));
   }
   chk('★多すぎても6件までにする',
     s.ycno_match_('50k', { a: 46201, b: 46300 }, many).length === 6);

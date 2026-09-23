@@ -27,8 +27,33 @@
 var YCNO_CONFIG = {
   // 区画のサイズ → 指図書のサイズ表記（出荷実績シートの「サイズ」列）
   SIZE: { '50k': '50kg', '20k': '20kg' },
-  MAX_HITS: 6   // 1区画に出す指図書の上限。多すぎても見られない
+  MAX_HITS: 6,   // 1区画に出す指図書の上限。多すぎても見られない
+  /* ★ 容器Noの範囲を信じてよい指図書だけを使う。
+       指図書の取込時に「数量」と「レンジから数えた本数」を突き合わせており、
+       その結果が検算の列に入っている。合っていないものは範囲が壊れているので、
+       重ねて当てると関係ない区画にまで当たってしまう。
+       実際、50kの区画のほとんどに同じ3件（30458/30459/10647）が付いていた。 */
+  OK_CHECK: { '一致': true, 'レンジ採用': true },
+  /* ★ それでも広すぎる範囲は弾く。指図書1件は多くても千本台なので、
+       数量の5倍を超える幅は読み取りが壊れていると見る。 */
+  WIDTH_FACTOR: 5,
+  WIDTH_MIN: 200
 };
+
+/* その指図書の容器No範囲を信じてよいか（純関数）。 */
+function ycno_trustRange_(s) {
+  if (!s || s.a == null || s.b == null) return false;
+  if (!YCNO_CONFIG.OK_CHECK[String(s.check || '')]) return false;
+  var width = s.b - s.a + 1;
+  var qty = Number(s.qty) || 0;
+  if (qty > 0) {
+    var limit = Math.max(qty * YCNO_CONFIG.WIDTH_FACTOR, YCNO_CONFIG.WIDTH_MIN);
+    if (width > limit) return false;
+  } else if (width > YCNO_CONFIG.WIDTH_MIN) {
+    return false;   // 数量が分からないのに幅が広い＝当てにできない
+  }
+  return true;
+}
 
 /* 「46201〜46300」から数の範囲を取り出す（純関数）。
    ★ 未入力の区画に "-99〜0" や "〜" が入っていることがある。範囲として扱わない。 */
@@ -52,7 +77,7 @@ function ycno_match_(sizeKey, range, ranges) {
   var out = [];
   (ranges || []).forEach(function (s) {
     if (!s || s.size !== want) return;
-    if (s.a == null || s.b == null) return;
+    if (!ycno_trustRange_(s)) return;
     var lo = Math.max(range.a, s.a), hi = Math.min(range.b, s.b);
     if (hi < lo) return;
     out.push({ no: s.no, prefix: s.prefix, date: s.date,
@@ -147,8 +172,25 @@ function 入込場の容器番号で指図書を当ててみる() {
     Logger.log('エラー: ' + String(err));
     return { error: String(err) };
   }
-  var t = ycno_grade_(blocks, idx.ranges || []);
-  Logger.log('指図書の容器Noレンジ ' + (idx.ranges || []).length + '件');
+  var all = idx.ranges || [];
+  var ok = all.filter(ycno_trustRange_);
+  var t = ycno_grade_(blocks, ok);
+  Logger.log('指図書の容器Noレンジ ' + all.length + '件 / 当てに使えるもの ' + ok.length + '件');
+  /* ★ 弾いたものの中身を見せる。多すぎるなら弾き方がきつすぎる。 */
+  var ng = all.filter(function (s) { return !ycno_trustRange_(s); });
+  var why = {};
+  ng.forEach(function (s) {
+    var k = YCNO_CONFIG.OK_CHECK[String(s.check || '')] ? '幅が広すぎる' : ('検算=' + (s.check || '空'));
+    why[k] = (why[k] || 0) + 1;
+  });
+  Object.keys(why).sort(function (a, b) { return why[b] - why[a]; }).forEach(function (k) {
+    Logger.log('  使わない ' + k + '  ' + why[k] + '件');
+  });
+  ng.slice().sort(function (a, b) { return (b.b - b.a) - (a.a === null ? 0 : (a.b - a.a)); })
+    .slice(0, 5).forEach(function (s) {
+      Logger.log('    幅の広い例 ' + s.no + '  ' + s.prefix + ' ' + s.a + '〜' + s.b +
+                 '（' + (s.b - s.a + 1) + '本ぶん / 数量 ' + s.qty + ' / 検算 ' + s.check + '）');
+    });
   if (blocks.length === 0) {
     /* ★ 0件で終わったときに「当たらなかった」のか「そもそも区画が読めていない」のか
          見分けが付かないと直せない。読めていないとはっきり言う。 */
