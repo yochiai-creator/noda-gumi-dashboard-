@@ -228,5 +228,56 @@ console.log('■ 当月計画：合わないとき');
   chk('該当行が無ければエラーにする', !!e.error, e);
 }
 
+console.log('■ 月ごとのフォルダに分けられても当日計画を拾う');
+{
+  /* ★ 実際に起きた：工場別当日計画のフォルダが 1月〜12月 に分けられ、
+       直下にファイルが無くなった日から当日計画が出なくなった。 */
+  const s = sb();
+  const file = (name) => ({ getName: () => name, getId: () => name });
+  const iter = (arr) => { let i = 0; return { hasNext: () => i < arr.length, next: () => arr[i++] }; };
+  const folder = (files, subs) => ({ getFiles: () => iter(files || []), getFolders: () => iter(subs || []) });
+  const tree = {
+    ROOT: folder([], [
+      folder([file('工場別当日計画(26.8.28）.xlsx')]),                       // 8月
+      folder([file('工場別当日計画(26.9.18).xlsx'),
+              file('工場別当日計画(26.9.24).xlsx'),
+              file('工場別当日計画(26.9.19).xlsx')]),                       // 9月
+      folder([]),                                                           // 10月（空）
+    ]),
+  };
+  s.DriveApp = { getFolderById: (id) => tree[id] };
+  s.PPLAN_CONFIG.DAILY_FOLDER = 'ROOT';
+  const b = s.pplan_latestDaily_();
+  chk('★直下に無くても月のフォルダの中から拾う', b !== null, b);
+  chk('★一番新しい日付（9/24）を選ぶ', b && b.name === '工場別当日計画(26.9.24).xlsx', b && b.name);
+  chk('日付も読める', b && b.key === '2026-09-24', b && b.key);
+
+  // 直下に置いたままでも今までどおり拾う
+  tree.FLAT = folder([file('工場別当日計画(26.9.18).xlsx'), file('工場別当日計画(26.9.17).xlsx')], []);
+  s.PPLAN_CONFIG.DAILY_FOLDER = 'FLAT';
+  chk('直下に置いたままでも拾う', s.pplan_latestDaily_().key === '2026-09-18');
+
+  // 直下と月フォルダの両方にあれば、新しいほう
+  tree.MIX = folder([file('工場別当日計画(26.9.18).xlsx')],
+                    [folder([file('工場別当日計画(26.9.24).xlsx')])]);
+  s.PPLAN_CONFIG.DAILY_FOLDER = 'MIX';
+  chk('直下と月フォルダの両方から新しいほうを選ぶ', s.pplan_latestDaily_().key === '2026-09-24');
+}
+
+console.log('■ 読めなかった結果をキャッシュしない');
+{
+  const s = sb();
+  const puts = [];
+  s.nc_peek_ = () => null;
+  s.nc_put_ = (k, d) => puts.push(k);
+  s.pplan_build_ = () => ({ daily: { error: '当日計画のファイルが見つかりません' }, monthly: { 行: [] } });
+  s.getProdPlanData(false);
+  chk('★当日が読めなかったらキャッシュしない', puts.length === 0, puts);
+  s.pplan_build_ = () => ({ daily: { 工場: [] }, monthly: { 行: [] } });
+  s.getProdPlanData(false);
+  chk('両方読めたらキャッシュする', puts.length === 1 && puts[0] === 'prodPlan2', puts);
+  chk('★前の（読めなかった）キャッシュとは別の名前', puts[0] !== 'prodPlan');
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

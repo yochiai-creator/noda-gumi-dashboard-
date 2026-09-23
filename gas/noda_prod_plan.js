@@ -39,9 +39,22 @@ var PPLAN_CONFIG = {
 
 // ===== 公開関数：画面用 =====
 function getProdPlanData(force) {
-  return nc_cached_('prodPlan', force, PPLAN_CONFIG.TTL, function () {
-    return pplan_build_();
-  });
+  /* ★ キャッシュ名を変えた（prodPlan → prodPlan2）。フォルダが月ごとに分けられて
+       読めなかった結果が15分残っていると、直しても当日計画が出ないままになるため。 */
+  var KEY = 'prodPlan2';
+  if (!force) {
+    var hit = nc_peek_(KEY);
+    if (hit) return hit;
+  }
+  var d = pplan_build_();
+  /* ★ 当日・当月のどちらかでも読めなかったときはキャッシュしない。
+       読めなかった結果を15分出し続けないように（全体のエラーではないので
+       nc_cached_ だと残ってしまう）。 */
+  if (!(d.daily && d.daily.error) && !(d.monthly && d.monthly.error)) {
+    nc_put_(KEY, d, PPLAN_CONFIG.TTL);
+  }
+  d.cached = false;
+  return d;
 }
 
 function pplan_build_() {
@@ -138,12 +151,29 @@ function pplan_num_(v) {
   return isNaN(n) ? null : n;
 }
 
+/* フォルダの直下と、その1つ下のフォルダにあるファイルを全部返す。
+   ★ 当日計画のフォルダが月ごと（1月〜12月）に分けられ、直下にファイルが
+     無くなった日から当日計画が出なくなった。分け方が変わっても拾えるように、
+     1つ下のフォルダまで見る。 */
+function pplan_filesIn_(folderId) {
+  var out = [];
+  var root = DriveApp.getFolderById(folderId);
+  var it = root.getFiles();
+  while (it.hasNext()) out.push(it.next());
+  var subs = root.getFolders();
+  while (subs.hasNext()) {
+    var fit = subs.next().getFiles();
+    while (fit.hasNext()) out.push(fit.next());
+  }
+  return out;
+}
+
 /* ファイル名の日付で一番新しいものを選ぶ。更新日時では選ばない。 */
 function pplan_latestDaily_() {
-  var it = DriveApp.getFolderById(PPLAN_CONFIG.DAILY_FOLDER).getFiles();
+  var files = pplan_filesIn_(PPLAN_CONFIG.DAILY_FOLDER);
   var best = null;
-  while (it.hasNext()) {
-    var f = it.next();
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
     var name = f.getName();
     if (name.indexOf(PPLAN_CONFIG.DAILY_PREFIX) !== 0) continue;
     if (!/\.xlsx?$/i.test(name)) continue;
@@ -235,11 +265,12 @@ function pplan_readPlanRow_(rest, dim, sum) {
 
 /* その月のPDFのうち、Rev番号が一番大きいもの。無ければ「仮」を使う。 */
 function pplan_latestMonthly_(year, month) {
-  var it = DriveApp.getFolderById(PPLAN_CONFIG.MONTHLY_FOLDER).getFiles();
+  // 当日計画と同じく、月ごとのフォルダに分けられても拾えるようにしておく
+  var files = pplan_filesIn_(PPLAN_CONFIG.MONTHLY_FOLDER);
   var want = pplan_kanjiMonth_(year, month);
   var best = null;
-  while (it.hasNext()) {
-    var f = it.next();
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
     var name = f.getName();
     if (!/\.pdf$/i.test(name)) continue;
     if (name.indexOf(want) < 0) continue;
