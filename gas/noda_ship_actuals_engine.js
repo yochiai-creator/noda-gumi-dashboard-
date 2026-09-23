@@ -1164,7 +1164,10 @@ function shipact_index_() {
         var e = best[k];
         idx.rows++;
         if (e.prefix && e.cnoStart != null && e.cnoEnd != null) {
-          idx.ranges.push({ no: e.no, prefix: e.prefix, a: e.cnoStart, b: e.cnoEnd, date: e.date });
+          /* ★ サイズも持たせる。入込場の区画と容器番号で突き合わせるとき、
+               番号だけだと接頭辞が違う別サイズの指図書と重なってしまう。 */
+          idx.ranges.push({ no: e.no, prefix: e.prefix, a: e.cnoStart, b: e.cnoEnd,
+                            date: e.date, size: e.size, qty: e.qty });
         }
         // 依頼Noは年度付き（26-10660）で入っている。年度を外した形でも引けるようにする。
         shipact_putOrder_(idx.byOrder, e.no, e);
