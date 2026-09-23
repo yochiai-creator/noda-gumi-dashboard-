@@ -1494,24 +1494,45 @@ function 組の両方を外した行を戻す() {
   return 容器Noの範囲を読み直す(['60594']);
 }
 
-// ===== 公開関数：本数の少ない行の直しが本当に安定しているかを確かめる（書き換えない） =====
+// ===== 公開関数：本数の少ない行の直しが本当に安定しているかを確かめる =====
 /**
  * ★ なぜ要るのか
  *   1〜2本の指図書は、化けた番号1つだけの読みでも数量と「一致」してしまう。
  *   「2回読んで同じなら書く」を入れる前に、1回の読みで書いた行がある。
  *   それらを2回ずつ読み直して、今シートに入っている値と同じになるかを見る。
- *   ★ 何も書き換えない。見るだけ。
+ *
+ * ★ 「揺れない」と「正しい」は別
+ *   2回の読みが同じでも、範囲の本数が数量と合っていなければ正しいとは言えない
+ *   （521行目 48914〜48914 は数量5）。両方を分けて出す。
+ *
+ * @param 揃える  true のとき、2回の読みが一致していて今の値と違う行だけ、
+ *               その読みに書き換える。1回きりの化けた読みで書いた値を戻すため。
+ *               何も渡さなければ見るだけ。
  */
-function 本数の少ない直しを確かめる() {
-  var targets = ['60612', '50336', '60602', '60581'];
+var SHIPACT_SMALL_TARGETS = ['60612', '50336', '60602', '60581'];
+
+/* 2回読んだ結果をどう扱うか（純関数）。 */
+function shipact_smallVerdict_(now, reads, qty) {
+  var a = reads[0], b = reads[1];
+  var agree = a && b && a.範囲 === b.範囲 && a.範囲 !== '読めず';
+  var spanOk = !!(a && a.本数 != null && Number(qty) > 0 && a.本数 === Number(qty));
+  if (!agree) return { 判定: '揺れる（人がPDFを見て決める）', 書く: false };
+  if (a.範囲 === now) {
+    return { 判定: spanOk ? '安定・数量とも合う' : '安定だが数量と合わない（不一致のまま）',
+             書く: false };
+  }
+  return { 判定: '2回とも今と別の値（今の値は1回きりの化けた読み）', 書く: true };
+}
+
+function 本数の少ない直しを確かめる(揃える) {
   var want = {};
-  targets.forEach(function (x) { want[x] = true; });
+  SHIPACT_SMALL_TARGETS.forEach(function (x) { want[x] = true; });
   var sheet = shipact_getSheet_();
   var last = sheet.getLastRow();
   var H = {};
   SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
   var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
-  var res = [];
+  var res = [], changed = false;
   for (var i = 0; i < values.length; i++) {
     var r = values[i];
     var no = String(r[H['依頼No']] || '').replace(/^\d{2}-/, '');
@@ -1519,20 +1540,43 @@ function 本数の少ない直しを確かめる() {
     var fileId = String(r[H['fileId']] || '');
     if (!fileId) continue;
     var now = r[H['容器No開始']] + '〜' + r[H['容器No終了']];
-    var reads = [];
+    var reads = [], parsed = [];
     for (var k = 0; k < 2; k++) {
       try {
         var f = shipact_parseText_(shipact_pdfToText_(DriveApp.getFileById(fileId)));
-        reads.push(f && f.cnoStart != null ? f.cnoStart + '〜' + f.cnoEnd : '読めず');
-      } catch (e) { reads.push('読めず'); }
+        parsed.push(f);
+        reads.push(f && f.cnoStart != null
+          ? { 範囲: f.cnoStart + '〜' + f.cnoEnd, 本数: f.cnoEnd - f.cnoStart + 1 }
+          : { 範囲: '読めず', 本数: null });
+      } catch (e) { parsed.push(null); reads.push({ 範囲: '読めず', 本数: null }); }
     }
-    var 判定 = (reads[0] === now && reads[1] === now) ? '安定（今の値でよい）'
-             : (reads[0] === reads[1]) ? '2回とも別の値（今の値が怪しい）'
-             : '揺れる（人がPDFを見て決める）';
-    res.push({ 行: i + 2, 依頼No: r[H['依頼No']], 枝番: r[H['枝番']], 数量: r[H['数量']],
-               今: now, 読み: reads, 判定: 判定 });
+    var v = shipact_smallVerdict_(now, reads, r[H['数量']]);
+    var wrote = false;
+    if (揃える === true && v.書く) {
+      var f0 = parsed[0];
+      var picked = shipact_pickQuantity_(f0.qty, f0.rangeQty);
+      r[H['容器No開始']] = f0.cnoStart;
+      r[H['容器No終了']] = f0.cnoEnd;
+      r[H['レンジ本数']] = f0.rangeQty == null ? '' : f0.rangeQty;
+      r[H['数量']] = picked.qty == null ? '' : picked.qty;
+      r[H['検算']] = picked.check;
+      wrote = changed = true;
+    }
+    res.push({ 行: i + 2, 依頼No: r[H['依頼No']], 今: now, 読み: reads, 判定: v.判定, 書いた: wrote });
     Logger.log((i + 2) + '行目 ' + r[H['依頼No']] + '-' + r[H['枝番']] + '（数量 ' + r[H['数量']] +
-               '）今 ' + now + '  1回目 ' + reads[0] + ' / 2回目 ' + reads[1] + '  → ' + 判定);
+               '）今 ' + now + '  1回目 ' + reads[0].範囲 + ' / 2回目 ' + reads[1].範囲 +
+               '  → ' + v.判定 + (wrote ? '  ★書き換えた' : ''));
+  }
+  if (changed) {
+    sheet.getRange(2, 1, values.length, SHIP_ACT_CONFIG.HEADERS.length).setValues(values);
+    nc_forget_('shipActuals');
+    SHIPACT_INDEX_MEMO_ = null;
   }
   return res;
+}
+
+// ===== 公開関数：1回きりの化けた読みで書いた値を戻す =====
+// 2回の読みが一致していて、今の値と違う行だけを書き換える。
+function 本数の少ない直しを揃える() {
+  return 本数の少ない直しを確かめる(true);
 }
