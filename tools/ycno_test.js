@@ -104,5 +104,37 @@ console.log('■ 1区画に出す件数の上限');
     s.ycno_match_('50k', { a: 46201, b: 46300 }, many).length === 6);
 }
 
+console.log('■ 区画の読み取り（位置の一覧を渡さないと0件になる）');
+{
+  /* ★ 実際にこれで詰まった。getYardMapUpdatesBothWithOrderText は
+       「位置の一覧」を渡さないと1件も返さない。更新用一覧シートから作って渡す。 */
+  const s = sb();
+  let 渡された = null;
+  s.yard_readRefRows_ = (size) => (size === '50k'
+    ? [{ pos: 1 }, { pos: 2 }]
+    : [{ pos: 1 }, { pos: 3 }, { pos: 5 }]);
+  s.getYardMapUpdatesBothWithOrderText = (q50, q20) => {
+    渡された = { '50k': q50, '20k': q20 };
+    return JSON.stringify({
+      '50k': [{ found: true, pos: 1, rangeStart: 46201, rangeEnd: 46300,
+                orders: [{ no: '26-10001', url: 'u' }] },
+              { found: false, pos: 2 }],
+      '20k': [{ found: true, pos: 1, rangeStart: 76151, rangeEnd: 76200, orders: [] },
+              { found: true, pos: 3, rangeStart: '', rangeEnd: '', orders: [] },
+              { found: true, pos: 5, rangeStart: null, rangeEnd: null, orders: [] }],
+    });
+  };
+  const blocks = s.ycno_readBlocks_();
+  chk('★位置の一覧を渡している（渡さないと0件になる）',
+    渡された && 渡された['50k'].length === 2 && 渡された['20k'].length === 3, 渡された);
+  chk('位置は文字で渡す', 渡された['50k'][0].pos === '1', 渡された['50k'][0]);
+  chk('見つからない区画は落とす', blocks.length === 4, blocks);
+  chk('範囲を組み立てる', blocks[0].range === '46201〜46300', blocks[0]);
+  chk('★範囲が空文字なら空にする（「〜」を作らない）',
+    blocks[2].range === '', blocks[2]);
+  chk('★範囲がnullでも空にする', blocks[3].range === '', blocks[3]);
+  chk('依頼Noは番号だけ取り出す', blocks[0].orders.join(',') === '26-10001', blocks[0]);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

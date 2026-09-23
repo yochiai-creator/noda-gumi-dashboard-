@@ -112,14 +112,23 @@ function ycno_grade_(blocks, ranges) {
   return t;
 }
 
-/* 入込場の全区画を { size, pos, range, orders } の形で集める。 */
+/* 入込場の全区画を { size, pos, range, orders } の形で集める。
+   ★ 区画の一覧は画面（静的データ）側が持っていて、GASからは
+     getYardMapUpdatesBothWithOrderText に「位置の一覧」を渡す決まりになっている。
+     渡さないと1件も返らない。ここでは更新用一覧シートから位置を作って渡す。 */
 function ycno_readBlocks_() {
-  var raw = JSON.parse(getYardMapUpdatesBothWithOrderText(null, null));
+  var q = {};
+  ['50k', '20k'].forEach(function (sizeKey) {
+    q[sizeKey] = yard_readRefRows_(sizeKey).map(function (r) {
+      return { pos: String(r.pos) };
+    });
+  });
+  var raw = JSON.parse(getYardMapUpdatesBothWithOrderText(q['50k'], q['20k']));
   var out = [];
   ['50k', '20k'].forEach(function (sizeKey) {
     (raw[sizeKey] || []).forEach(function (r) {
       if (!r || !r.found) return;
-      var range = (r.rangeStart != null && r.rangeEnd != null)
+      var range = (r.rangeStart != null && r.rangeEnd != null && r.rangeStart !== '' && r.rangeEnd !== '')
         ? (r.rangeStart + '〜' + r.rangeEnd) : '';
       out.push({ size: sizeKey, pos: r.pos, range: range,
                  orders: (r.orders || []).map(function (o) { return o.no; }) });
@@ -140,6 +149,12 @@ function 入込場の容器番号で指図書を当ててみる() {
   }
   var t = ycno_grade_(blocks, idx.ranges || []);
   Logger.log('指図書の容器Noレンジ ' + (idx.ranges || []).length + '件');
+  if (blocks.length === 0) {
+    /* ★ 0件で終わったときに「当たらなかった」のか「そもそも区画が読めていない」のか
+         見分けが付かないと直せない。読めていないとはっきり言う。 */
+    Logger.log('★ 区画が1件も読めていません。更新用一覧シートを確かめてください。');
+    return t;
+  }
   Logger.log('区画 ' + t.区画 + '（容器番号の範囲が入っている ' + t.範囲あり + '）');
   Logger.log('  手入力の依頼Noがある区画 ' + t.手入力あり);
   Logger.log('    ぴったり一致 ' + t.一致 + ' / 一部一致 ' + t.一部一致 + ' / 食い違い ' + t.食い違い);
