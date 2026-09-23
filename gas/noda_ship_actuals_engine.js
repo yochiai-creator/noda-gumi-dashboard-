@@ -709,8 +709,16 @@ function shipact_dropDigitShadows_(list, qty) {
      ★ 組のどちらが化けているかは決められない（55980と65980なら、
        どちらが本物かは番号だけでは分からない）ので、両方を候補にして、
        外したときに数量と合うほうを採る。 */
+  /* ★ まず同じ番号を1つにまとめる。
+       容器番号は本文と別紙の2か所に出るので、同じ値が必ず2つ入っている。
+       まとめずに「下4桁が同じものが2つ以上」で候補にすると、
+       すべての番号が候補になってしまい、数量に合うまで端を削るだけの
+       処理になる（実際そうなっていた）。それは桁の化けの話ではない。 */
+  var uniq = [];
+  var seenV = {};
+  list.forEach(function (v) { if (!seenV[v]) { seenV[v] = true; uniq.push(v); } });
   var byTail = {};
-  list.forEach(function (v) {
+  uniq.forEach(function (v) {
     var t = v % 10000;
     if (!byTail[t]) byTail[t] = [];
     byTail[t].push(v);
@@ -719,7 +727,15 @@ function shipact_dropDigitShadows_(list, qty) {
   Object.keys(byTail).forEach(function (t) {
     var g = byTail[t];
     if (g.length < 2) return;
-    g.forEach(function (v) { cand[v] = true; });
+    /* ★ 下4桁が同じで、かつ10000の倍数だけ離れている組だけを候補にする。
+         同じ値どうしは組にしない（上でまとめてあるので起きないが、念のため）。 */
+    for (var i = 0; i < g.length; i++) {
+      for (var j = 0; j < g.length; j++) {
+        if (g[i] === g[j]) continue;
+        var d = Math.abs(g[i] - g[j]);
+        if (d > 0 && d % 10000 === 0) { cand[g[i]] = true; break; }
+      }
+    }
   });
   /* 大きいほうから試す。
      ★ 実データで見つかった化けはすべて先頭の「5」が「6」になるもので、
@@ -728,8 +744,10 @@ function shipact_dropDigitShadows_(list, qty) {
   var cands = Object.keys(cand).map(Number).sort(function (a, b) { return b - a; });
   if (cands.length === 0) return out;
 
+  /* ★ 重複を落とした並びで返す。最小・最大しか使わないので結果は変わらないが、
+       何が残ったかをログで見るときに読みやすい。 */
   var without = function (drop) {
-    return list.filter(function (v) { return drop.indexOf(v) < 0; });
+    return uniq.filter(function (v) { return drop.indexOf(v) < 0; });
   };
   /* 外す数が少ないほうから試す。1つ外して合うならそれが答え。
      ★ 全部外すのを先に試すと、本物まで落として辻褄だけ合う並びを
@@ -1292,8 +1310,17 @@ function shipact_shortDate_(key) {
  * ★ 直った行だけ書き換える
  *   読み直しても変わらなければ触らない。無駄な書き込みと履歴を作らないため。
  */
-function 容器Noの範囲を読み直す() {
+function 容器Noの範囲を読み直す(依頼Noの一覧) {
   var out = { 見た行: 0, 直した行: 0, 変わらず: 0, 読めず: 0, error: null, 明細: [] };
+  /* ★ 依頼Noを渡すと、検算の結果によらずその行だけを読み直す。
+       いちど直した行（検算が「一致」になっている）をもう一度見たいときに使う。 */
+  var only = null;
+  if (依頼Noの一覧 && 依頼Noの一覧.length) {
+    only = {};
+    [].concat(依頼Noの一覧).forEach(function (x) {
+      only[String(x).replace(/^\d{2}-/, '')] = true;
+    });
+  }
   try {
     var sheet = shipact_getSheet_();
     var last = sheet.getLastRow();
@@ -1311,9 +1338,13 @@ function 容器Noの範囲を読み直す() {
       }
       var r = values[i];
       var chk = String(r[H['検算']] || '');
-      // 範囲が怪しい行だけ。一致・レンジ無しは触らない
-      if (chk !== '不一致' && chk !== 'レンジ異常' && chk !== '数量異常' &&
-          chk !== '要確認' && chk !== '両方異常') continue;
+      if (only) {
+        if (!only[String(r[H['依頼No']] || '').replace(/^\d{2}-/, '')]) continue;
+      } else if (chk !== '不一致' && chk !== 'レンジ異常' && chk !== '数量異常' &&
+                 chk !== '要確認' && chk !== '両方異常') {
+        // 範囲が怪しい行だけ。一致・レンジ無しは触らない
+        continue;
+      }
       var fileId = String(r[H['fileId']] || '');
       if (!fileId) continue;
       out.見た行++;
@@ -1365,4 +1396,19 @@ function 容器Noの範囲を読み直す() {
   });
   if (out.error) Logger.log('★ ' + out.error);
   return out;
+}
+
+// ===== 公開関数：先に緩い判定で直してしまった行を見直す =====
+/**
+ * ★ なぜ要るのか
+ *   最初に入れた判定が緩く、「同じ番号が2か所に出る」だけで外してよい候補に
+ *   してしまい、数量に合うまで端を削っていた。桁の化けではないのに直した行が
+ *   10件あり、しかも今は検算が「一致」になっているので通常の読み直しでは
+ *   拾われない。名指しで読み直す。
+ */
+function 緩い判定で直した行を見直す() {
+  return 容器Noの範囲を読み直す([
+    '30266', '70159', '20204', '10446', '20280',
+    '10579', '50283', '60594', '60612', '60603'
+  ]);
 }
