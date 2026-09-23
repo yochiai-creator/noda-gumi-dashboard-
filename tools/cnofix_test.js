@@ -180,5 +180,22 @@ console.log('■ 読み直しは良くなったときだけ書く');
       { 開始: 79672, 終了: 79673, 検算: '不一致' }, true).write === true);
 }
 
+console.log('■ 2回の読みが同じときだけ書く');
+{
+  const A = (a, b) => s.shipact_readsAgree_(a, b);
+  // 26-50336：数量1。20044 と 20644 のどちらの1本読みも数量と一致してしまう
+  chk('★2回とも同じなら書いてよい',
+    A({ cnoStart: 20644, cnoEnd: 20644 }, { cnoStart: 20644, cnoEnd: 20644 }) === true);
+  chk('★2回で違えば書かない（どちらが本物か1回では決められない）',
+    A({ cnoStart: 20644, cnoEnd: 20644 }, { cnoStart: 20044, cnoEnd: 20044 }) === false);
+  chk('片側だけ違っても書かない',
+    A({ cnoStart: 46116, cnoEnd: 46145 }, { cnoStart: 40145, cnoEnd: 46145 }) === false);
+  chk('2回目が読めなければ書かない', A({ cnoStart: 1, cnoEnd: 2 }, null) === false);
+  chk('範囲が無ければ書かない',
+    A({ cnoStart: null, cnoEnd: 2 }, { cnoStart: null, cnoEnd: 2 }) === false);
+  chk('数と文字の違いは同じとみなす',
+    A({ cnoStart: 46116, cnoEnd: '46145' }, { cnoStart: '46116', cnoEnd: 46145 }) === true);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

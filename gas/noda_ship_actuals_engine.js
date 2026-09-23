@@ -1342,9 +1342,16 @@ function shipact_recheckDecision_(old, fresh, named) {
   return { write: false, 理由: '良くならない' };
 }
 
+/* 2回の読みが同じ範囲になったか（純関数）。 */
+function shipact_readsAgree_(a, b) {
+  if (!a || !b) return false;
+  if (a.cnoStart == null || a.cnoEnd == null || b.cnoStart == null || b.cnoEnd == null) return false;
+  return String(a.cnoStart) === String(b.cnoStart) && String(a.cnoEnd) === String(b.cnoEnd);
+}
+
 function 容器Noの範囲を読み直す(依頼Noの一覧) {
-  var out = { 見た行: 0, 直した行: 0, 変わらず: 0, 良くならない: 0, 読めず: 0,
-              一巡した: false, error: null, 明細: [] };
+  var out = { 見た行: 0, 直した行: 0, 変わらず: 0, 良くならない: 0, 揺れた: 0, 読めず: 0,
+              一巡した: false, error: null, 明細: [], 揺れ明細: [] };
   var only = null;
   if (依頼Noの一覧 && 依頼Noの一覧.length) {
     only = {};
@@ -1399,6 +1406,25 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
         if (d.理由 === '変わらず') out.変わらず++; else out.良くならない++;
         continue;
       }
+      /* ★ 書く前にもう一度読んで、同じ読みになるかを確かめる。
+           同じPDFでも読むたびに結果が変わる。数量が1本だと、化けた番号1つ
+           だけの読みも数量と「一致」してしまう（26-50336：20044 と 20644 の
+           どちらを1本とした読みでも一致する）。1回の読みでは選べない。
+           2回とも同じ読みになったときだけ書く。名指しのときは確かめない
+           （直し間違いを戻すのが目的なので）。
+           ★ 書く候補になった行だけ読み直すので、増える時間はわずか。 */
+      if (!only) {
+        var f2 = null;
+        try { f2 = shipact_parseText_(shipact_pdfToText_(DriveApp.getFileById(fileId))); }
+        catch (e2) { f2 = null; }
+        if (!shipact_readsAgree_(f, f2)) {
+          out.揺れた++;
+          out.揺れ明細.push({ 行: i + 2, 依頼No: r[H['依頼No']], 枝番: r[H['枝番']],
+            一回目: f.cnoStart + '〜' + f.cnoEnd,
+            二回目: f2 ? (f2.cnoStart + '〜' + f2.cnoEnd) : '読めず' });
+          continue;
+        }
+      }
       out.明細.push({
         行: i + 2, 依頼No: r[H['依頼No']], 枝番: r[H['枝番']],
         前: r[H['容器No開始']] + '〜' + r[H['容器No終了']], 後: f.cnoStart + '〜' + f.cnoEnd,
@@ -1428,7 +1454,12 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
 
   Logger.log('読み直した行 ' + out.見た行 + ' / 直した ' + out.直した行 +
              ' / 変わらず ' + out.変わらず + ' / 良くならないので書かず ' + out.良くならない +
+             ' / 2回で読みが違うので書かず ' + out.揺れた +
              ' / 読めず ' + out.読めず + (out.一巡した ? ' / 最後まで一巡した' : ''));
+  out.揺れ明細.slice(0, 20).forEach(function (m) {
+    Logger.log('  揺れ ' + m.行 + '行目 ' + m.依頼No + '-' + m.枝番 +
+               '  1回目 ' + m.一回目 + ' / 2回目 ' + m.二回目 + '（人がPDFを見て決める）');
+  });
   out.明細.slice(0, 40).forEach(function (m) {
     Logger.log('  ' + m.行 + '行目 ' + m.依頼No + '-' + m.枝番 + '  ' + m.前 + ' → ' + m.後 +
                '（数量 ' + m.数量 + ' / 検算 ' + m.検算 +
@@ -1461,4 +1492,47 @@ function 緩い判定で直した行を見直す() {
  */
 function 組の両方を外した行を戻す() {
   return 容器Noの範囲を読み直す(['60594']);
+}
+
+// ===== 公開関数：本数の少ない行の直しが本当に安定しているかを確かめる（書き換えない） =====
+/**
+ * ★ なぜ要るのか
+ *   1〜2本の指図書は、化けた番号1つだけの読みでも数量と「一致」してしまう。
+ *   「2回読んで同じなら書く」を入れる前に、1回の読みで書いた行がある。
+ *   それらを2回ずつ読み直して、今シートに入っている値と同じになるかを見る。
+ *   ★ 何も書き換えない。見るだけ。
+ */
+function 本数の少ない直しを確かめる() {
+  var targets = ['60612', '50336', '60602', '60581'];
+  var want = {};
+  targets.forEach(function (x) { want[x] = true; });
+  var sheet = shipact_getSheet_();
+  var last = sheet.getLastRow();
+  var H = {};
+  SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+  var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+  var res = [];
+  for (var i = 0; i < values.length; i++) {
+    var r = values[i];
+    var no = String(r[H['依頼No']] || '').replace(/^\d{2}-/, '');
+    if (!want[no]) continue;
+    var fileId = String(r[H['fileId']] || '');
+    if (!fileId) continue;
+    var now = r[H['容器No開始']] + '〜' + r[H['容器No終了']];
+    var reads = [];
+    for (var k = 0; k < 2; k++) {
+      try {
+        var f = shipact_parseText_(shipact_pdfToText_(DriveApp.getFileById(fileId)));
+        reads.push(f && f.cnoStart != null ? f.cnoStart + '〜' + f.cnoEnd : '読めず');
+      } catch (e) { reads.push('読めず'); }
+    }
+    var 判定 = (reads[0] === now && reads[1] === now) ? '安定（今の値でよい）'
+             : (reads[0] === reads[1]) ? '2回とも別の値（今の値が怪しい）'
+             : '揺れる（人がPDFを見て決める）';
+    res.push({ 行: i + 2, 依頼No: r[H['依頼No']], 枝番: r[H['枝番']], 数量: r[H['数量']],
+               今: now, 読み: reads, 判定: 判定 });
+    Logger.log((i + 2) + '行目 ' + r[H['依頼No']] + '-' + r[H['枝番']] + '（数量 ' + r[H['数量']] +
+               '）今 ' + now + '  1回目 ' + reads[0] + ' / 2回目 ' + reads[1] + '  → ' + 判定);
+  }
+  return res;
 }
