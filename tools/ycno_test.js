@@ -175,5 +175,70 @@ console.log('■ 区画の読み取り（位置の一覧を渡さないと0件�
   chk('依頼Noは番号だけ取り出す', blocks[0].orders.join(',') === '26-10001', blocks[0]);
 }
 
+console.log('■ 区画に足す（手入力と番号の両方を出す）');
+{
+  const s = sb();
+  const idx = {
+    ranges: [
+      ok({ no: '26-60114', prefix: 'HEP', a: 57601, b: 57700, date: '2026-09-20', size: '50kg' }),
+      ok({ no: '26-30417', prefix: 'HEP', a: 56001, b: 56100, date: '2026-09-19', size: '50kg' }),
+      ok({ no: '26-20002', prefix: 'HXP', a: 76151, b: 76200, date: '2026-09-18', size: '20kg' }),
+    ],
+    byOrder: {
+      '26-60114': { fileId: 'F1' }, '26-30417': { fileId: 'F2' }, '26-20002': { fileId: 'F3' },
+    },
+  };
+  s.shipact_fileUrl_ = (id) => 'https://drive/' + id;
+  s.shipact_shortDate_ = (d) => String(d).slice(5);
+
+  const raw = {
+    '50k': [
+      // 手入力と番号が同じもの
+      { found: true, pos: 1, rangeStart: 57601, rangeEnd: 57700,
+        orders: [{ no: '60114', url: 'https://old/1', date: '09-20' }] },
+      // 手入力は別、番号でも当たる（両方出す）
+      { found: true, pos: 22, rangeStart: 56001, rangeEnd: 56100,
+        orders: [{ no: '26-20298', url: 'https://old/2', date: '09-15' }] },
+      // 手入力なし。番号だけで当たる（打ち忘れを拾う）
+      { found: true, pos: 5, rangeStart: 57601, rangeEnd: 57700, orders: [] },
+      // 範囲が無い区画は触らない
+      { found: true, pos: 9, rangeStart: '', rangeEnd: '',
+        orders: [{ no: '26-11111', url: 'https://old/3' }] },
+    ],
+    '20k': [{ found: true, pos: 1, rangeStart: 76151, rangeEnd: 76200, orders: [] }],
+  };
+  const out = s.ycno_attachToBlocks_(raw, idx);
+  const b = {}; out['50k'].forEach((x) => { b[x.pos] = x; });
+
+  chk('★手入力と番号が同じなら二重に出さない', b[1].orders.length === 1, b[1].orders);
+  chk('★年度の有無で二重にしない（60114 と 26-60114）',
+    b[1].orders[0].src === '両方', b[1].orders[0]);
+  chk('手入力のURLはそのまま残す', b[1].orders[0].url === 'https://old/1', b[1].orders[0]);
+
+  chk('★手入力と番号が違えば両方出す', b[22].orders.length === 2, b[22].orders);
+  chk('手入力のほうに印を付ける', b[22].orders[0].src === '手入力', b[22].orders[0]);
+  chk('番号のほうにも印を付ける', b[22].orders[1].src === '番号', b[22].orders[1]);
+  chk('★番号ぶんのPDFは索引から出す（Drive検索をしない）',
+    b[22].orders[1].url === 'https://drive/F2', b[22].orders[1]);
+
+  chk('★手入力が無くても番号で出る（打ち忘れを拾う）',
+    b[5].orders.length === 1 && b[5].orders[0].no === '26-60114', b[5].orders);
+  chk('日付も付ける', b[5].orders[0].date === '09-20', b[5].orders[0]);
+
+  chk('★容器番号の範囲が無い区画は触らない',
+    b[9].orders.length === 1 && b[9].orders[0].src === undefined, b[9].orders);
+  chk('20kの区画にも効く', out['20k'][0].orders[0].no === '26-20002', out['20k'][0].orders);
+
+  // 索引にPDFが無くても落ちない
+  const s2 = sb();
+  s2.shipact_fileUrl_ = (id) => 'https://drive/' + id;
+  s2.shipact_shortDate_ = (d) => String(d).slice(5);
+  const r2 = s2.ycno_attachToBlocks_(
+    { '50k': [{ found: true, pos: 1, rangeStart: 57601, rangeEnd: 57700, orders: [] }], '20k': [] },
+    { ranges: idx.ranges, byOrder: {} });
+  chk('索引にPDFが無ければURLは空にする（落ちない）',
+    r2['50k'][0].orders[0].url === null, r2['50k'][0].orders[0]);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

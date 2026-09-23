@@ -1017,6 +1017,16 @@ function getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k) {
     });
   });
 
+  /* ★ 人が打った依頼Noに加えて、容器番号でも指図書を当てる。
+       打ち忘れがあってもリンクが出るようにするため。手入力は捨てない
+       （実測で、番号では当たらない区画も少数あった）。
+       失敗しても今までの結果は返す。ここで落ちるとマップ全体が出なくなる。 */
+  try {
+    base = ycno_attachToBlocks_(base, shipact_index_());
+  } catch (err) {
+    Logger.log('容器番号での紐付けでエラー: ' + String(err));
+  }
+
   return JSON.stringify(base);
 }
 

@@ -210,3 +210,48 @@ function 入込場の容器番号で指図書を当ててみる() {
   });
   return t;
 }
+
+// ===== 区画の指図書に「容器番号で当てたぶん」を足す =====
+/**
+ * ★ 手入力を捨てない
+ *   実測（102区画）では、番号で当てたほうが手入力より広く当たる（打ち忘れ19区画を
+ *   拾えた）が、番号では当たらない区画も2つあった。どちらか一方にすると必ず損をする。
+ *   両方を出して、どちらから来たかを印で分かるようにする。
+ * ★ 同じ依頼Noは1つにまとめる
+ *   年度の有無（60114 と 26-60114）で二重に出さない。
+ * ★ PDFのURLは出荷実績シートの索引から取る
+ *   Drive検索は重いうえ、番号で当てたぶんは索引に必ず載っている（索引から
+ *   当てているので）。手入力だけのものは今までどおりDrive検索に回す。
+ */
+function ycno_attachToBlocks_(raw, idx) {
+  var ranges = (idx && idx.ranges) || [];
+  ['50k', '20k'].forEach(function (sizeKey) {
+    (raw[sizeKey] || []).forEach(function (r) {
+      if (!r || !r.found) return;
+      var rng = (r.rangeStart != null && r.rangeEnd != null && r.rangeStart !== '' && r.rangeEnd !== '')
+        ? { a: Number(r.rangeStart), b: Number(r.rangeEnd) } : null;
+      if (!rng || isNaN(rng.a) || isNaN(rng.b)) return;
+
+      var have = {};
+      (r.orders || []).forEach(function (o) {
+        o.src = '手入力';
+        have[ycno_bare_(o.no)] = o;
+      });
+
+      ycno_match_(sizeKey, rng, ranges).forEach(function (h) {
+        var bare = ycno_bare_(h.no);
+        if (have[bare]) { have[bare].src = '両方'; return; }   // 手入力と一致
+        var e = idx.byOrder ? idx.byOrder[h.no] : null;
+        var one = { no: h.no, src: '番号',
+                    url: e && e.fileId ? shipact_fileUrl_(e.fileId) : null,
+                    date: h.date ? shipact_shortDate_(h.date) : null };
+        have[bare] = one;
+        r.orders.push(one);
+      });
+    });
+  });
+  return raw;
+}
+
+/* 年度の頭（26-）を外した依頼No。同じものを二重に出さないための鍵。 */
+function ycno_bare_(no) { return String(no || '').replace(/^\d{2}-/, ''); }

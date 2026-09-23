@@ -1543,7 +1543,11 @@ function YardMap({ yardLive, onRefresh }) {
           )}
           {!editing && sel.orders && sel.orders.length > 0 && (
             <div className="mt-2.5 pt-2.5 border-t border-slate-200">
-              <div className="text-[10px] text-slate-400 mb-1.5">出荷作業指図書</div>
+              <div className="text-[10px] text-slate-400 mb-1.5">
+                出荷作業指図書
+                {sel.orders.some((o) => o.src === "番号") &&
+                  "　※「番号」は容器Noの重なりから当てたもの（手入力ではありません）"}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {sel.orders.map((o, i) =>
                   o.url ? (
@@ -1554,6 +1558,13 @@ function YardMap({ yardLive, onRefresh }) {
                              年度は依頼Noに含めて返すようにしたのでそのまま出す。
                              日付も出す（古い月のPDFが出ているのか判断できるように）。 */}
                       <FileText size={12} />{o.no}{o.date ? "（" + o.date + "）" : ""} を開く
+                      {/* ★ どこから来たリンクかを出す。容器番号から当てたものを
+                             人が書いたものと同じ顔で出すと、間違っていたときに
+                             誰も疑わない。「番号」は容器Noの重なりで当てたぶん。 */}
+                      {o.src === "番号" && (
+                        <span className="px-1 rounded text-[9px]"
+                          style={{ background: "rgba(255,255,255,.3)" }}>番号</span>
+                      )}
                     </a>
                   ) : (
                     <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-400 bg-slate-100">
