@@ -662,6 +662,10 @@ function shipact_parseText_(text) {
   });
   if (bestPref) {
     var list = nums[bestPref].slice().sort(function (a, b) { return a - b; });
+    // ★ 先頭の桁が化けた番号を外す（下の関数の説明を見ること）
+    var fixed = shipact_dropDigitShadows_(list, out.qty);
+    list = fixed.list;
+    if (fixed.dropped.length) out.桁補正 = fixed.dropped;
     out.prefix = bestPref;
     out.cnoStart = list[0];
     out.cnoEnd = list[list.length - 1];
@@ -672,6 +676,77 @@ function shipact_parseText_(text) {
   if (ad) { out.addr = ad.addr; out.pref = ad.pref; out.city = ad.city; }
 
   return out;
+}
+
+/**
+ * 先頭の桁が化けた容器番号を外す（純関数）。
+ *
+ * ★ 何が起きているか
+ *   同じ容器番号がPDFの2か所（本文と別紙）に出ていて、片方の先頭の数字だけが
+ *   化けて読まれることがある。実データではすべて「5」が「6」になっていた。
+ *     26-30459  HEP 55901〜65980（数量80）… 本当の終わりは 55980
+ *     26-30458  HEP 53331〜63400（数量70）… 本当の終わりは 53400
+ *     26-10579  HRH 52347〜62347（数量5） … 本当は 52347 の1点
+ *   最小・最大で範囲を採っているので、1万ぶん広い範囲になってしまう。
+ *
+ * ★ 見分け方
+ *   下4桁が同じで、ちょうど 10000 の倍数だけ離れている番号の組。
+ *   ただし本物の容器番号が偶然そうなることもあり得るので、機械的には外さない。
+ *
+ * ★ 外してよいかの確かめ方
+ *   外した結果、範囲から数えた本数が指図書に書かれた数量と一致したときだけ採る。
+ *   一致しなければ何もしない（勝手に直さない）。
+ *   ＝「直したら辻褄が合った」ときだけ直す、という形にしてある。
+ */
+function shipact_dropDigitShadows_(list, qty) {
+  var out = { list: list, dropped: [] };
+  var n = Number(qty);
+  if (!list || list.length < 2 || !n || n <= 0) return out;
+  var span = function (a) { return a.length ? a[a.length - 1] - a[0] + 1 : 0; };
+  if (span(list) === n) return out;   // もともと合っている
+
+  /* 下4桁が同じで10000の倍数だけ離れている番号を集める。
+     ★ 組のどちらが化けているかは決められない（55980と65980なら、
+       どちらが本物かは番号だけでは分からない）ので、両方を候補にして、
+       外したときに数量と合うほうを採る。 */
+  var byTail = {};
+  list.forEach(function (v) {
+    var t = v % 10000;
+    if (!byTail[t]) byTail[t] = [];
+    byTail[t].push(v);
+  });
+  var cand = {};
+  Object.keys(byTail).forEach(function (t) {
+    var g = byTail[t];
+    if (g.length < 2) return;
+    g.forEach(function (v) { cand[v] = true; });
+  });
+  /* 大きいほうから試す。
+     ★ 実データで見つかった化けはすべて先頭の「5」が「6」になるもので、
+       化けた値は必ず本物より大きかった。どちらを外しても辻褄が合う
+       （52323 と 62323 で数量1、など）ときは、大きいほうを化けと見る。 */
+  var cands = Object.keys(cand).map(Number).sort(function (a, b) { return b - a; });
+  if (cands.length === 0) return out;
+
+  var without = function (drop) {
+    return list.filter(function (v) { return drop.indexOf(v) < 0; });
+  };
+  /* 外す数が少ないほうから試す。1つ外して合うならそれが答え。
+     ★ 全部外すのを先に試すと、本物まで落として辻褄だけ合う並びを
+       作ってしまうことがある。 */
+  for (var i = 0; i < cands.length; i++) {
+    var one = without([cands[i]]);
+    if (one.length && span(one) === n) return { list: one, dropped: [cands[i]] };
+  }
+  for (var j = 0; j < cands.length; j++) {
+    for (var k = j + 1; k < cands.length; k++) {
+      var two = without([cands[j], cands[k]]);
+      if (two.length && span(two) === n) {
+        return { list: two, dropped: [cands[j], cands[k]] };
+      }
+    }
+  }
+  return out;   // 辻褄が合わないなら何もしない
 }
 
 /**
@@ -1202,4 +1277,92 @@ function shipact_fileUrl_(fileId) {
 function shipact_shortDate_(key) {
   var m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? Number(m[2]) + '/' + Number(m[3]) : null;
+}
+
+// ===== 公開関数：容器Noの範囲が壊れている行だけPDFを読み直す =====
+/**
+ * ★ なぜ要るのか
+ *   桁の化けを外す直しは「これから取り込むぶん」にしか効かない。
+ *   シートに入っている値は取込時のものなので、読み直さないと直らない。
+ *
+ * ★ 全部は読み直さない
+ *   1,000件をやると6分の実行上限に掛かるし、ほとんどは直す必要が無い。
+ *   容器Noの範囲が数量と合っていない行だけを読み直す（実データで35件）。
+ *
+ * ★ 直った行だけ書き換える
+ *   読み直しても変わらなければ触らない。無駄な書き込みと履歴を作らないため。
+ */
+function 容器Noの範囲を読み直す() {
+  var out = { 見た行: 0, 直した行: 0, 変わらず: 0, 読めず: 0, error: null, 明細: [] };
+  try {
+    var sheet = shipact_getSheet_();
+    var last = sheet.getLastRow();
+    if (last < 2) return out;
+    var H = {};
+    SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+    var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+
+    var started = new Date().getTime();
+    var changed = false;
+    for (var i = 0; i < values.length; i++) {
+      if (new Date().getTime() - started > 4 * 60 * 1000) {
+        out.error = '時間切れ。もう一度実行すると続きをやります';
+        break;
+      }
+      var r = values[i];
+      var chk = String(r[H['検算']] || '');
+      // 範囲が怪しい行だけ。一致・レンジ無しは触らない
+      if (chk !== '不一致' && chk !== 'レンジ異常' && chk !== '数量異常' &&
+          chk !== '要確認' && chk !== '両方異常') continue;
+      var fileId = String(r[H['fileId']] || '');
+      if (!fileId) continue;
+      out.見た行++;
+
+      var f;
+      try {
+        f = shipact_parseText_(shipact_pdfToText_(DriveApp.getFileById(fileId)));
+      } catch (err) {
+        out.読めず++;
+        continue;
+      }
+      if (!f || f.cnoStart == null || f.cnoEnd == null) { out.読めず++; continue; }
+
+      var 旧開始 = r[H['容器No開始']], 旧終了 = r[H['容器No終了']];
+      if (String(旧開始) === String(f.cnoStart) && String(旧終了) === String(f.cnoEnd)) {
+        out.変わらず++;
+        continue;
+      }
+      var picked = shipact_pickQuantity_(f.qty, f.rangeQty);
+      out.明細.push({
+        行: i + 2, 依頼No: r[H['依頼No']],
+        前: 旧開始 + '〜' + 旧終了, 後: f.cnoStart + '〜' + f.cnoEnd,
+        数量: picked.qty, 検算: r[H['検算']] + '→' + picked.check,
+        外した番号: (f.桁補正 || []).join(',')
+      });
+      r[H['容器No開始']] = f.cnoStart;
+      r[H['容器No終了']] = f.cnoEnd;
+      r[H['レンジ本数']] = f.rangeQty == null ? '' : f.rangeQty;
+      r[H['数量']] = picked.qty == null ? '' : picked.qty;
+      r[H['検算']] = picked.check;
+      out.直した行++;
+      changed = true;
+    }
+    if (changed) {
+      sheet.getRange(2, 1, values.length, SHIP_ACT_CONFIG.HEADERS.length).setValues(values);
+      nc_forget_('shipActuals');
+      SHIPACT_INDEX_MEMO_ = null;
+    }
+  } catch (err2) {
+    out.error = String(err2);
+  }
+
+  Logger.log('読み直した行 ' + out.見た行 + ' / 直した ' + out.直した行 +
+             ' / 変わらず ' + out.変わらず + ' / 読めず ' + out.読めず);
+  out.明細.slice(0, 40).forEach(function (m) {
+    Logger.log('  ' + m.依頼No + '  ' + m.前 + ' → ' + m.後 +
+               '（数量 ' + m.数量 + ' / 検算 ' + m.検算 +
+               (m.外した番号 ? ' / 外した ' + m.外した番号 : '') + '）');
+  });
+  if (out.error) Logger.log('★ ' + out.error);
+  return out;
 }

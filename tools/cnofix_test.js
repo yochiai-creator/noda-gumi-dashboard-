@@ -1,0 +1,117 @@
+// 指図書PDFの「先頭の桁が化けた容器番号」を外す処理のテスト。
+//
+// ★ なぜ要るのか
+//   同じ容器番号が本文と別紙の2か所に出ていて、片方の先頭の「5」が「6」と
+//   読まれることがある。最小・最大で範囲を採っているので、1万ぶん広い範囲に
+//   なってしまい、入込場のどの区画にも当たるゴミになる。
+// ★ 勝手に直さないこと
+//   外した結果が指図書の数量と一致したときだけ採る。合わなければ何もしない。
+const fs = require('fs');
+const vm = require('vm');
+const GAS = __dirname + '/../gas/';
+
+let pass = 0, fail = 0;
+const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
+  else { fail++; console.log('  FAIL ' + n + (e !== undefined ? '  -> ' + JSON.stringify(e) : '')); } };
+
+const s = { Logger: { log: () => {} },
+  JSON, Object, Number, String, Math, Date, RegExp, Array, isNaN, Boolean, Error };
+vm.createContext(s);
+vm.runInContext(fs.readFileSync(GAS + 'noda_ship_actuals_engine.js', 'utf8'), s);
+const fix = (list, qty) => s.shipact_dropDigitShadows_(list.slice().sort((a, b) => a - b), qty);
+const span = (r) => r.list[r.list.length - 1] - r.list[0] + 1;
+
+console.log('■ 実データで起きていた5件');
+{
+  // 26-30459 HEP 55901〜65980（数量80）→ 本当は 55901〜55980
+  let r = fix([55901, 55940, 55980, 65980], 80);
+  chk('★30459：65980 を外して 55901〜55980 になる',
+    r.list[0] === 55901 && r.list[r.list.length - 1] === 55980 && span(r) === 80, r);
+  chk('外したものを返す', r.dropped.join(',') === '65980', r.dropped);
+
+  // 26-30458 HEP 53331〜63400（数量70）→ 53331〜53400
+  r = fix([53331, 53400, 63400], 70);
+  chk('★30458：63400 を外して 53331〜53400 になる', span(r) === 70, r);
+
+  // 26-10579 HRH 52347〜62347（数量5）→ 52343〜52347
+  r = fix([52343, 52347, 62347], 5);
+  chk('★10579：62347 を外して 52343〜52347 になる', span(r) === 5, r);
+
+  // 26-60581 HRH 52327〜62327（数量2）→ 52326〜52327
+  r = fix([52326, 52327, 62327], 2);
+  chk('★60581：62327 を外して2本になる', span(r) === 2, r);
+
+  // 26-30349 HRH 52323〜62323（数量1）→ 52323 の1点
+  r = fix([52323, 62323], 1);
+  chk('★30349：62323 を外して1本になる',
+    span(r) === 1 && r.list[0] === 52323, r);
+}
+
+console.log('■ 勝手に直さない');
+{
+  // 外しても数量と合わないなら何もしない
+  let r = fix([52323, 62323], 7);
+  chk('★外しても数量と合わなければ何もしない', r.dropped.length === 0 && r.list.length === 2, r);
+
+  // 下4桁が同じでも、10000の倍数でなければ組にしない
+  r = fix([52323, 53323], 1);
+  chk('10000の倍数でなければ外さない', r.dropped.length === 0, r);
+
+  // もともと数量と合っているなら触らない
+  r = fix([52323, 52324, 62323], 10001);
+  chk('★もともと辻褄が合っていれば触らない', r.dropped.length === 0, r);
+
+  // 数量が分からないときは触らない（判断材料が無い）
+  r = fix([52323, 62323], null);
+  chk('数量が無ければ触らない', r.dropped.length === 0, r);
+  chk('数量0でも触らない', fix([52323, 62323], 0).dropped.length === 0);
+
+  // 1つしかないときは触らない
+  chk('1件なら触らない', fix([52323], 1).dropped.length === 0);
+  chk('空でも落ちない', fix([], 5).list.length === 0);
+}
+
+console.log('■ 本物が偶然10000離れている場合');
+{
+  // 52323 と 62323 が両方本物で、数量が範囲と合っているなら外さない
+  const r = fix([52323, 62323], 10001);
+  chk('★本物どうしなら外さない（辻褄が合っているので）', r.dropped.length === 0, r);
+}
+
+console.log('■ どちらを外しても辻褄が合うとき');
+{
+  /* ★ [52323, 62323] で数量1なら、どちらを残しても1本になる。
+       実データで見つかった化けはすべて先頭の「5」が「6」になるもので、
+       化けた値は必ず本物より大きかった。大きいほうを化けと見る。 */
+  const r = fix([52323, 62323], 1);
+  chk('★大きいほうを化けと見る（52323 を残す）',
+    r.list.join(',') === '52323' && r.dropped.join(',') === '62323', r);
+}
+
+console.log('■ 下4桁が違えば組にしない');
+{
+  // 2323 と 2320 と 2325。下4桁が違うので化けの組ではない＝触らない
+  const r = fix([52323, 62320, 62325], 6);
+  chk('★下4桁が違うものは化けと見なさない', r.dropped.length === 0, r);
+}
+
+console.log('■ 本文を読むところまで通す');
+{
+  // 実際の指図書らしい並び。同じ番号が2か所に出て、片方が化けている
+  const text = [
+    '出荷作業指図書  依頼No 26-30349',
+    '数量 1 本',
+    '容器No: HRH52323',
+    '（別紙）HRH62323',
+  ].join('\n');
+  const out = s.shipact_parseText_(text);
+  chk('★化けを外した範囲になる',
+    out.cnoStart === 52323 && out.cnoEnd === 52323, out);
+  chk('外したのは化けたほう（62323）', out.桁補正.join(',') === '62323', out.桁補正);
+  chk('レンジ本数が1になる', out.rangeQty === 1, out);
+  chk('接頭辞は HRH', out.prefix === 'HRH', out.prefix);
+  chk('直したことを残す', Array.isArray(out.桁補正) && out.桁補正.length === 1, out.桁補正);
+}
+
+console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
+process.exit(fail ? 1 : 0);
