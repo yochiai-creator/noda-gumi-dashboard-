@@ -238,5 +238,24 @@ console.log('■ 読み直しで数量を変えない');
   chk('今の数量も無ければ範囲を採る（前と同じ）', p.qty === 5 && p.check === 'レンジ採用', p);
 }
 
+console.log('■ 今夜変えた数量を元に戻す');
+{
+  const D = (依頼No, 今, e) => s.shipact_revertDecision_(0, 依頼No, 今, e);
+  const e517 = [517, '60602', 7, 1, '一致'];
+  chk('★変えたあとの値のままなら戻す', D('26-60602', 7, e517).書く === true);
+  chk('★もう戻っていれば触らない（何度実行しても同じ）', D('26-60602', 1, e517).書く === false);
+  chk('★ほかで変わっていれば触らない', D('26-60602', 3, e517).書く === false);
+  chk('依頼Noが違えば触らない（行がずれていたとき）', D('26-60596', 7, e517).書く === false);
+  chk('年度の有無は同じとみなす', D('60602', 7, e517).書く === true);
+
+  // 表の中身：変える前の値（ログに出ていたもの）
+  const T = s.SHIPACT_REVERT_TONIGHT;
+  chk('9行ぶんある', T.length === 9, T.length);
+  const net = T.reduce((a, e) => a + (e[2] - e[3]), 0);
+  chk('★戻すと出荷本数の合計が今夜の前に戻る（差し引き -9本）', net === 9, net);
+  chk('524行目は数量2に戻して不一致', JSON.stringify(T.find((e) => e[0] === 524)) ===
+    JSON.stringify([524, '60602', 1, 2, '不一致']));
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);
