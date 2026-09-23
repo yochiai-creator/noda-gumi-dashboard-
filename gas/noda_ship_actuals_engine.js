@@ -1342,6 +1342,17 @@ function shipact_recheckDecision_(old, fresh, named) {
   return { write: false, 理由: '良くならない' };
 }
 
+/* 読み直したときの数量と検算を決める（純関数）。
+   ★ 本文の「◯本」も読むたびに取れたり取れなかったりする。取れなかった回に
+     範囲から数えた本数で数量を上書きすると、直したかったのは範囲だけなのに
+     出荷本数まで変わる（524行目 26-60602 で 2本→1本 になった）。
+     本文の数量が取れなかったときは、今シートにある数量を使う。 */
+function shipact_recheckQty_(oldQty, f) {
+  var q = (f && f.qty != null) ? f.qty
+        : (oldQty === '' || oldQty == null || isNaN(Number(oldQty)) ? null : Number(oldQty));
+  return shipact_pickQuantity_(q, f ? f.rangeQty : null);
+}
+
 /* 2回の読みが同じ範囲になったか（純関数）。 */
 function shipact_readsAgree_(a, b) {
   if (!a || !b) return false;
@@ -1398,7 +1409,7 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
       }
       if (!f || f.cnoStart == null || f.cnoEnd == null) { out.読めず++; continue; }
 
-      var picked = shipact_pickQuantity_(f.qty, f.rangeQty);
+      var picked = shipact_recheckQty_(r[H['数量']], f);
       var d = shipact_recheckDecision_(
         { 開始: r[H['容器No開始']], 終了: r[H['容器No終了']], 検算: chk },
         { 開始: f.cnoStart, 終了: f.cnoEnd, 検算: picked.check }, !!only);
@@ -1554,7 +1565,7 @@ function 本数の少ない直しを確かめる(揃える) {
     var wrote = false;
     if (揃える === true && v.書く) {
       var f0 = parsed[0];
-      var picked = shipact_pickQuantity_(f0.qty, f0.rangeQty);
+      var picked = shipact_recheckQty_(r[H['数量']], f0);
       r[H['容器No開始']] = f0.cnoStart;
       r[H['容器No終了']] = f0.cnoEnd;
       r[H['レンジ本数']] = f0.rangeQty == null ? '' : f0.rangeQty;
@@ -1581,4 +1592,56 @@ function 本数の少ない直しを確かめる(揃える) {
 //   先頭が同じだと、関数の一覧で取り違える（実際に取り違えた）。
 function 書き換える_化けた読みを戻す() {
   return 本数の少ない直しを確かめる(true);
+}
+
+// ===== 公開関数：読み直しで変わってしまった数量を、本文の「◯本」から戻す =====
+/**
+ * ★ 範囲を直すときに数量まで上書きしていた。本文の数量が読めなかった回には
+ *   範囲から数えた本数が入ってしまい、出荷本数が変わった（524行目 2本→1本）。
+ *   本文の「◯本」が読めるまで最大3回読み、読めたらその本数に戻す。
+ *   ★ 範囲から数えた本数では戻さない。本文から読めたときだけ書く。
+ */
+function 数量を戻す_直しで変わった行() {
+  var targets = { '60602': true, '60596': true };
+  var sheet = shipact_getSheet_();
+  var last = sheet.getLastRow();
+  var H = {};
+  SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
+  var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
+  var changed = false;
+  for (var i = 0; i < values.length; i++) {
+    var r = values[i];
+    if (!targets[String(r[H['依頼No']] || '').replace(/^\d{2}-/, '')]) continue;
+    var fileId = String(r[H['fileId']] || '');
+    if (!fileId) continue;
+    var body = null;
+    for (var k = 0; k < 3 && body == null; k++) {
+      try {
+        var f = shipact_parseText_(shipact_pdfToText_(DriveApp.getFileById(fileId)));
+        if (f && f.qty != null) body = f.qty;
+      } catch (e) { /* 次を試す */ }
+    }
+    var 今 = r[H['数量']];
+    if (body == null) {
+      Logger.log((i + 2) + '行目 ' + r[H['依頼No']] + '  本文の数量が3回とも読めず。数量 ' + 今 + ' のまま');
+      continue;
+    }
+    var rq = r[H['レンジ本数']] === '' ? null : Number(r[H['レンジ本数']]);
+    var p = shipact_pickQuantity_(body, rq);
+    if (String(p.qty) === String(今) && p.check === String(r[H['検算']])) {
+      Logger.log((i + 2) + '行目 ' + r[H['依頼No']] + '  数量 ' + 今 + '（本文も ' + body + '）変わらず');
+      continue;
+    }
+    Logger.log((i + 2) + '行目 ' + r[H['依頼No']] + '  数量 ' + 今 + ' → ' + p.qty +
+               '（本文 ' + body + ' / 範囲 ' + rq + '本）  検算 ' + r[H['検算']] + ' → ' + p.check +
+               '  ★戻した');
+    r[H['数量']] = p.qty == null ? '' : p.qty;
+    r[H['検算']] = p.check;
+    changed = true;
+  }
+  if (changed) {
+    sheet.getRange(2, 1, values.length, SHIP_ACT_CONFIG.HEADERS.length).setValues(values);
+    nc_forget_('shipActuals');
+    SHIPACT_INDEX_MEMO_ = null;
+  }
 }

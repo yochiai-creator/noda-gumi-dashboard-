@@ -173,6 +173,21 @@ console.log('■ 区画の読み取り（位置の一覧を渡さないと0件�
     blocks[2].range === '', blocks[2]);
   chk('★範囲がnullでも空にする', blocks[3].range === '', blocks[3]);
   chk('依頼Noは番号だけ取り出す', blocks[0].orders.join(',') === '26-10001', blocks[0]);
+
+  // ★ v202 からマップの一括取得が番号で当てたぶんも orders に足している。
+  //   それを「手入力」として数えると、番号の当たりを番号の当たりと比べて水増しになる。
+  s.getYardMapUpdatesBothWithOrderText = () => JSON.stringify({
+    '50k': [{ found: true, pos: 1, rangeStart: 46201, rangeEnd: 46300, orders: [
+      { no: '26-10001', src: '手入力' },
+      { no: '26-10002', src: '番号' },
+      { no: '26-10003', src: '両方' },
+    ] }],
+    '20k': [],
+  });
+  const b2 = s.ycno_readBlocks_();
+  chk('★番号で当てたぶんは手入力として数えない',
+    b2[0].orders.indexOf('26-10002') === -1, b2[0].orders);
+  chk('手入力と両方は残す', b2[0].orders.join(',') === '26-10001,26-10003', b2[0].orders);
 }
 
 console.log('■ 区画に足す（手入力と番号の両方を出す）');

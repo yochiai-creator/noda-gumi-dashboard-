@@ -222,5 +222,21 @@ console.log('■ 本数の少ない直しの判定（揺れない ≠ 正しい�
   chk('読めなければ書かない', v.書く === false, v);
 }
 
+console.log('■ 読み直しで数量を変えない');
+{
+  /* ★ 524行目 26-60602：範囲を直したときに数量まで上書きして 2本→1本 になった。
+       本文の「◯本」が読めなかった回に、範囲から数えた本数が入ったため。 */
+  const Q = (old, f) => s.shipact_recheckQty_(old, f);
+  let p = Q(2, { qty: null, rangeQty: 1 });
+  chk('★本文の数量が読めなければ、今の数量を使う（2本のまま）', p.qty === 2, p);
+  chk('範囲と合わないので不一致になる（正しい状態）', p.check === '不一致', p);
+  p = Q(2, { qty: 2, rangeQty: 2 });
+  chk('本文も範囲も2本なら一致', p.qty === 2 && p.check === '一致', p);
+  p = Q(2, { qty: 3, rangeQty: 3 });
+  chk('本文から読めたらそちらを使う', p.qty === 3, p);
+  p = Q('', { qty: null, rangeQty: 5 });
+  chk('今の数量も無ければ範囲を採る（前と同じ）', p.qty === 5 && p.check === 'レンジ採用', p);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

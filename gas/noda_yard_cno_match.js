@@ -155,8 +155,14 @@ function ycno_readBlocks_() {
       if (!r || !r.found) return;
       var range = (r.rangeStart != null && r.rangeEnd != null && r.rangeStart !== '' && r.rangeEnd !== '')
         ? (r.rangeStart + '〜' + r.rangeEnd) : '';
+      /* ★ 人が打ったものだけを数える。v202 からマップの一括取得が
+           容器番号で当てたぶんも orders に足しているので、そのまま数えると
+           番号で当てたものを番号で当てたものと比べることになり、
+           一致が水増しされる（49区画→68区画に増えて見えた）。 */
       out.push({ size: sizeKey, pos: r.pos, range: range,
-                 orders: (r.orders || []).map(function (o) { return o.no; }) });
+                 orders: (r.orders || [])
+                   .filter(function (o) { return o && o.src !== '番号'; })
+                   .map(function (o) { return o.no; }) });
     });
   });
   return out;
@@ -207,6 +213,27 @@ function 入込場の容器番号で指図書を当ててみる() {
     Logger.log('  [' + e.種類 + '] ' + e.区画 + '  ' + e.範囲 +
                (e.手入力 ? '  手入力 ' + e.手入力 : '') +
                (e.番号で ? '  番号で ' + e.番号で : ''));
+    /* ★ 番号で当たらなかった依頼Noは、索引でどう入っているかを出す。
+         範囲が壊れて弾かれているのか、サイズが違うのか、範囲がずれているのかが
+         これで分かる。 */
+    if (e.種類 === '手入力のみ' || e.種類 === '一部一致') {
+      var got = {};
+      String(e.番号で || '').split(',').forEach(function (x) { got[ycno_bare_(x)] = true; });
+      String(e.手入力 || '').split(',').forEach(function (no) {
+        var bare = ycno_bare_(no);
+        if (!bare || got[bare]) return;
+        var hits = all.filter(function (x) { return ycno_bare_(x.no) === bare; });
+        if (hits.length === 0) {
+          Logger.log('      ' + no + ' は出荷実績の索引に無い（指図書が取り込まれていない）');
+          return;
+        }
+        hits.forEach(function (x) {
+          Logger.log('      ' + no + ' の索引  ' + x.prefix + ' ' + x.a + '〜' + x.b +
+                     '  サイズ ' + x.size + ' / 数量 ' + x.qty + ' / 検算 ' + x.check +
+                     (ycno_trustRange_(x) ? '' : '  ← 当てに使っていない'));
+        });
+      });
+    }
   });
   return t;
 }
