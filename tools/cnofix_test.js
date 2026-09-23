@@ -257,5 +257,18 @@ console.log('■ 今夜変えた数量を元に戻す');
     JSON.stringify([524, '60602', 1, 2, '不一致']));
 }
 
+console.log('■ 人がPDFで確かめた値は読み直さない');
+{
+  // 26-60612：読むたびに 27253 と 27263 で揺れた。PDFを見て 27253 と確認
+  chk('★確かめた依頼Noは読み直しから外す', s.shipact_isHumanConfirmed_('26-60612') === true);
+  chk('年度が無くても同じ', s.shipact_isHumanConfirmed_('60612') === true);
+  chk('確かめていない依頼Noは外さない', s.shipact_isHumanConfirmed_('60602') === false);
+  chk('確かめた値は 27253', JSON.stringify(s.SHIPACT_HUMAN_CONFIRMED['60612']) ===
+    JSON.stringify({ 開始: 27253, 終了: 27253 }));
+  // 役目を終えた名指しの読み直しは消してある（もう一度実行すると値を揺らすため）
+  chk('★「緩い判定で直した行を見直す」は消した', typeof s.緩い判定で直した行を見直す === 'undefined');
+  chk('★「組の両方を外した行を戻す」は消した', typeof s.組の両方を外した行を戻す === 'undefined');
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);
