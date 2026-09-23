@@ -758,6 +758,10 @@ function shipact_dropDigitShadows_(list, qty) {
   }
   for (var j = 0; j < cands.length; j++) {
     for (var k = j + 1; k < cands.length; k++) {
+      /* ★ 同じ組の2つを両方外さない。組は「同じ番号の片方が化けた」もので、
+           片方は本物。両方外すと本物の容器番号を消すことになる。
+           （26-60594 で 52335 と 62335 を両方外していた） */
+      if (cands[j] % 10000 === cands[k] % 10000) continue;
       var two = without([cands[j], cands[k]]);
       if (two.length && span(two) === n) {
         return { list: two, dropped: [cands[j], cands[k]] };
@@ -1305,15 +1309,42 @@ function shipact_shortDate_(key) {
  *
  * ★ 全部は読み直さない
  *   1,000件をやると6分の実行上限に掛かるし、ほとんどは直す必要が無い。
- *   容器Noの範囲が数量と合っていない行だけを読み直す（実データで35件）。
+ *   容器Noの範囲が数量と合っていない行だけを読み直す。
  *
- * ★ 直った行だけ書き換える
- *   読み直しても変わらなければ触らない。無駄な書き込みと履歴を作らないため。
+ * ★ 良くなったときだけ書き換える（ここが要点）
+ *   PDFを文字にする変換は、同じPDFでも実行するたびに結果が変わることが分かった。
+ *   （26-60612 が 27253〜27263 と 27253〜27253 を行ったり来たりした）
+ *   読み直すたびに書き換えると、何度やっても落ち着かない。
+ *   検算が「一致／レンジ採用」になる読みが出たときだけ書き換える。悪い読みでは
+ *   上書きしない。こうすると、実行を重ねるほど良い読みだけが残っていく。
+ *
+ * ★ 続きから読む
+ *   前回どこまで読んだかを覚えておき、次はそこから始める。覚えておかないと、
+ *   直せない行が先頭に溜まったとき、毎回そこで時間切れになって後ろに届かない。
+ *
+ * @param 依頼Noの一覧  渡すと、その行だけを検算によらず読み直し、良し悪しに
+ *                      かかわらず今の読み方の結果を書く（直し間違いを戻すとき用）。
  */
+var SHIPACT_RECHECK_PROP = 'shipActuals.cnoRecheckCursor';
+var SHIPACT_BAD_CHECK = { '不一致': true, 'レンジ異常': true, '数量異常': true,
+                          '要確認': true, '両方異常': true };
+var SHIPACT_GOOD_CHECK = { '一致': true, 'レンジ採用': true };
+
+/* 読み直した結果を書くかどうか（純関数）。
+   @return { write: bool, 理由: string } */
+function shipact_recheckDecision_(old, fresh, named) {
+  if (String(old.開始) === String(fresh.開始) && String(old.終了) === String(fresh.終了)) {
+    return { write: false, 理由: '変わらず' };
+  }
+  if (named) return { write: true, 理由: '名指し' };
+  // ★ 良くなったときだけ。悪い読み・変わらない悪さでは上書きしない
+  if (SHIPACT_GOOD_CHECK[fresh.検算]) return { write: true, 理由: '良くなった' };
+  return { write: false, 理由: '良くならない' };
+}
+
 function 容器Noの範囲を読み直す(依頼Noの一覧) {
-  var out = { 見た行: 0, 直した行: 0, 変わらず: 0, 読めず: 0, error: null, 明細: [] };
-  /* ★ 依頼Noを渡すと、検算の結果によらずその行だけを読み直す。
-       いちど直した行（検算が「一致」になっている）をもう一度見たいときに使う。 */
+  var out = { 見た行: 0, 直した行: 0, 変わらず: 0, 良くならない: 0, 読めず: 0,
+              一巡した: false, error: null, 明細: [] };
   var only = null;
   if (依頼Noの一覧 && 依頼Noの一覧.length) {
     only = {};
@@ -1321,6 +1352,7 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
       only[String(x).replace(/^\d{2}-/, '')] = true;
     });
   }
+  var props = PropertiesService.getScriptProperties();
   try {
     var sheet = shipact_getSheet_();
     var last = sheet.getLastRow();
@@ -1329,21 +1361,22 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
     SHIP_ACT_CONFIG.HEADERS.forEach(function (h, i) { H[h] = i; });
     var values = sheet.getRange(2, 1, last - 1, SHIP_ACT_CONFIG.HEADERS.length).getValues();
 
+    // 名指しのときは頭から全部。そうでなければ前回の続きから
+    var start = only ? 0 : (Number(props.getProperty(SHIPACT_RECHECK_PROP)) || 0);
+    if (start >= values.length) start = 0;
     var started = new Date().getTime();
-    var changed = false;
-    for (var i = 0; i < values.length; i++) {
+    var changed = false, i = start;
+    for (; i < values.length; i++) {
       if (new Date().getTime() - started > 4 * 60 * 1000) {
-        out.error = '時間切れ。もう一度実行すると続きをやります';
+        out.error = '時間切れ。もう一度実行すると ' + (i + 2) + '行目から続きをやります';
         break;
       }
       var r = values[i];
       var chk = String(r[H['検算']] || '');
       if (only) {
         if (!only[String(r[H['依頼No']] || '').replace(/^\d{2}-/, '')]) continue;
-      } else if (chk !== '不一致' && chk !== 'レンジ異常' && chk !== '数量異常' &&
-                 chk !== '要確認' && chk !== '両方異常') {
-        // 範囲が怪しい行だけ。一致・レンジ無しは触らない
-        continue;
+      } else if (!SHIPACT_BAD_CHECK[chk]) {
+        continue;   // 範囲が怪しい行だけ
       }
       var fileId = String(r[H['fileId']] || '');
       if (!fileId) continue;
@@ -1358,16 +1391,18 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
       }
       if (!f || f.cnoStart == null || f.cnoEnd == null) { out.読めず++; continue; }
 
-      var 旧開始 = r[H['容器No開始']], 旧終了 = r[H['容器No終了']];
-      if (String(旧開始) === String(f.cnoStart) && String(旧終了) === String(f.cnoEnd)) {
-        out.変わらず++;
+      var picked = shipact_pickQuantity_(f.qty, f.rangeQty);
+      var d = shipact_recheckDecision_(
+        { 開始: r[H['容器No開始']], 終了: r[H['容器No終了']], 検算: chk },
+        { 開始: f.cnoStart, 終了: f.cnoEnd, 検算: picked.check }, !!only);
+      if (!d.write) {
+        if (d.理由 === '変わらず') out.変わらず++; else out.良くならない++;
         continue;
       }
-      var picked = shipact_pickQuantity_(f.qty, f.rangeQty);
       out.明細.push({
-        行: i + 2, 依頼No: r[H['依頼No']],
-        前: 旧開始 + '〜' + 旧終了, 後: f.cnoStart + '〜' + f.cnoEnd,
-        数量: picked.qty, 検算: r[H['検算']] + '→' + picked.check,
+        行: i + 2, 依頼No: r[H['依頼No']], 枝番: r[H['枝番']],
+        前: r[H['容器No開始']] + '〜' + r[H['容器No終了']], 後: f.cnoStart + '〜' + f.cnoEnd,
+        数量: picked.qty, 検算: chk + '→' + picked.check,
         外した番号: (f.桁補正 || []).join(',')
       });
       r[H['容器No開始']] = f.cnoStart;
@@ -1377,6 +1412,10 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
       r[H['検算']] = picked.check;
       out.直した行++;
       changed = true;
+    }
+    if (!only) {
+      if (i >= values.length) { out.一巡した = true; props.setProperty(SHIPACT_RECHECK_PROP, '0'); }
+      else props.setProperty(SHIPACT_RECHECK_PROP, String(i));
     }
     if (changed) {
       sheet.getRange(2, 1, values.length, SHIP_ACT_CONFIG.HEADERS.length).setValues(values);
@@ -1388,9 +1427,10 @@ function 容器Noの範囲を読み直す(依頼Noの一覧) {
   }
 
   Logger.log('読み直した行 ' + out.見た行 + ' / 直した ' + out.直した行 +
-             ' / 変わらず ' + out.変わらず + ' / 読めず ' + out.読めず);
+             ' / 変わらず ' + out.変わらず + ' / 良くならないので書かず ' + out.良くならない +
+             ' / 読めず ' + out.読めず + (out.一巡した ? ' / 最後まで一巡した' : ''));
   out.明細.slice(0, 40).forEach(function (m) {
-    Logger.log('  ' + m.依頼No + '  ' + m.前 + ' → ' + m.後 +
+    Logger.log('  ' + m.行 + '行目 ' + m.依頼No + '-' + m.枝番 + '  ' + m.前 + ' → ' + m.後 +
                '（数量 ' + m.数量 + ' / 検算 ' + m.検算 +
                (m.外した番号 ? ' / 外した ' + m.外した番号 : '') + '）');
   });
@@ -1411,4 +1451,14 @@ function 緩い判定で直した行を見直す() {
     '30266', '70159', '20204', '10446', '20280',
     '10579', '50283', '60594', '60612', '60603'
   ]);
+}
+
+// ===== 公開関数：組の両方を外して直してしまった行を戻す =====
+/**
+ * ★ 26-60594 で、化けた 62335 と本物の 52335 を両方外して数量2に合わせていた。
+ *   今は検算が「一致」になっているので、通常の読み直しでは拾われない。
+ *   名指しで読み直して、今の（組の両方は外さない）読み方の結果に戻す。
+ */
+function 組の両方を外した行を戻す() {
+  return 容器Noの範囲を読み直す(['60594']);
 }
