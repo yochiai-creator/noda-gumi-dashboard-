@@ -198,19 +198,47 @@ console.log('■ 月合計を1日のセルに入れる誤りは黙って通さ�
 
 console.log('■ 未来日は「予定」として分かれる');
 {
-  const now = new Date(), future = new Date(Date.now() + 3 * 86400000);
+  /* ★ 予定の日は「今月の中の、今日より後の日」にする。
+       以前は「今日の3日後」にしていたので、月末（9/28 など）には3日後が来月になり、
+       来月の予定は出さない決まり（先の月は実績に出さない）に当たって落ちていた。
+       テストが日付しだいで壊れていただけで、ダッシュボードは正しかった。 */
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const lab = (dt) => (dt.getMonth() + 1) + '/' + dt.getDate() + '(月)出';
+  if (now.getDate() >= lastDay) {
+    console.log('  --   月の最終日なので、今月の中に「先の日」が無い。飛ばす');
+  } else {
+    const future = new Date(now.getFullYear(), now.getMonth(),
+                            Math.min(now.getDate() + 3, lastDay));
+    const s = build([], [], [], null, mkDispatch([
+      { year: now.getFullYear(), label: lab(now), goukei: [300, 400] },
+      { year: future.getFullYear(), label: lab(future), goukei: [500, 600] },
+    ]));
+    const d = s.getMonthlyCombinedData_uncached_();
+    const tot = d.months.reduce((a, m) => a + (m.出荷 || 0), 0);
+    const plan = d.months.reduce((a, m) => a + (m.出荷予定 || 0), 0);
+    check('実績は今日ぶんまで（700本）', tot === 700, tot);
+    check('予定は別項目（1,100本）', plan === 1100, plan);
+    check('予定があるフラグが立つ', d.hasPlan === true);
+    check('基準日を返す', /^\d{4}-\d{2}-\d{2}$/.test(d.asOf), d.asOf);
+  }
+}
+
+console.log('■ 来月の予定は出さない（予定を足すのは今月だけ）');
+{
+  // ★ 上のテストが月末に落ちた理由そのもの。決まりのほうを確かめておく。
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 5);
   const lab = (dt) => (dt.getMonth() + 1) + '/' + dt.getDate() + '(月)出';
   const s = build([], [], [], null, mkDispatch([
     { year: now.getFullYear(), label: lab(now), goukei: [300, 400] },
-    { year: future.getFullYear(), label: lab(future), goukei: [500, 600] },
+    { year: next.getFullYear(), label: lab(next), goukei: [500, 600] },
   ]));
   const d = s.getMonthlyCombinedData_uncached_();
-  const tot = d.months.reduce((a, m) => a + (m.出荷 || 0), 0);
   const plan = d.months.reduce((a, m) => a + (m.出荷予定 || 0), 0);
-  check('実績は今日ぶんまで（700本）', tot === 700, tot);
-  check('予定は別項目（1,100本）', plan === 1100, plan);
-  check('予定があるフラグが立つ', d.hasPlan === true);
-  check('基準日を返す', /^\d{4}-\d{2}-\d{2}$/.test(d.asOf), d.asOf);
+  const nk = next.getFullYear() + '-' + String(next.getMonth() + 1).padStart(2, '0');
+  check('★来月の予定は数えない', plan === 0, plan);
+  check('★来月の月そのものを出さない', !d.months.some((m) => m.key === nk), d.months.map((m) => m.key));
 }
 
 console.log('■ 表示期間は年度（4月始まり）');
