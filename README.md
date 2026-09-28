@@ -4,6 +4,8 @@
 Google Apps Script (GAS) + React（JSXをBabelで事前コンパイルしてHTMLに埋め込み）+
 Googleスプレッドシート・Google Driveをバックエンドとして使用。
 
+> **全体の構成・各ファイルの中身・設計の決まりごとは [`ARCHITECTURE.md`](ARCHITECTURE.md) に1つにまとめてある（こちらが最新）。**
+
 設計の詳細・注意点・過去のトラブルは [HANDOFF.md](./HANDOFF.md) を参照。
 
 ## GASプロジェクト
