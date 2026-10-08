@@ -331,9 +331,13 @@ function ProdPlanCard({ plan }) {
         </span>
         {/* ★ 今日のファイルが無い日がある（休日・作成前）。黙って前の日を出すと
                今日の計画だと思ってしまうので、いつのぶんかを必ず言う */}
+        {/* ★ 明日のぶんは前の日の夕方に置かれる。今日のぶんがあれば今日を出し、
+               休日など今日のぶんが無い日は次の稼働日のぶんを出す（サーバで選ぶ） */}
         {d.fileDate && !d.今日 && (
           <span className="text-[10px]" style={{ color: "#b45309" }}>
-            今日のぶんはまだありません（{d.fileDate} のぶん）
+            {d.区分 === "次"
+              ? "今日のぶんはありません（次の稼働日 " + d.fileDate + " のぶん）"
+              : "今日のぶんはまだありません（" + d.fileDate + " のぶん）"}
           </span>
         )}
       </span>
@@ -353,6 +357,13 @@ function ProdPlanCard({ plan }) {
               <span className="block text-[15px] font-bold tabular-nums" style={{ color: NAVY }}>
                 {vizComma(p.計画数)}<span className="text-[10px] font-normal"> 本</span>
               </span>
+              {/* ★ 元の表で1つの欄に数が並んでいた（例「100　200　1100」）。
+                     足した数だけだと元の表と見比べられないので、並びを添える */}
+              {p.内訳 && (
+                <span className="block text-[10px] tabular-nums" style={{ color: VIZ.ink2 }}>
+                  {p.内訳.map(vizComma).join("＋")}
+                </span>
+              )}
               <span className="block text-[10px] tabular-nums" style={{ color: VIZ.muted }}>
                 社員{p.社員} 協力{p.協力}
               </span>
@@ -364,7 +375,8 @@ function ProdPlanCard({ plan }) {
       {工場.length > 0 && (
         <span className="block text-[10px] mb-2" style={{ color: VIZ.muted }}>
           {工場.map((p) => p.工場 + "：" +
-            p.工程.map((x) => x.工程 + " " + vizComma(x.計画数)).join("・")).join("　")}
+            p.工程.map((x) => x.工程 + " " +
+              (x.内訳 ? x.内訳.map(vizComma).join("＋") + "＝" : "") + vizComma(x.計画数)).join("・")).join("　")}
         </span>
       )}
 

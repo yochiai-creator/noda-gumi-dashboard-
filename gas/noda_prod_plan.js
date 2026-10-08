@@ -39,9 +39,11 @@ var PPLAN_CONFIG = {
 
 // ===== 公開関数：画面用 =====
 function getProdPlanData(force) {
-  /* ★ キャッシュ名を変えた（prodPlan → prodPlan2）。フォルダが月ごとに分けられて
+  /* ★ キャッシュ名を変えた（prodPlan → prodPlan2 → prodPlan3）。
+       prodPlan3 は、数が並んだ欄を1つの数に詰めて読んでいた結果を残さないため。
+       prodPlan2 は、フォルダが月ごとに分けられて
        読めなかった結果が15分残っていると、直しても当日計画が出ないままになるため。 */
-  var KEY = 'prodPlan2';
+  var KEY = 'prodPlan3';
   if (!force) {
     var hit = nc_peek_(KEY);
     if (hit) return hit;
@@ -71,7 +73,8 @@ function pplan_build_() {
 
 // ===== 当日計画 =====
 function pplan_daily_() {
-  var f = pplan_latestDaily_();
+  var todayKey = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var f = pplan_latestDaily_(todayKey);
   if (!f) return { error: '当日計画のファイルが見つかりません', rows: [], 工場: [] };
   var sheet = SpreadsheetApp.open(f.file).getSheets()[0];
   var values = sheet.getDataRange().getValues();
@@ -79,7 +82,8 @@ function pplan_daily_() {
   d.fileName = f.name;
   d.fileDate = f.key;
   d.fileUrl = 'https://drive.google.com/file/d/' + f.file.getId() + '/view';
-  d.今日 = f.key === Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  d.今日 = f.key === todayKey;
+  d.区分 = f.区分;   // 今日 ／ 次（今日のぶんが無く、先のぶんを出している） ／ 前
   return d;
 }
 
@@ -109,17 +113,23 @@ function pplan_parseDaily_(values) {
     var step = pplan_text_(row[C.工程]);
     if (!cur || PPLAN_CONFIG.工程.indexOf(step) < 0) continue;
 
-    var n = pplan_num_(row[C.計画数]);
-    if (n == null) continue;
+    /* ★ 1つの欄に数が並ぶことがある（10/8 の 20k 処理「200　　　1100」、
+         10/9 の 50k 処理「100　　　200　　　　1100」）。空白を詰めて1つの数に
+         すると 2,001,100本 になる。数を1つずつ拾って足し、内訳も持っておく
+         （足した数だけ見せると、元の表と見比べられない）。 */
+    var parts = pplan_nums_(row[C.計画数]);
+    if (parts.length === 0) continue;
+    var n = parts.reduce(function (a, b) { return a + b; }, 0);
     var rec = { 工場: cur, 工程: step, 計画数: n,
                 社員: pplan_num_(row[C.社員]), 協力: pplan_num_(row[C.協力]) };
+    if (parts.length > 1) rec.内訳 = parts;
     out.rows.push(rec);
 
     if (!byPlant[cur]) byPlant[cur] = { 工場: cur, 計画数: 0, 基準: '', 社員: 0, 協力: 0, 工程: [] };
     var p = byPlant[cur];
     p.社員 += rec.社員 || 0;
     p.協力 += rec.協力 || 0;
-    p.工程.push({ 工程: step, 計画数: n });
+    p.工程.push(rec.内訳 ? { 工程: step, 計画数: n, 内訳: rec.内訳 } : { 工程: step, 計画数: n });
   }
 
   PPLAN_CONFIG.工場.forEach(function (k) {
@@ -135,6 +145,7 @@ function pplan_parseDaily_(values) {
     if (!hit && p.工程.length > 0) hit = p.工程[p.工程.length - 1];
     p.計画数 = hit ? hit.計画数 : 0;
     p.基準 = hit ? hit.工程 : '';
+    if (hit && hit.内訳) p.内訳 = hit.内訳;
     out.工場.push(p);
   });
   out.合計 = out.工場.reduce(function (a, b) { return a + b.計画数; }, 0);
@@ -145,10 +156,19 @@ function pplan_parseDaily_(values) {
 
 function pplan_text_(v) { return String(v == null ? '' : v).replace(/[\s　]/g, ''); }
 
+/* 欄の中の数を全部拾う。「1,100」「1，100」は1つの数。空白で区切られた数は別々。 */
+function pplan_nums_(v) {
+  if (v === '' || v == null) return [];
+  if (typeof v === 'number') return isNaN(v) ? [] : [v];
+  var t = String(v).replace(/[０-９]/g, function (d) { return String.fromCharCode(d.charCodeAt(0) - 0xFEE0); });
+  var m = t.match(/\d{1,3}(?:[,，]\d{3})+|\d+(?:\.\d+)?/g) || [];
+  return m.map(function (x) { return Number(x.replace(/[,，]/g, '')); });
+}
+
+/* 1つの数として読む（社員・協力）。数が並んでいたら足す。数が無ければ null。 */
 function pplan_num_(v) {
-  if (v === '' || v == null) return null;
-  var n = Number(String(v).replace(/[,，\s　]/g, ''));
-  return isNaN(n) ? null : n;
+  var a = pplan_nums_(v);
+  return a.length ? a.reduce(function (x, y) { return x + y; }, 0) : null;
 }
 
 /* フォルダの直下と、その1つ下のフォルダにあるファイルを全部返す。
@@ -168,10 +188,16 @@ function pplan_filesIn_(folderId) {
   return out;
 }
 
-/* ファイル名の日付で一番新しいものを選ぶ。更新日時では選ばない。 */
-function pplan_latestDaily_() {
+/* どの日のファイルを出すか。ファイル名の日付で決める（更新日時では選ばない）。
+   ★ 翌日ぶんのファイルは前の日の夕方（18時ごろ）に置かれる。一番新しいものを
+     選ぶと、夕方から「明日の計画」が当日計画として出てしまっていた。
+     ① 今日のぶんがあれば今日
+     ② 無ければ（休日など）一番近い先のぶん＝次の稼働日
+     ③ それも無ければ一番新しい過去のぶん */
+function pplan_latestDaily_(todayKey) {
+  if (!todayKey) todayKey = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   var files = pplan_filesIn_(PPLAN_CONFIG.DAILY_FOLDER);
-  var best = null;
+  var cands = [];
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     var name = f.getName();
@@ -179,9 +205,23 @@ function pplan_latestDaily_() {
     if (!/\.xlsx?$/i.test(name)) continue;
     var key = pplan_dateKeyFromName_(name);
     if (!key) continue;
-    if (!best || key > best.key) best = { file: f, name: name, key: key };
+    cands.push({ file: f, name: name, key: key });
   }
-  return best;
+  return pplan_pickDaily_(cands, todayKey);
+}
+
+/* 候補から1つ選ぶ（純関数）。区分 = 今日 ／ 次 ／ 前 */
+function pplan_pickDaily_(cands, todayKey) {
+  var today = null, next = null, prev = null;
+  cands.forEach(function (c) {
+    if (c.key === todayKey) today = c;
+    else if (c.key > todayKey) { if (!next || c.key < next.key) next = c; }
+    else if (!prev || c.key > prev.key) prev = c;
+  });
+  var hit = today || next || prev;
+  if (!hit) return null;
+  hit.区分 = hit === today ? '今日' : hit === next ? '次' : '前';
+  return hit;
 }
 
 /* 「工場別当日計画(26.9.18).xlsx」→ 2026-09-18。全角カッコも通す。 */
@@ -297,9 +337,10 @@ function pplan_kanjiMonth_(year, month) {
 function 生産計画を確かめる() {
   var r = pplan_build_();
   var d = r.daily || {};
-  Logger.log('当日計画: ' + (d.fileName || '—') + '  ' + (d.日付ラベル || ''));
+  Logger.log('当日計画: ' + (d.fileName || '—') + '  ' + (d.日付ラベル || '') + '  [' + (d.区分 || '') + ']');
   (d.工場 || []).forEach(function (p) {
-    Logger.log('  ' + p.工場 + '  ' + p.計画数 + '本  社員' + p.社員 + ' 協力' + p.協力 +
+    Logger.log('  ' + p.工場 + '  ' + p.計画数 + '本' + (p.内訳 ? '（' + p.内訳.join('＋') + '）' : '') +
+               '  社員' + p.社員 + ' 協力' + p.協力 +
                '  (' + p.工程.map(function (x) { return x.工程 + x.計画数; }).join(' ') + ')');
   });
   if (d.error) Logger.log('  エラー: ' + d.error);

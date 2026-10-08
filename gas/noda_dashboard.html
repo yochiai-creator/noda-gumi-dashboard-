@@ -1122,7 +1122,7 @@ function ProdPlanCard({
     style: {
       color: "#b45309"
     }
-  }, "\u4ECA\u65E5\u306E\u3076\u3093\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093\uFF08", d.fileDate, " \u306E\u3076\u3093\uFF09")), d.error ? /*#__PURE__*/React.createElement("p", {
+  }, d.区分 === "次" ? "今日のぶんはありません（次の稼働日 " + d.fileDate + " のぶん）" : "今日のぶんはまだありません（" + d.fileDate + " のぶん）")), d.error ? /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-amber-700 py-1"
   }, d.error) : 工場.length === 0 ? /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-500 py-1"
@@ -1146,7 +1146,12 @@ function ProdPlanCard({
     }
   }, vizComma(p.計画数), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] font-normal"
-  }, " \u672C")), /*#__PURE__*/React.createElement("span", {
+  }, " \u672C")), p.内訳 && /*#__PURE__*/React.createElement("span", {
+    className: "block text-[10px] tabular-nums",
+    style: {
+      color: VIZ.ink2
+    }
+  }, p.内訳.map(vizComma).join("＋")), /*#__PURE__*/React.createElement("span", {
     className: "block text-[10px] tabular-nums",
     style: {
       color: VIZ.muted
@@ -1156,7 +1161,7 @@ function ProdPlanCard({
     style: {
       color: VIZ.muted
     }
-  }, 工場.map(p => p.工場 + "：" + p.工程.map(x => x.工程 + " " + vizComma(x.計画数)).join("・")).join("　")), /*#__PURE__*/React.createElement("span", {
+  }, 工場.map(p => p.工場 + "：" + p.工程.map(x => x.工程 + " " + (x.内訳 ? x.内訳.map(vizComma).join("＋") + "＝" : "") + vizComma(x.計画数)).join("・")).join("　")), /*#__PURE__*/React.createElement("span", {
     className: "flex items-baseline gap-2 mb-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] font-semibold",
