@@ -893,6 +893,17 @@ function YardBlock({ b, size, selected, matched, dimmed, onSelect }) {
       {/* 上段：位置番号（左）とバッジ（右）— 群番号と重ならないよう上端に固定 */}
       <text x={b.x + 3} y={b.y + 8} textAnchor="start" fontSize="5.5" fontWeight="700"
         fill={b.kind === "empty" ? tcol : stroke}>{"<" + b.pos + ">"}</text>
+      {/* ★ チェック済は緑の丸に✓、一部だけなら白抜き。チェック前は印なし
+             （引当済のオレンジで「出荷待ち」は分かるので、済んだものだけを目立たせる） */}
+      {(b.check === "チェック済" || b.check === "一部チェック済") && (
+        <g>
+          <circle cx={b.x + b.w - (hasOrder ? 16 : 6)} cy={b.y + 6} r="4.5"
+            fill={b.check === "チェック済" ? "#059669" : "#fff"} stroke="#059669" strokeWidth="1" />
+          <path d={`M ${b.x + b.w - (hasOrder ? 18.2 : 8.2)} ${b.y + 6.1} l 1.6 1.6 l 3 -3.2`}
+            fill="none" stroke={b.check === "チェック済" ? "#fff" : "#059669"} strokeWidth="1.3"
+            strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+      )}
       {hasOrder && (
         <>
           <circle cx={b.x + b.w - 6} cy={b.y + 6} r="4.5" fill="#ea7a17" />
@@ -944,6 +955,8 @@ function yard_mergeLiveBlocks_(rawData, liveForSize) {
              undefined（そもそも返ってきていない）のときだけ静的値に戻す。 */
         shipDate: liveB.shipDate !== undefined ? liveB.shipDate : b.shipDate,
         orders,
+        // チェック前／チェック済／一部チェック済（50kだけ。◆チェック完了のコピーから）
+        check: liveB.check || null,
       };
     }),
   };
@@ -1451,6 +1464,11 @@ function YardMap({ yardLive, onRefresh }) {
                 <div className="text-sm font-medium text-slate-800">{b.grp ? "GNo " + b.grp : "（空き・予定）"}</div>
                 <div className="text-[11px] text-slate-500 tabular-nums">{b.rng && b.rng !== "-99〜0" ? b.rng : "—"}{b.cnt != null ? " ・ " + b.cnt + "本" : ""}</div>
               </div>
+              {b.check && b.check !== "チェック前" && (
+                <span className="text-[10px] font-semibold shrink-0" style={{ color: "#047857" }}>
+                  {b.check === "チェック済" ? "✓済" : "一部済"}
+                </span>
+              )}
               <Chip tone={toneOf(b)}>{statusOf(b)}</Chip>
             </button>
           ))}
@@ -1541,7 +1559,12 @@ function YardMap({ yardLive, onRefresh }) {
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div><div className="text-[10px] text-slate-400">容器番号</div><div className="text-xs font-medium text-slate-700 tabular-nums">{sel.rng && sel.rng !== "-99〜0" ? sel.rng : "—"}</div></div>
                 <div><div className="text-[10px] text-slate-400">本数</div><div className="text-base font-bold text-slate-900 tabular-nums">{sel.cnt != null ? sel.cnt + " 本" : "—"}</div></div>
-                <div><div className="text-[10px] text-slate-400">状態</div><div className="text-xs font-medium">{sel.orders && sel.orders.length > 0 ? "引当済" : sel.kind === "empty" ? "空き・予定" : "在庫"}</div></div>
+                <div><div className="text-[10px] text-slate-400">状態</div><div className="text-xs font-medium">{sel.orders && sel.orders.length > 0 ? "引当済" : sel.kind === "empty" ? "空き・予定" : "在庫"}</div>
+                  {sel.check && (
+                    <div className="text-[10px] font-semibold mt-0.5"
+                      style={{ color: sel.check === "チェック前" ? "#64748b" : "#047857" }}>{sel.check}</div>
+                  )}
+                </div>
               </div>
               {saveStatus === "done" && <p className="text-[11px] text-emerald-600 mt-1.5">保存しました（スプレッドシートに反映済み）</p>}
             </>
@@ -1577,6 +1600,13 @@ function YardMap({ yardLive, onRefresh }) {
                         <span className="px-1 rounded text-[9px]"
                           style={{ background: "rgba(255,255,255,.3)" }}>番号</span>
                       )}
+                      {/* チェックの状態（◆容器種類別＝前／◆チェック完了＝済） */}
+                      {o.check && (
+                        <span className="px-1 rounded text-[9px]"
+                          style={{ background: o.check === "チェック前" ? "rgba(255,255,255,.3)" : "#059669" }}>
+                          {o.check === "チェック前" ? "チェック前" : o.check === "チェック済" ? "✓済" : "一部済"}
+                        </span>
+                      )}
                     </a>
                   ) : (
                     <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-400 bg-slate-100">
@@ -1596,6 +1626,12 @@ function YardMap({ yardLive, onRefresh }) {
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: "#d9ebe6", border: "1px solid #2f7d6b" }} />20k 在庫</span>
                 <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm border border-slate-300" style={{ background: "#f8fafc" }} />空き・予定</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm" style={{ background: "#ffe4c7", border: "1px solid #ea7a17" }} />引当済</span>
+        {size === "50k" && (
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full inline-flex items-center justify-center text-white"
+              style={{ background: "#059669", fontSize: 8, lineHeight: 1 }}>✓</span>チェック済（白抜きは一部）
+          </span>
+        )}
         <span className="text-slate-400">ブロックをタップで明細</span>
       </div>
     

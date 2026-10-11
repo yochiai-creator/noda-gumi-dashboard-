@@ -1028,6 +1028,14 @@ function getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k) {
     Logger.log('容器番号での紐付けでエラー: ' + String(err));
   }
 
+  /* ★ 50kの区画に「チェック前／チェック済」を付ける（◆容器種類別・◆チェック完了の
+       コピーから。noda_yard_check.js）。失敗してもマップは出す。 */
+  try {
+    base = ychk_attachToBlocks_(base, ychk_entries_('50k'), '50k');
+  } catch (err) {
+    Logger.log('チェック状態の取得でエラー: ' + String(err));
+  }
+
   return JSON.stringify(base);
 }
 
