@@ -42,7 +42,7 @@ var INV_SIZE_ORDER = ['2K', '5K', '8K', '10K', '20K_三部軽量', '20K_直付',
 //   在庫照会CSVは日次更新なので15分。
 // force に true を渡すとキャッシュを無視して取り直す（画面の更新ボタン用）。
 function getInventoryDashboardData(force) {
-  return nc_cached_('inventory', force, 900, getInventoryDashboardData_uncached_);
+  return nc_cached_('inventory', force, 3600, getInventoryDashboardData_uncached_);
 }
 
 // ===== 実際の集計（キャッシュ無し。元の getInventoryDashboardData の中身そのまま） =====

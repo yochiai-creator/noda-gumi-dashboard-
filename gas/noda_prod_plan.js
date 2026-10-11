@@ -34,7 +34,7 @@ var PPLAN_CONFIG = {
   COL: { 工場: 1, 工程: 2, 計画数: 3, 社員: 4, 協力: 7 },
   工場: ['50k', '20k', '特殊'],
   工程: ['加工', '品質', '処理', 'コイル'],
-  TTL: 900   // 15分。1日1本のファイルなので長めでよい
+  TTL: 3600  // 60分。1日1本のファイルなので長めでよい（先読みが30分おきに作り直す）
 };
 
 // ===== 公開関数：画面用 =====
@@ -241,13 +241,25 @@ function pplan_monthly_() {
   var f = pplan_latestMonthly_(y, mo);
   if (!f) return { error: y + '年' + mo + '月の容器班別日程計画が見つかりません', 行: [] };
 
-  var text = shipact_pdfToText_(f.file);
+  var text = pplan_monthlyText_(f.file);
   var m = pplan_parseMonthly_(text, new Date(y, mo, 0).getDate());
   m.fileName = f.name;
   m.fileUrl = 'https://drive.google.com/file/d/' + f.file.getId() + '/view';
   m.月 = y + '-' + (mo < 10 ? '0' : '') + mo;
   m.仮 = f.仮;
   return m;
+}
+
+/* 当月計画PDFの本文。同じファイル（更新日時も同じ）なら6時間は読み直さない。
+   ★ PDFを文字にするには Googleドキュメントに変換するので数秒かかる。月に数回しか
+     変わらないファイルを、開くたび（先読みなら30分おき）に変換していた。 */
+function pplan_monthlyText_(file) {
+  var key = 'pplanText_' + file.getId() + '_' + file.getLastUpdated().getTime();
+  var hit = nc_peek_(key);
+  if (typeof hit === 'string' && hit) return hit;
+  var text = shipact_pdfToText_(file);
+  if (text) nc_put_(key, String(text), 21600);
+  return text;
 }
 
 /* PDFの本文から、サイズごとの月計と日別を拾う（純関数）。

@@ -38,9 +38,14 @@ var NC_CACHE_CONFIG = {
    */
   VERSION: 2,
 
-  // CacheService の1キーあたりの上限は約100KB。超えると put が例外を投げるため、
-  // 余裕をみてこのサイズを超えるものはキャッシュせず素通しにする。
-  MAX_BYTES: 90000
+  /* CacheService の1キーあたりの上限は約100KB。
+     ★ 以前は「90,000文字を超えたらキャッシュしない」にしていた。これだと大きい
+       データ（ヤードマップなど）は一度もキャッシュされず、開くたびに作り直して
+       いた。しかも日本語は1文字3バイトなので、90,000文字未満でも put が例外に
+       なって黙って置けていないことがあった。
+     → 30,000文字ずつに分けて置く（日本語だけでも90KBに収まる）。 */
+  CHUNK_CHARS: 30000,
+  MAX_CHUNKS: 40          // 120万文字まで。それより大きいものは置かない
 };
 
 /**
@@ -108,7 +113,18 @@ function nc_peek_(name) {
   if (!hit) return null;
   try {
     var obj = JSON.parse(hit);
-    obj.cached = true;
+    // 分けて置いたもの：目印だけが入っているので、続きを集めてつなぐ
+    if (obj && typeof obj === 'object' && obj.__ncChunks) {
+      var keys = nc_chunkKeys_(nc_cacheKey_(name), obj.id, obj.__ncChunks);
+      var got = cache.getAll(keys);
+      var parts = [];
+      for (var i = 0; i < keys.length; i++) {
+        if (got[keys[i]] == null) return null;   // 1つでも欠けていたら無かったことにする
+        parts.push(got[keys[i]]);
+      }
+      obj = JSON.parse(parts.join(''));
+    }
+    if (obj && typeof obj === 'object') obj.cached = true;
     return obj;
   } catch (err) {
     // 壊れたキャッシュは捨てて取り直す
@@ -127,17 +143,53 @@ function nc_put_(name, data, ttlSec) {
   }
   try {
     var s = JSON.stringify(data);
-    if (s.length > NC_CACHE_CONFIG.MAX_BYTES) {
-      Logger.log('キャッシュ保存をスキップ：' + name + ' が ' + s.length +
-                 'バイトで上限(' + NC_CACHE_CONFIG.MAX_BYTES + ')を超過');
+    var key = nc_cacheKey_(name);
+    if (s.length <= NC_CACHE_CONFIG.CHUNK_CHARS) {
+      cache.put(key, s, ttlSec);
+      return true;
+    }
+    var parts = nc_splitChunks_(s, NC_CACHE_CONFIG.CHUNK_CHARS);
+    if (parts.length > NC_CACHE_CONFIG.MAX_CHUNKS) {
+      Logger.log('キャッシュ保存をスキップ：' + name + ' が ' + s.length + '文字で大きすぎる');
       return false;
     }
-    cache.put(nc_cacheKey_(name), s, ttlSec);
+    /* ★ 置くたびに別の名前（id）で置く。前の回の切れ端と混ざらないように。
+         目印は最後に置く。目印があるなら切れ端はもう全部置けている。
+         切れ端は目印より少し長く残す（目印だけ残って切れ端が消えた、を避ける）。 */
+    var id = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    var keys = nc_chunkKeys_(key, id, parts.length);
+    var map = {};
+    for (var i = 0; i < keys.length; i++) map[keys[i]] = parts[i];
+    cache.putAll(map, Math.min(21600, ttlSec + 120));
+    cache.put(key, JSON.stringify({ __ncChunks: parts.length, id: id }), ttlSec);
     return true;
   } catch (err) {
     Logger.log('キャッシュ保存エラー(' + name + '): ' + String(err));
     return false;
   }
+}
+
+function nc_chunkKeys_(key, id, n) {
+  var out = [];
+  for (var i = 0; i < n; i++) out.push(key + '#' + id + '#' + i);
+  return out;
+}
+
+/* 文字列を n 文字ずつに分ける。サロゲートペア（絵文字など）の途中では切らない
+   （半分ずつに分かれた文字は、置いたときに別の文字に化ける）。 */
+function nc_splitChunks_(s, n) {
+  var out = [];
+  var i = 0;
+  while (i < s.length) {
+    var end = Math.min(s.length, i + n);
+    if (end < s.length) {
+      var c = s.charCodeAt(end - 1);
+      if (c >= 0xD800 && c <= 0xDBFF) end--;
+    }
+    out.push(s.substring(i, end));
+    i = end;
+  }
+  return out;
 }
 
 /**

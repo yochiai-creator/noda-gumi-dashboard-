@@ -66,7 +66,7 @@ var ARM_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 // ===== 公開関数：アームの出荷予定（画面用・キャッシュ付き） =====
 function getArmShipPlan(force) {
-  return nc_cached_('armPlan', force === true, 600, getArmShipPlan_uncached_);
+  return nc_cached_('armPlan', force === true, 1500, getArmShipPlan_uncached_);
 }
 
 function getArmShipPlan_uncached_() {
@@ -455,7 +455,7 @@ function arm_latestSourceFile_() {
 
 // ===== 公開関数：月別の出荷実績（画面用・キャッシュ付き） =====
 function getArmMonthlyData(force) {
-  return nc_cached_('armMonthly', force === true, 900, getArmMonthlyData_uncached_);
+  return nc_cached_('armMonthly', force === true, 3600, getArmMonthlyData_uncached_);
 }
 
 function getArmMonthlyData_uncached_() {

@@ -95,7 +95,7 @@ function harvestInventoryHistory() {
 
 // ===== 公開関数：在庫推移を画面用に組み立てて返す（キャッシュ付き） =====
 function getInventoryTrendData(force) {
-  return nc_cached_('inventoryTrend', force, 900, getInventoryTrendData_uncached_);
+  return nc_cached_('inventoryTrend', force, 3600, getInventoryTrendData_uncached_);
 }
 
 function getInventoryTrendData_uncached_() {

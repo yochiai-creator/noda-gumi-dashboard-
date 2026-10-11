@@ -3372,15 +3372,70 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+/* ===== 前回のデータを端末に残す =====
+   ★ なぜ要るのか
+     GASのWebアプリは開くたびに11本の集計をサーバに頼み、全部そろうまで
+     「読み込んでいます」のままだった。前回そろったデータを端末に残しておき、
+     開いた瞬間はそれを出す（上に「前回のデータ」と書く）。最新が全部そろったら
+     黙って差し替える。
+   ★ 画面のプログラムが変わったら前回のデータは使わない（データの形が違うかも
+     しれない）。画面のスクリプトの長さを版の代わりにする。
+   ★ 端末の保存は使えないことがある（プライベートブラウズ等）。使えなければ
+     今までどおり読み込みを待つだけ。 */
+const SNAP_KEY = "nodaDashSnap";
+const SNAP_MAX_AGE_MS = 24 * 3600 * 1000;
+const SNAP_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "invTrend", "monthly",
+                   "dispGrid", "yardCap", "yardCapUrl", "armPlan", "armMonthly"];
+
+/* このスクリプト自身の長さ。読み込まれた瞬間に測る（GASがページに足す別の
+   スクリプトは毎回中身が変わるので数えない）。測れなければ前回のデータは使わない。 */
+const SNAP_APP_LEN = (() => {
+  try { return document.currentScript ? document.currentScript.textContent.length : 0; }
+  catch (e) { return 0; }
+})();
+
+function snapVersion_() { return SNAP_APP_LEN ? String(SNAP_APP_LEN) : null; }
+
+function snapLoad_() {
+  try {
+    const raw = window.localStorage.getItem(SNAP_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || !snapVersion_() || s.v !== snapVersion_() || !(Date.now() - s.t < SNAP_MAX_AGE_MS) || !s.live) return null;
+    return s;
+  } catch (e) { return null; }
+}
+
+function snapSave_(live, yardLive) {
+  if (!snapVersion_()) return;
+  try {
+    const o = {};
+    SNAP_KEYS.forEach((k) => {
+      const v = live[k];
+      if (!v || v.error) return;
+      // 配車表は今週のぶんだけ残す（開いたときは今週を出すので）
+      if (k === "dispGrid" && Number(v.weekOffset || 0) !== 0) return;
+      o[k] = v;
+    });
+    window.localStorage.setItem(SNAP_KEY,
+      JSON.stringify({ v: snapVersion_(), t: Date.now(), live: o, yardLive }));
+  } catch (e) { /* 保存できなくても困らない */ }
+}
+
 export default function App() {
   const [tab, setTab] = useState("orders");
   const [now, setNow] = useState(new Date());
-  const [live, setLive] = useState({ inventory: null, shipping: null, orderPlan: null, dispatch: null, invTrend: null, monthly: null, dispGrid: null, yardCap: null, yardCapUrl: null, loading: true, error: null });
+  const LIVE_EMPTY = { inventory: null, shipping: null, orderPlan: null, dispatch: null, invTrend: null, monthly: null, dispGrid: null, yardCap: null, yardCapUrl: null, loading: true, error: null };
+  // 前回のデータ（あれば開いた瞬間に出す）。GAS環境のときだけ
+  const [snap0] = useState(() =>
+    (typeof google !== "undefined" && google.script && google.script.run) ? snapLoad_() : null);
+  const [live, setLive] = useState(() => (snap0 ? { ...LIVE_EMPTY, ...snap0.live } : LIVE_EMPTY));
   // 配車グリッドは週を切り替えるので、ほかの集計とは別に持つ
   const [gridWeek, setGridWeek] = useState(0);
   const [gridSaving, setGridSaving] = useState(false);
   const [yardSaving, setYardSaving] = useState(false);
-  const [yardLive, setYardLive] = useState({ "50k": {}, "20k": {} });
+  const [yardLive, setYardLive] = useState(() =>
+    (snap0 && snap0.yardLive && snap0.yardLive["50k"]) ? snap0.yardLive : { "50k": {}, "20k": {} });
   /* ★ 読み込み完了の判定。以前は「9件そろったら」と件数で見ていたが、
        あとから取得を足したとき（野外置場で10件になった）に数を直し忘れ、
        9件そろった時点で画面を出してしまい、最後の1件が間に合わず
@@ -3389,7 +3444,10 @@ export default function App() {
   const LOAD_KEYS = ["inventory", "shipping", "orderPlan", "dispatch",
                      "invTrend", "monthly", "dispGrid", "yardMap", "yardCap", "armPlan", "armMonthly"];
   const [loadedKeys, setLoadedKeys] = useState({});
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  // 前回のデータがあれば、それで画面を出してしまう（最新は裏で読み込む）
+  const [initialLoadDone, setInitialLoadDone] = useState(!!snap0);
+  // 最新が全部そろったか（前回のデータを出しているあいだは false）
+  const [freshDone, setFreshDone] = useState(false);
 
   const isGasEnv = typeof google !== "undefined" && google.script && google.script.run;
 
@@ -3397,7 +3455,7 @@ export default function App() {
     setLoadedKeys((prev) => {
       if (prev[key]) return prev;
       const next = { ...prev, [key]: true };
-      if (LOAD_KEYS.every((k) => next[k])) setInitialLoadDone(true);
+      if (LOAD_KEYS.every((k) => next[k])) { setInitialLoadDone(true); setFreshDone(true); }
       return next;
     });
   };
@@ -3640,6 +3698,13 @@ export default function App() {
     const timer = setInterval(() => fetchLiveData(false), 5 * 60 * 1000); // 5分ごとに自動更新（キャッシュ利用）
     return () => clearInterval(timer);
   }, []);
+
+  // 最新がそろったら端末に残す。何度も続けて変わるので、落ち着いてから1回だけ
+  useEffect(() => {
+    if (!freshDone) return;
+    const t = setTimeout(() => snapSave_(live, yardLive), 1500);
+    return () => clearTimeout(t);
+  }, [freshDone, live, yardLive]);
 
   // 野外置場タブを開いたときに1回だけ取る
   useEffect(() => {
@@ -3936,6 +4001,13 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* ★ 前回のデータを出しているあいだは、そうと分かるように書く */}
+      {snap0 && !freshDone && (
+        <div className="text-[11px] text-center py-1" style={{ background: "#fef3c7", color: "#92400e" }}>
+          前回（{new Date(snap0.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}）のデータを表示中・最新を読み込んでいます…
+        </div>
+      )}
 
       <main className="max-w-4xl mx-auto px-4 py-5 space-y-6">
         {/* KPI（タブごとに内容が変わる） */}

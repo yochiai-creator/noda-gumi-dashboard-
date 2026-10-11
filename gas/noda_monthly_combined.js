@@ -71,7 +71,7 @@ function mcomb_startMonth_(now, availableMonths) {
 
 // ===== 公開関数：画面用に月次データを組み立てて返す（キャッシュ付き） =====
 function getMonthlyCombinedData(force) {
-  return nc_cached_('monthlyCombined', force, 900, getMonthlyCombinedData_uncached_);
+  return nc_cached_('monthlyCombined', force, 3600, getMonthlyCombinedData_uncached_);
 }
 
 function getMonthlyCombinedData_uncached_() {

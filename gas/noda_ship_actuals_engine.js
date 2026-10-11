@@ -269,6 +269,10 @@ function harvestDailyData() {
   var dailyStarted = Date.now();
   var out = { inventory: null, orders: null, shipping: null, repair: null };
 
+  // ★ キャッシュの先読み（noda_cache_warm.js）のトリガーが無ければ張る。
+  //   GASエディタで何かを実行してもらわなくても、1時間以内に動き出す。
+  try { warm_ensureTrigger_(); } catch (errW) { Logger.log('先読みトリガーを張れず: ' + String(errW)); }
+
   // ★ 古い判定で入った行を直す。シートを読んで判定し直すだけなので軽い
   //   （PDFは読み直さない）。直す行が無ければ何もしない。
   //   毎回「この関数を実行してください」とお願いするのは筋が悪いので、

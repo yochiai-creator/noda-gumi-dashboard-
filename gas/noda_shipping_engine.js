@@ -42,7 +42,7 @@ var SHIP_CONFIG = {
 //   指図書PDFは日中に随時増えるので10分。
 // force に true を渡すとキャッシュを無視して取り直す（画面の更新ボタン用）。
 function getShippingDashboardData(force) {
-  return nc_cached_('shipping', force, 600, getShippingDashboardData_uncached_);
+  return nc_cached_('shipping', force, 1500, getShippingDashboardData_uncached_);
 }
 
 // ===== 実際の集計（キャッシュ無し。元の getShippingDashboardData の中身そのまま） =====

@@ -957,11 +957,12 @@ function getYardBlockDetailWithPdf(sizeKey, pos) {
 //   出ている状態にしたいという要望のため、一括取得の時点で全件のPDF検索を行う。
 function getYardMapUpdatesBothWithOrderText(queries50k, queries20k, force) {
   /* ★ 依頼NoごとにDriveを検索するので重い。今まで毎回やっていたため、
-       ヤードタブを開くたびに待たされていた。5分ぶんキャッシュする。
+       ヤードタブを開くたびに待たされていた。キャッシュする（25分。
+       10分おきの先読みで作り直すので、動いている時間帯は切れない）。
        ★ 引数（位置の一覧）は静的データから作る固定のものなので、
          キャッシュのキーには入れない。
        ★ アプリから区画を直したときは updateYardBlock で消している。 */
-  return nc_cached_('yardMapBoth', force === true, 300, function () {
+  return nc_cached_('yardMapBoth', force === true, 1500, function () {
     return getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k);
   });
 }

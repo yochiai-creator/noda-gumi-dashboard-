@@ -41,7 +41,7 @@ var ORDER_CONFIG = {
 //   PDF→Googleドキュメント変換が重く、計画表は日次更新なので30分。
 // force に true を渡すとキャッシュを無視して取り直す（画面の更新ボタン用）。
 function getOrderPlanDashboardData(force) {
-  return nc_cached_('orderPlan', force, 1800, getOrderPlanDashboardData_uncached_);
+  return nc_cached_('orderPlan', force, 3600, getOrderPlanDashboardData_uncached_);
 }
 
 // ===== 実際の集計（キャッシュ無し。元の getOrderPlanDashboardData の中身そのまま） =====

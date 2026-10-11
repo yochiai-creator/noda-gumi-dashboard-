@@ -380,7 +380,7 @@ function dgrid_cellKind_(text) {
  *   ときはキャッシュに当たるので、読み直しが起きない。
  */
 var DGRID_PREFETCH = 2;    // 要求された週の前後いくつを一緒に作るか
-var DGRID_TTL = 300;
+var DGRID_TTL = 1500;   // 先読み（10分おき）より長く
 /* 書き換えたときに消す週の幅。作り置きが前後に伸びるので、
    矢印で行ける範囲より広めに取る。消し漏れた週が古い数字を出すのが一番まずい。 */
 var DGRID_FORGET_SPAN = 30;

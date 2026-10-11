@@ -79,7 +79,7 @@ var DISPATCH_CONFIG = {
 //   運行スケジュールは日次更新なので15分。
 // force に true を渡すとキャッシュを無視して取り直す（画面の更新ボタン用）。
 function getDispatchTodayData(force) {
-  return nc_cached_('dispatch', force, 900, getDispatchTodayData_uncached_);
+  return nc_cached_('dispatch', force, 1500, getDispatchTodayData_uncached_);
 }
 
 // ===== 実際の集計（キャッシュ無し。元の getDispatchTodayData の中身そのまま） =====

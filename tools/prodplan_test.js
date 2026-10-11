@@ -343,6 +343,27 @@ console.log('■ 明日のぶんが前の日の夕方に置かれても、今日
   chk('★フォルダからも今日（10/8）を選ぶ', b && b.name === '工場別当日計画(26.10.8).xlsx', b && b.name);
 }
 
+console.log('■ 当月計画のPDFは同じファイルなら読み直さない');
+{
+  /* ★ PDFを文字にするには数秒かかる。月に数回しか変わらないファイルを、
+       開くたびに変換していた。 */
+  const s = sb();
+  const store = {};
+  s.CacheService = { getScriptCache: () => ({ get: (k) => store[k] || null, put: (k, v) => { store[k] = v; },
+    getAll: (ks) => { const o = {}; ks.forEach((k) => { if (store[k]) o[k] = store[k]; }); return o; },
+    putAll: (m) => Object.assign(store, m), remove: (k) => delete store[k] }) };
+  let n = 0;
+  s.shipact_pdfToText_ = () => { n++; return '50kg=6台 ＋0 100 200 300 600'; };
+  let upd = 1000;
+  const f = { getId: () => 'PDF1', getLastUpdated: () => new Date(upd) };
+  const a = s.pplan_monthlyText_(f);
+  const b = s.pplan_monthlyText_(f);
+  chk('★2回目は変換しない', n === 1 && a === b, n);
+  upd = 2000;
+  s.pplan_monthlyText_(f);
+  chk('★ファイルが差し替わったら読み直す', n === 2, n);
+}
+
 console.log('■ 読めなかった結果をキャッシュしない');
 {
   const s = sb();
