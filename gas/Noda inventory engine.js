@@ -13,7 +13,7 @@ var INV_CONFIG = {
   FOLDER_ID: '1tsODI5CX4rV9kss07De4Yq0PgxpBECyc', // 容器在庫照会CSVの保存フォルダ（50kg・20kg等すべて混在）
   CSV_CHARSET: 'Shift_JIS',
   COL_KOKUIN: 6,
-  COL_QTY: 12,
+  COL_QTY: 12,   // 「引当可能数」を在庫の本数とする（「実在庫数」の列は空。落合さん確認済み 2026/10/12）
   COL_CLASS: 5  // 「分類」列（サイズ種別のラベル）
 };
 
