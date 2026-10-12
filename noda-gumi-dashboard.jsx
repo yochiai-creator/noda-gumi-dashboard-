@@ -763,7 +763,7 @@ function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
 function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel }) {
   const planLpTotal = planBySize.reduce((sum, s) => sum + s.count, 0);
   return (
-    <div className="space-y-6">
+    <div className="nd-tab">
       <Collapsible title="受注出荷計画表 概要" note="共有ドライブ・日次自動取得"
         closedNote={"LP容器 " + planLpTotal.toLocaleString() + " 本"}>
         <Card className="p-4 mb-3" style={{ background: NAVY }}>
@@ -2304,7 +2304,9 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
   /* ★ 6日×31台の表をiPhoneの390pxに詰めるのは無理がある（実測で中身600px・
        見えるのは332px）。既定は「日」表示にして、1日ぶんを縦のリストで
        行き先を省略なしに出す。週の表も残して切り替えられるようにする。 */
-  const [view, setView] = useState("day");     // "day" | "week"
+  // ★ パソコンの幅（1024px以上）なら、最初から週の表を出す（横に広く見渡せるので）
+  const [view, setView] = useState(() =>
+    (typeof window !== "undefined" && window.innerWidth >= 1024) ? "week" : "day");     // "day" | "week"
   const [dayIdx, setDayIdx] = useState(null);  // null のうちは今日を自動で選ぶ
   const [showIdle, setShowIdle] = useState(false);
   const g = grid;
@@ -2848,7 +2850,7 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
   const mcMonths = mc && mc.months ? mc.months : null;
 
   return (
-    <div>
+    <div className="nd-tab">
       {/* ---- 在庫・出荷・受注をまとめて（月次） ----
            ★「元データ」のリンクは落合さんの指示で外した（別タブが開くのが邪魔）。
              スプレッドシートのURLはサーバ側が今も返しているので、必要になれば
@@ -3031,7 +3033,7 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
       </Card>
 
       <button onClick={onRefresh}
-        className="w-full py-2 rounded-lg text-xs font-semibold text-white" style={{ background: NAVY }}>
+        className="nd-full w-full py-2 rounded-lg text-xs font-semibold text-white" style={{ background: NAVY }}>
         最新に更新
       </button>
     </div>
@@ -3099,9 +3101,9 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
   const logRows = (log && log.rows) || [];
 
   return (
-    <div className="space-y-4">
+    <div className="nd-tab">
       {err && (
-        <Card className="p-3">
+        <Card className="nd-full p-3">
           <p className="text-xs text-red-700 bg-red-50 rounded-md px-3 py-2">読み込めませんでした：{err}</p>
         </Card>
       )}
@@ -3999,6 +4001,8 @@ export default function App() {
     dispatch: { title: "配車・当日出荷", subtitle: dispatchWeekLabel ? dispatchWeekLabel + " の週" : dispatchDateLabel + " 時点" },
     arm: { title: "アーム出荷予定", subtitle: armNext ? "次の出荷 " + armNext.label + "(" + armNext.weekday + ")" : "直近1か月" },
     yardcap: { title: "野外置場", subtitle: dateLabel },
+    // ★ 抜けていて、実績・推移タブの見出しが「受注・指図書」になっていた
+    actuals: { title: "実績・推移", subtitle: dateLabel },
   };
   const currentHeader = tabHeaders[tab] || tabHeaders.orders;
 
@@ -4132,7 +4136,7 @@ export default function App() {
       {pdfDoc && <PdfViewer doc={pdfDoc} onClose={() => setPdfDoc(null)} />}
       {/* ヘッダー（タブごとに内容が変わる） */}
       <header style={{ background: NAVY }} className="text-white">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className="nd-wrap px-4 py-4 flex items-center gap-3">
           <div className="w-1.5 h-9 rounded-full" style={{ background: SAFETY }} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -4157,9 +4161,9 @@ export default function App() {
         </div>
       )}
 
-      <main className="max-w-4xl mx-auto px-4 py-5 space-y-6">
+      <main className="nd-wrap px-4 py-5 space-y-6">
         {/* KPI（タブごとに内容が変わる） */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="nd-kpis">
           {currentKpis.map((k, i) => {
             const Icon = k.icon;
             const t = TONE[k.tone];

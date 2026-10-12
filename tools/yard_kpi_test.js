@@ -90,7 +90,7 @@ const REPLY = {
   const chk = (name, cond, extra) => { if (cond) { pass++; console.log('  OK  ', name); }
     else { fail++; console.log('  ★NG ', name, extra === undefined ? '' : JSON.stringify(extra)); } };
 
-  const kpi = await page.evaluate(() => [...document.querySelectorAll('main > div.grid > div')]
+  const kpi = await page.evaluate(() => [...document.querySelectorAll('main > div.nd-kpis > div')]
     .map((c) => c.innerText.replace(/\n+/g, ' ')));
   console.log('   KPI:', JSON.stringify(kpi));
   chk('ヤードのKPIが5枚ある', kpi.length === 5, kpi.length);

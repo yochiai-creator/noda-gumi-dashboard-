@@ -418,7 +418,7 @@ const REPLY = {
   /* ---------- 上のKPIと下の表が一致するか ---------- */
   console.log('■ 上のKPIと下の表の連動');
   const kpiWeek = await page.evaluate(() => {
-    const cards = [...document.querySelectorAll('main > div.grid > div')].map((c) => c.innerText.replace(/\n+/g, ' '));
+    const cards = [...document.querySelectorAll('main > div.nd-kpis > div')].map((c) => c.innerText.replace(/\n+/g, ' '));
     /* ★ カードの先頭に週のラベル（9/7〜9/12）が入るので、素の「最初の数字」を
          拾うと 9 を取ってしまう。ラベルより後ろだけを見る。 */
     const find = (k) => {

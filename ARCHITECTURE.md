@@ -173,6 +173,7 @@ GASは**全ファイルが1つのグローバル空間**を共有する（→ [8
 | `cmaster_test` | node | 機種マスタ（Shift_JIS・サイズの割り当て） |
 | `arm_test` | node | アーム出荷予定・月別、明細PDFの名前の揺れ |
 | `dispcache_test` | node | 配車の週切替で読み直さないこと |
+| `resp_test` | ブラウザ | スマホ・タブレット・パソコンの3つの幅で、はみ出し・KPIの並び・2列の段・配車表の初期表示 |
 | `snap_test` | ブラウザ | 前回のデータを端末に残し、開いた瞬間に出す／版が変わったら使わない |
 | `chart_test` `disp_grid_test` `disp_week_height_test` `load_wait_test` `tap_test` `yard_kpi_test` `yardcap_test` `yardlag_test` | ブラウザ | 390px の実ブラウザ（Playwright）で描いて測る。字の大きさ、はみ出し、タップ、読み込み待ち、マップを動かしたときの1コマの時間 |
 
@@ -374,6 +375,11 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
   重いので、Drive の軽い表示（`/file/d/<ID>/preview`）をアプリの上にかぶせて開く（`PdfViewer`）。
   「閉じる」で元の画面、開けないとき用に「別のタブで開く」。ヤード・配車・指図書一覧のリンクと、
   指図書1件の区画のタップが対象。
+
+- **パソコン・タブレットでも見やすく**（2026/10/12〜）：スマホ（390px）は今までどおり1列。
+  640px以上はKPIを1行に（`nd-kpis`）。1024px以上は中身を1216pxまで広げ（`nd-wrap`）、段を2列に並べる（`nd-tab`、
+  地図や表のような全幅のものは `nd-full`）。配車表は1024px以上なら最初から週の表。
+  CSSは凍結版Tailwindに無いので `gas/noda_dashboard.html` の `<style>` に手で足してある。確かめるのは `resp_test`。
 
 ### 8.9 テストの作り方
 

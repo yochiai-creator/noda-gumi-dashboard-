@@ -95,7 +95,7 @@ body { margin:0; font-family:"Noto Sans JP", system-ui, -apple-system, "Hiragino
 .gap-x-2{column-gap:.5rem}
 .mr-1{margin-right:.25rem}
 .mr-2{margin-right:.5rem}
-.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.p-2{padding:.5rem}.w-28{width:7rem}.ml-2{margin-left:.5rem}.ymap-drag text{display:none}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
+.py-0\.5{padding-top:.125rem;padding-bottom:.125rem}.pb-3{padding-bottom:.75rem}.p-2{padding:.5rem}.w-28{width:7rem}.ml-2{margin-left:.5rem}.ymap-drag text{display:none}/* 画面の幅に合わせる（スマホ・タブレット・パソコン） */.nd-wrap{max-width:56rem;margin-left:auto;margin-right:auto}@media (min-width:1024px){.nd-wrap{max-width:76rem}}.nd-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}@media (min-width:640px){.nd-kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}}.nd-tab>*+*{margin-top:1.5rem}@media (min-width:1024px){.nd-tab{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;align-items:start}.nd-tab>*+*{margin-top:0}.nd-tab>.nd-full{grid-column:1/-1}}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240/var(--tw-bg-opacity,1))}
 </style>
 <script>
 /**
@@ -1670,7 +1670,7 @@ function OrdersTab({
 }) {
   const planLpTotal = planBySize.reduce((sum, s) => sum + s.count, 0);
   return /*#__PURE__*/React.createElement("div", {
-    className: "space-y-6"
+    className: "nd-tab"
   }, /*#__PURE__*/React.createElement(Collapsible, {
     title: "\u53D7\u6CE8\u51FA\u8377\u8A08\u753B\u8868 \u6982\u8981",
     note: "\u5171\u6709\u30C9\u30E9\u30A4\u30D6\u30FB\u65E5\u6B21\u81EA\u52D5\u53D6\u5F97",
@@ -5032,7 +5032,8 @@ function DispatchGrid({
   /* ★ 6日×31台の表をiPhoneの390pxに詰めるのは無理がある（実測で中身600px・
        見えるのは332px）。既定は「日」表示にして、1日ぶんを縦のリストで
        行き先を省略なしに出す。週の表も残して切り替えられるようにする。 */
-  const [view, setView] = useState("day"); // "day" | "week"
+  // ★ パソコンの幅（1024px以上）なら、最初から週の表を出す（横に広く見渡せるので）
+  const [view, setView] = useState(() => typeof window !== "undefined" && window.innerWidth >= 1024 ? "week" : "day"); // "day" | "week"
   const [dayIdx, setDayIdx] = useState(null); // null のうちは今日を自動で選ぶ
   const [showIdle, setShowIdle] = useState(false);
   const g = grid;
@@ -5682,7 +5683,9 @@ function ActualsTab({
     }, children));
   };
   const mcMonths = mc && mc.months ? mc.months : null;
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Card, {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "nd-tab"
+  }, /*#__PURE__*/React.createElement(Card, {
     title: "\u5728\u5EAB\u30FB\u51FA\u8377\u30FB\u53D7\u6CE8",
     note: mc && mc.startMonth ? vizDateParts(mc.startMonth).y + "年" + vizMonthLabel(mc.startMonth) + "〜（年度）" : "月ごと"
   }, !mc ? /*#__PURE__*/React.createElement("div", {
@@ -5817,7 +5820,7 @@ function ActualsTab({
     className: "block"
   }, "\u5B9F\u7E3E\u306E\u307F", armMonthly.today ? "（" + vizArmDayLabel(armMonthly.today) + "まで）" : "", "\u30FB\u30D6\u30FC\u30E0\u30D6\u30E9\u30B1\u30C3\u30C8\u306F\u9664\u304F")))), /*#__PURE__*/React.createElement("button", {
     onClick: onRefresh,
-    className: "w-full py-2 rounded-lg text-xs font-semibold text-white",
+    className: "nd-full w-full py-2 rounded-lg text-xs font-semibold text-white",
     style: {
       background: NAVY
     }
@@ -5920,9 +5923,9 @@ function YardCapacityTab({
   const bounds = days.length > 0 ? vizMonthBounds(days, "日付") : [];
   const logRows = log && log.rows || [];
   return /*#__PURE__*/React.createElement("div", {
-    className: "space-y-4"
+    className: "nd-tab"
   }, err && /*#__PURE__*/React.createElement(Card, {
-    className: "p-3"
+    className: "nd-full p-3"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-red-700 bg-red-50 rounded-md px-3 py-2"
   }, "\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F\uFF1A", err)), /*#__PURE__*/React.createElement(Card, {
@@ -7208,6 +7211,11 @@ function App() {
     yardcap: {
       title: "野外置場",
       subtitle: dateLabel
+    },
+    // ★ 抜けていて、実績・推移タブの見出しが「受注・指図書」になっていた
+    actuals: {
+      title: "実績・推移",
+      subtitle: dateLabel
     }
   };
   const currentHeader = tabHeaders[tab] || tabHeaders.orders;
@@ -7446,7 +7454,7 @@ function App() {
     },
     className: "text-white"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "max-w-4xl mx-auto px-4 py-4 flex items-center gap-3"
+    className: "nd-wrap px-4 py-4 flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "w-1.5 h-9 rounded-full",
     style: {
@@ -7485,9 +7493,9 @@ function App() {
     hour: "2-digit",
     minute: "2-digit"
   }), "\uFF09\u306E\u30C7\u30FC\u30BF\u3092\u8868\u793A\u4E2D\u30FB\u6700\u65B0\u3092\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059\u2026"), /*#__PURE__*/React.createElement("main", {
-    className: "max-w-4xl mx-auto px-4 py-5 space-y-6"
+    className: "nd-wrap px-4 py-5 space-y-6"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-2 sm:grid-cols-4 gap-3"
+    className: "nd-kpis"
   }, currentKpis.map((k, i) => {
     const Icon = k.icon;
     const t = TONE[k.tone];

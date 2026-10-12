@@ -139,7 +139,7 @@ const REPLY = {
   await tab.click();
   await page.waitForTimeout(1200);
 
-  const kpi = await page.evaluate(() => [...document.querySelectorAll('main .grid > div')]
+  const kpi = await page.evaluate(() => [...document.querySelectorAll('main > div.nd-kpis > div')]
     .map((c) => c.innerText.replace(/\n+/g, ' / ')).slice(0, 4));
   console.log('   KPI:', JSON.stringify(kpi, null, 0));
   chk('KPIに合計本数が出る', kpi.some((t) => t.includes('31,680')), kpi);
