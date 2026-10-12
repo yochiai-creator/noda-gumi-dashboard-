@@ -4123,7 +4123,9 @@ export default function App() {
   if (isGasEnv && !initialLoadDone) {
     return (
       <div className="bg-slate-100 text-slate-900 flex items-center justify-center" style={{ position: "fixed", inset: 0, fontFamily: '"Noto Sans JP", system-ui, -apple-system, "Hiragino Kaku Gothic ProN", sans-serif' }}>
-        <div className="flex flex-row items-center gap-3">
+        {/* ★ 文字の下にリフトを置く。横に並べると、文字（約170px）と走る道（320px）で
+               スマホの幅（390px）を超え、リフトが画面の右にはみ出していた */}
+        <div className="flex items-center gap-3" style={{ flexDirection: "column" }}>
           <p className="text-sm text-slate-500">データを読み込んでいます…</p>
           <ForkliftLoader />
         </div>

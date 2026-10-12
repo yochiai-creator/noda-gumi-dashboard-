@@ -69,6 +69,35 @@ const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
     await ctx.close();
   }
 
+  console.log('■ 読み込み中のリフトが画面からはみ出さない（スマホ）');
+  for (const w of [390, 360]) {
+    // サーバが返事をしない＝読み込み中の画面のまま
+    const ctx = await b.newContext({ viewport: { width: w, height: 800 }, isMobile: true, hasTouch: true });
+    const page = await ctx.newPage();
+    await page.addInitScript(() => {
+      const px = new Proxy({}, { get(t, fn) { return (fn === 'withSuccessHandler' || fn === 'withFailureHandler') ? () => px : () => px; } });
+      window.google = { script: { get run() { return px; }, host: {} } };
+    });
+    const tmp = SP + '/resp_load.html';
+    fs.writeFileSync(tmp, html);
+    await page.goto('file://' + tmp);
+    let worst = { left: 0, right: 0 };
+    for (let i = 0; i < 16; i++) {   // 7秒で1往復。0.5秒ごとに8秒ぶん見る
+      const r = await page.evaluate(() => {
+        const el = document.querySelector('.forklift-move');
+        if (!el) return null;
+        const a = el.getBoundingClientRect();
+        return { left: a.left, right: a.right, vw: document.documentElement.clientWidth };
+      });
+      if (r) worst = { left: Math.min(worst.left, r.left), right: Math.max(worst.right, r.right - r.vw) };
+      await page.waitForTimeout(500);
+    }
+    chk('★' + w + 'px：リフトが左にはみ出さない', worst.left >= 0, worst);
+    chk('★' + w + 'px：リフトが右にはみ出さない', worst.right <= 0, worst);
+    chk(w + 'px：読み込み中の画面も横にはみ出さない', await overflow(page) === 0, await overflow(page));
+    await ctx.close();
+  }
+
   console.log('■ タブレット 820px');
   {
     const { ctx, page } = await openAt(820, 1180);
