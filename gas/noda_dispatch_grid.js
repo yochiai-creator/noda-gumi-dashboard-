@@ -444,9 +444,13 @@ function dgrid_context_() {
   var values = src.sheet.getDataRange().getValues();
   var blocks = dgrid_findBlocks_(values);
   if (blocks.length === 0) throw new Error('週ブロックが見つかりません');
+  // 50kの指図書のコピー（◆容器種類別＝チェック前／◆チェック完了＝チェック済）。読めなくても表は出す
+  var checkEntries = [];
+  try { checkEntries = ychk_entries_('50k'); } catch (err) { Logger.log('配車表：チェック状態を読めず: ' + String(err)); }
   return { src: src, values: values, blocks: blocks,
            baseIdx: dgrid_todayBlockIndex_(blocks),
-           shipIndex: shipact_index_() };   // 出荷実績シートの索引（全週で使い回す）
+           shipIndex: shipact_index_(),   // 出荷実績シートの索引（全週で使い回す）
+           checkEntries: checkEntries };
 }
 
 /* 今日を含むブロック。無ければ今日より後で一番近いブロック。 */
@@ -497,6 +501,10 @@ function dgrid_buildWeek_(ctx, weekOffset) {
         // 行き先が住所だけのマスは、出荷希望日と市区町村から推定する。
         // 引取（←）は出荷の指図書ではないので住所からは引かない。
         if (!orders && k.kind === '出荷') orders = dgrid_destOrders_(k.text, d.date, shipIndex);
+        // ★ 50kの指図書はヤードと同じく、枝番ごとにチェック前／済のコピーを開く
+        if (orders && ctx.checkEntries && ctx.checkEntries.length) {
+          try { orders = ychk_splitOrders_(orders, ctx.checkEntries, d.date); } catch (errC) { /* 元のまま */ }
+        }
         if (orders) cell.orders = orders;
         cells[d.col] = cell;
       }

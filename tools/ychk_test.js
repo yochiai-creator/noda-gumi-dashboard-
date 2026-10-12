@@ -295,6 +295,30 @@ console.log('■ 枝番ごとにチェック済のコピーを開く（実物 50
   chk('元の指図書（書き込みなし）のURLは残らない', !b3.orders.some((o) => /1etf6V4s/.test(o.url)), b3.orders.map((o) => o.url));
 }
 
+console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・コピーを開く）');
+{
+  const s6 = sb();
+  const DONE1 = 'https://drive/done1';
+  const ents = s6.ychk_dedupe_([
+    s6.ychk_entry_(F('26.10.14_26-60821-0(1)_沖縄ガス 中部支社.pdf', '数量:80\n容器No:HEP55421~HEP55500', DONE1), 'チェック済'),
+    s6.ychk_entry_(F('26.10.14_26-60821-0(2)_沖縄ガス 中部支社.pdf', '数量:6'), 'チェック済'),
+    s6.ychk_entry_(F('26.10.14_26-60821-0(3)_沖縄ガス 中部支社.pdf', '容器No:HEP59708~HEP59721'), 'チェック前'),
+    s6.ychk_entry_(F('26.10.21_26-60821-0(4)_沖縄ガス 中部支社.pdf', '数量:10'), 'チェック前'),
+  ]);
+  // 配車表のマス「60821→」（年度なし）
+  const out = s6.ychk_splitOrders_([{ no: '60821', url: 'orig', date: '10/14' }], ents, '2026-10-14');
+  chk('★枝番ごとに3つ（10/21の便の (4) は混ぜない）', out.map((o) => o.ban).join() === '(1),(2),(3)', out.map((o) => o.ban));
+  chk('★(1) はチェック完了のコピーを開いて ✓済', out[0].url === DONE1 && out[0].check === 'チェック済', out[0]);
+  chk('(3) はチェック前', out[2].check === 'チェック前');
+  chk('依頼Noの書き方（年度なし）はそのまま', out.every((o) => o.no === '60821'));
+  const g = s6.ychk_splitOrders_([{ no: '60821', url: 'x', guess: true }], ents, '2026-10-15');
+  chk('推定の印も引き継ぐ・前後1日の便を拾う', g.length === 3 && g.every((o) => o.guess), g);
+  const other = [{ no: '30412', url: 'u', date: '9/10' }];
+  chk('コピーの無い依頼No（20kなど）はそのまま', JSON.stringify(s6.ychk_splitOrders_(other, ents, '2026-09-10')) === JSON.stringify(other));
+  const far = s6.ychk_splitOrders_([{ no: '60821', url: 'x' }], ents, '2026-11-30');
+  chk('日付が合うものが無ければ全部', far.length === 4, far.map((o) => o.ban));
+}
+
 // ===== 画面（390px） =====
 (async () => {
   const { chromium } = require('playwright');

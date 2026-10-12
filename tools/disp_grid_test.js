@@ -106,7 +106,8 @@ const REPLY = {
                  5: { kind: '出荷', text: '30412,30458→ 30413', q20: null, q50: null,
                       orders: [{ no: '30412', url: 'https://drive.google.com/file/d/a/view', date: '9/10' },
                                { no: '30458', url: null, date: null },
-                               { no: '30413', url: 'https://drive.google.com/file/d/c/view', date: '9/10' }] },
+                               // ★ 50kの指図書はヤードと同じく、枝番とチェックの状態が付いてくる
+                               { no: '30413', ban: '(1)', url: 'https://drive.google.com/file/d/c/view', date: '9/10', check: 'チェック済' }] },
                  6: { kind: '出荷', text: '鳥取県米子市', q20: 180, q50: 30 } } },
       { row: 10, company: '', truck: '4ｔ平標準 福安',
         // ★ 1つのマスに行き先が2か所 → 推定でも2件とも出す
@@ -259,6 +260,8 @@ const REPLY = {
   chk('リンクにPDFのURLが入っている',
     shiji.links.every((l) => /drive\.google\.com/.test(l.href)), shiji.links);
   chk('依頼Noと日付が出る', /指図書 30412（9\/10）/.test(shiji.links[0].t), shiji.links[0]);
+  chk('★50kは枝番と「✓済」が出る（ヤードと同じ）', shiji.links.some((l) => /指図書 30413\(1\)（9\/10）✓済/.test(l.t)), shiji.links);
+  chk('チェックの状態が無い依頼Noには何も付けない', !/済|チェック前/.test(shiji.links[0].t), shiji.links[0]);
   chk('PDFが見つからない依頼Noはそう書く', shiji.dim.length === 1 && /30458/.test(shiji.dim[0]), shiji.dim);
   chk('地名には「依頼No」を付けない',
     ono && !ono.some((t2) => /依頼No[^|]*県/.test(t2)), ono);

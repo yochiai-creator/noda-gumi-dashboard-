@@ -175,6 +175,38 @@ function ychk_attachToBlocks_(raw, entries, sizeKey, todayKey) {
   return raw;
 }
 
+/* ★ 配車表のマスの指図書を、ヤードと同じ形にする（50kのみ）。
+     依頼Noの指図書が ◆容器種類別／◆チェック完了 のコピーにあれば、枝番ごとに分けて
+     コピーを開き、チェックの状態を付ける。コピーが無い依頼No（20kなど）はそのまま。
+     マスの日付があれば、出荷希望日が前後1日のものだけにする（同じ依頼Noの別の日の便を混ぜない）。
+     どれも無ければ全部。 */
+function ychk_splitOrders_(orders, entries, dateKey) {
+  if (!orders || !orders.length || !entries || !entries.length) return orders;
+  var byNo = {};
+  entries.forEach(function (e) { (byNo[ychk_bare_(e.orderNo)] = byNo[ychk_bare_(e.orderNo)] || []).push(e); });
+  var day = function (k) { return k ? Date.UTC(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, Number(k.slice(8, 10))) : NaN; };
+  var out = [];
+  orders.forEach(function (o) {
+    var files = byNo[ychk_bare_(o.no)];
+    if (!files) { out.push(o); return; }
+    if (dateKey) {
+      var near = files.filter(function (f) { return f.dateKey && Math.abs(day(f.dateKey) - day(dateKey)) <= 86400000; });
+      if (near.length) files = near;
+    }
+    files.slice().sort(function (x, y) { return (x.eda - y.eda) || ((x.ver || 0) - (y.ver || 0)); })
+      .forEach(function (f) {
+        var one = {};
+        Object.keys(o).forEach(function (k) { one[k] = o[k]; });
+        one.ban = ychk_banLabel_(f);
+        one.url = f.url || o.url || null;
+        one.check = f.state;
+        one.date = f.shipDate;
+        out.push(one);
+      });
+  });
+  return out;
+}
+
 // ===== Drive から読む =====
 
 function ychk_norm_(s) {

@@ -2591,7 +2591,16 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                                   style={o.guess
                                     ? { background: "#fff", color: "#2563eb", border: "1px solid #93c5fd", textDecoration: "none" }
                                     : { background: "#2563eb", color: "#fff", textDecoration: "none" }}>
-                                  <FileText size={11} />指図書 {o.no}{o.date ? "（" + o.date + "）" : ""}
+                                  <FileText size={11} />指図書 {o.no}{o.ban || ""}{o.date ? "（" + o.date + "）" : ""}
+                                  {/* 50kはヤードと同じく、チェックの状態（◆チェック完了＝済） */}
+                                  {o.check && (
+                                    <span className="px-1 rounded text-[9px]"
+                                      style={o.check === "チェック前"
+                                        ? { background: o.guess ? "#e2e8f0" : "rgba(255,255,255,.3)", color: o.guess ? "#475569" : "#fff" }
+                                        : { background: "#059669", color: "#fff" }}>
+                                      {o.check === "チェック前" ? "チェック前" : "✓済"}
+                                    </span>
+                                  )}
                                 </a>
                               ) : (
                                 <span key={oi} className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] bg-slate-100"
