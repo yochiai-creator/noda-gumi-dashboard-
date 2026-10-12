@@ -765,9 +765,9 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
   return (
     <div className="nd-tab">
       <Collapsible title="受注出荷計画表 概要" note="共有ドライブ・日次自動取得"
-        closedNote={"LP容器 " + planLpTotal.toLocaleString() + " 本"}>
+        closedNote={"受注 " + planLpTotal.toLocaleString() + " 本"}>
         <Card className="p-4 mb-3" style={{ background: NAVY }}>
-          <div className="text-xs text-slate-300 mb-1">LP容器 合計本数</div>
+          <div className="text-xs text-slate-300 mb-1">受注 合計本数（LP容器）</div>
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold tabular-nums text-white">{planLpTotal.toLocaleString()}</span>
             <span className="text-xs text-slate-400">本</span>
@@ -4034,7 +4034,8 @@ export default function App() {
         })(),
         unit: "本", icon: Package, tone: "ok"
       },
-      { label: "LP容器 合計本数", value: planLpTotalForKpi.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
+      // ★ 受注出荷計画表のサイズ別受注本数の合計。「LP容器 合計本数」だと在庫と見分けが付かなかった
+      { label: "受注 合計本数（LP容器）", value: planLpTotalForKpi.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
     ],
     yard: [
       { label: "50k 在庫", value: inv50.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },

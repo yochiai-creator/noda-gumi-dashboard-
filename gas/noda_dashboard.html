@@ -1674,7 +1674,7 @@ function OrdersTab({
   }, /*#__PURE__*/React.createElement(Collapsible, {
     title: "\u53D7\u6CE8\u51FA\u8377\u8A08\u753B\u8868 \u6982\u8981",
     note: "\u5171\u6709\u30C9\u30E9\u30A4\u30D6\u30FB\u65E5\u6B21\u81EA\u52D5\u53D6\u5F97",
-    closedNote: "LP容器 " + planLpTotal.toLocaleString() + " 本"
+    closedNote: "受注 " + planLpTotal.toLocaleString() + " 本"
   }, /*#__PURE__*/React.createElement(Card, {
     className: "p-4 mb-3",
     style: {
@@ -1682,7 +1682,7 @@ function OrdersTab({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-300 mb-1"
-  }, "LP\u5BB9\u5668 \u5408\u8A08\u672C\u6570"), /*#__PURE__*/React.createElement("div", {
+  }, "\u53D7\u6CE8 \u5408\u8A08\u672C\u6570\uFF08LP\u5BB9\u5668\uFF09"), /*#__PURE__*/React.createElement("div", {
     className: "flex items-baseline gap-1"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-2xl font-bold tabular-nums text-white"
@@ -7251,8 +7251,10 @@ function App() {
       unit: "本",
       icon: Package,
       tone: "ok"
-    }, {
-      label: "LP容器 合計本数",
+    },
+    // ★ 受注出荷計画表のサイズ別受注本数の合計。「LP容器 合計本数」だと在庫と見分けが付かなかった
+    {
+      label: "受注 合計本数（LP容器）",
       value: planLpTotalForKpi.toLocaleString(),
       unit: "本",
       icon: Boxes,
