@@ -431,6 +431,10 @@ function yard_computeUpdates_(sizeKey, queries) {
     } catch (err) {
       result.error = String(err);
     }
+    // ★ 1つの区画に群が2つ（「654,655」）。表示と容器番号の範囲だけ直す（シートには書かない）
+    if (result.found) {
+      try { yard_applyMultiGno_(sizeKey, result); } catch (multiErr) { Logger.log('群番号の読み直しでエラー: ' + String(multiErr)); }
+    }
     out.push(result);
   }
   return out;
@@ -457,6 +461,68 @@ function yard_readFromGrid_(grid, a1) {
   if (!rowArr || pos.col < 0 || pos.col >= rowArr.length) return '';
   var v = rowArr[pos.col];
   return v === null || v === undefined ? '' : v;
+}
+
+/* ★ 1つの区画に群（GNo）が2つ以上入っていることがある。
+     50k <10> の GNo の欄に「654,655」と打たれていて、シートはこれを数の 654655
+     （3桁区切りのカンマ）として持っている。そのまま計算すると容器番号が
+     65465401〜65465500 というありえない範囲になり、指図書の容器番号と重ならず、
+     その区画には指図書もチェックの状態も付かなかった。
+   群番号は1000までしかない（50kは (GNo−1)×100+1、20kは 50000+(GNo−1)×50+1 が
+   5桁に収まる）。1000を超える数・数が並んだ文字は、群の並びとして読む。
+     654655 → 654, 655 ／ "654,655" "654・655" "654～655" → 654, 655
+   範囲は群が続き番号のときだけ出す（飛んでいると1つの範囲で表せないので出さない）。
+   読めなければ null（今までどおり）。 */
+var YARD_GNO_MAX = 1000;
+
+function yard_parseGnoList_(v) {
+  if (v === null || v === undefined || v === '') return null;
+  var s = String(v).trim();
+  var list = null;
+  if (/^\d+$/.test(s)) {
+    if (Number(s) <= YARD_GNO_MAX) return null;   // ふつうの群番号1つ
+    [3, 4].some(function (L) {
+      if (s.length % L !== 0 || s.length / L < 2) return false;
+      var parts = [];
+      for (var i = 0; i < s.length; i += L) parts.push(Number(s.substr(i, L)));
+      if (!yard_gnoConsecutive_(parts)) return false;
+      list = parts;
+      return true;
+    });
+  } else {
+    var nums = s.match(/\d+/g);
+    if (!nums || nums.length < 2) return null;
+    list = nums.map(Number);
+    // 「654～656」は 654,655,656 のこと
+    if (list.length === 2 && /[～〜~\-ー－]/.test(s) && list[1] > list[0] && list[1] - list[0] <= 10) {
+      var full = [];
+      for (var g = list[0]; g <= list[1]; g++) full.push(g);
+      list = full;
+    }
+  }
+  if (!list || list.some(function (g) { return !(g >= 1 && g <= YARD_GNO_MAX); })) return null;
+  return list;
+}
+
+function yard_gnoConsecutive_(list) {
+  for (var i = 1; i < list.length; i++) if (list[i] !== list[i - 1] + 1) return false;
+  return true;
+}
+
+/* result の groupNo が群の並びなら、表示を「654・655」に、範囲を群の端から端にする。 */
+function yard_applyMultiGno_(sizeKey, result) {
+  var list = yard_parseGnoList_(result.groupNo);
+  if (!list) return result;
+  result.groupNo = list.join('・');
+  result.gnos = list;
+  if (yard_gnoConsecutive_(list)) {
+    var a = yard_computeRangeFromGNo_(sizeKey, list[0]);
+    var b = yard_computeRangeFromGNo_(sizeKey, list[list.length - 1]);
+    if (a && b) { result.rangeStart = a.start; result.rangeEnd = b.end; }
+  } else {
+    result.rangeStart = null; result.rangeEnd = null;
+  }
+  return result;
 }
 
 function yard_computeRangeFromGNo_(sizeKey, gno) {

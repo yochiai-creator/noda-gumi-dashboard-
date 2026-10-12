@@ -144,6 +144,49 @@ console.log('■ Driveのフォルダをたどる（全角の「50Ｋ」・月�
   chk('20kは空', s.ychk_entries_('20k').length === 0);
 }
 
+console.log('■ 群が2つ入った区画（実物 50k <10>「654,655」）');
+{
+  /* ★ 実際に起きた：GNo の欄の「654,655」をシートが数の 654655 として持っていて、
+       容器番号が 65465401〜65465500 になり、指図書もチェックの状態も付かなかった。 */
+  const e = { Logger: { log: () => {} }, JSON, Object, Number, String, Math, Date, Array, isNaN };
+  vm.createContext(e);
+  vm.runInContext(fs.readFileSync(GAS + 'noda_yard_edit_engine.js', 'utf8'), e);
+  const L = (v) => JSON.stringify(e.yard_parseGnoList_(v));
+  chk('★数の 654655 は 654・655', L(654655) === '[654,655]', L(654655));
+  chk('文字の "654,655" も', L('654,655') === '[654,655]');
+  chk('「654・655」「654、655」も', L('654・655') === '[654,655]' && L('654、655') === '[654,655]');
+  chk('「654～656」は3つ', L('654～656') === '[654,655,656]', L('654～656'));
+  chk('ふつうの群番号1つは今までどおり（null）', e.yard_parseGnoList_(631) === null && e.yard_parseGnoList_('631') === null);
+  chk('空は null', e.yard_parseGnoList_('') === null && e.yard_parseGnoList_(null) === null);
+  chk('続き番号でない6桁の数は読まない（123999）', e.yard_parseGnoList_(123999) === null);
+  chk('1000を超える群は読まない', e.yard_parseGnoList_('654,1655') === null);
+
+  const r = { found: true, pos: '10', groupNo: 654655, rangeStart: 65465401, rangeEnd: 65465500, qty: 100, orders: [] };
+  e.yard_applyMultiGno_('50k', r);
+  chk('★表示は「654・655」', r.groupNo === '654・655', r.groupNo);
+  chk('★範囲は 65301〜65500', r.rangeStart === 65301 && r.rangeEnd === 65500, [r.rangeStart, r.rangeEnd]);
+  const r20 = { groupNo: '101,102' };
+  e.yard_applyMultiGno_('20k', r20);
+  chk('20kの式でも', r20.rangeStart === 55001 && r20.rangeEnd === 55100, [r20.rangeStart, r20.rangeEnd]);
+  const rGap = { groupNo: '654,660', rangeStart: 1, rangeEnd: 2 };
+  e.yard_applyMultiGno_('50k', rGap);
+  chk('飛んでいる群は範囲を出さない（1つの範囲で表せない）', rGap.rangeStart === null && rGap.groupNo === '654・660', rGap);
+  const one = { groupNo: 631, rangeStart: 63001, rangeEnd: 63100 };
+  e.yard_applyMultiGno_('50k', one);
+  chk('1つの群は触らない', one.groupNo === 631 && one.rangeStart === 63001);
+
+  // 直した範囲で、<10> に置いてある 26-50430（チェック前・実物）が付く
+  const s2 = sb();
+  const ents = s2.ychk_dedupe_([
+    s2.ychk_entry_(F('26.10.19_26-50430-0(1)_ひかり工機株式会社.pdf', '得意先コード:0820\n数量:80\n容器No:HEP65301~HEP65380\n容器サイズ:50'), 'チェック前'),
+    s2.ychk_entry_(F('26.10.19_26-50430-0(2)_ひかり工機株式会社.pdf', '得意先コード:0820\n数量:80\n容器No:HEP65381~HEP65460\n容器サイズ:50'), 'チェック前'),
+  ]);
+  const raw = { '50k': [r] };
+  s2.ychk_attachToBlocks_(raw, ents, '50k');
+  chk('★<10> に 26-50430 が付く', r.orders.length === 1 && r.orders[0].no === '26-50430', r.orders);
+  chk('★<10> はチェック前', r.check === 'チェック前', r.check);
+}
+
 // ===== 画面（390px） =====
 (async () => {
   const { chromium } = require('playwright');
