@@ -56,12 +56,14 @@ function ychk_parseName_(name) {
 /* 説明欄から容器Noの範囲と数量。範囲は本数が数量と合うときだけ採る。 */
 function ychk_parseDesc_(desc) {
   var t = String(desc || '');
-  var out = { qty: null, a: null, b: null, prefix: null };
+  var out = { qty: null, a: null, b: null, prefix: null, ra: null, rb: null };
   var q = t.match(/数量\s*[:：]\s*(\d+)/);
   if (q) out.qty = Number(q[1]);
   var r = t.match(/容器No\s*[:：]\s*([A-Z]{2,5})(\d{5})\s*[~～〜\-]\s*(?:[A-Z]{2,5})?(\d{5})/i);
   if (r) {
     var a = Number(r[2]), b = Number(r[3]);
+    // 数量が読めなくても、ありそうな範囲は「この区画ではない」の手がかりには使う
+    if (b >= a && b - a + 1 <= 200) { out.ra = a; out.rb = b; }
     if (out.qty != null && b >= a && b - a + 1 === out.qty) {
       out.a = a; out.b = b; out.prefix = r[1].toUpperCase();
     }
@@ -76,7 +78,7 @@ function ychk_entry_(file, state) {
   var d = ychk_parseDesc_(file.description);
   return {
     orderNo: n.orderNo, eda: n.eda, ver: n.ver, shipDate: n.shipDate, dateKey: n.dateKey,
-    a: d.a, b: d.b, qty: d.qty, state: state,
+    a: d.a, b: d.b, ra: d.ra, rb: d.rb, qty: d.qty, state: state,
     url: file.url || null, name: file.name
   };
 }
@@ -92,6 +94,11 @@ function ychk_dedupe_(entries) {
     if (e.state === YCHK_CONFIG.STATE_DONE) by[k] = e;
   });
   return order.map(function (k) { return by[k]; });
+}
+
+/* 枝番と版の見出し。「-0(1)」→「(1)」、「-1(2)」→「-1(2)」、版なし →「」 */
+function ychk_banLabel_(f) {
+  return (f.eda ? '-' + f.eda : '') + (f.ver != null ? '(' + f.ver + ')' : '');
 }
 
 function ychk_bare_(no) { return String(no || '').replace(/^\d{2}-/, ''); }
@@ -124,6 +131,9 @@ function ychk_attachToBlocks_(raw, entries, sizeKey, todayKey) {
       var byNo = !!mine[ychk_bare_(e.orderNo)];
       // ★ 出荷希望日が過ぎたものは、番号の重なりだけでは付けない（もう出て行った）
       if (overlap && !byNo && e.dateKey && e.dateKey < todayKey) overlap = false;
+      /* ★ 数量が読めず範囲を信じきれないファイルでも、範囲が区画と重ならないなら
+           依頼Noが同じでもこの区画のものではない（26-60821 (3) は 59708〜59721 で <7>）。 */
+      if (byNo && e.a == null && e.ra != null && rngOk && !(e.ra <= rb && ra <= e.rb)) byNo = false;
       // 範囲が読めているファイルは、範囲が重なるときだけこの区画のもの
       if (e.a != null ? overlap : byNo) rel.push(e);
     });
@@ -135,18 +145,30 @@ function ychk_attachToBlocks_(raw, entries, sizeKey, todayKey) {
       var k = ychk_bare_(e.orderNo);
       (perNo[k] = perNo[k] || []).push(e);
     });
+    /* ★ 枝番ごとにボタンを分け、それぞれのコピーを開く。
+         1つの依頼Noに1つのボタンだと、元の指図書（書き込みの無いもの）の、しかも
+         別の区画の枝番が開いていた（<3> で 26-60821 を押すと、<7> にある (3) の
+         書き込みの無い元PDFが開き「チェック済なのにチェックされていない」と見えた）。
+         ◆チェック完了 のコピーには書き込み（チェックの印・押印）がある。 */
     Object.keys(perNo).forEach(function (k) {
-      var files = perNo[k];
+      var files = perNo[k].slice().sort(function (x, y) {
+        return (x.eda - y.eda) || ((x.ver || 0) - (y.ver || 0));
+      });
       var o = mine[k];
       if (!o) {
         o = { no: files[0].orderNo, src: '番号', url: null, date: files[0].shipDate };
         r.orders.push(o);
         mine[k] = o;
       }
-      o.check = ychk_combine_(files.map(function (f) { return f.state; }));
-      // コピー（現場で使っているほう）が1枚に決まるならそれを開く
-      if (files.length === 1 && files[0].url) o.url = files[0].url;
-      else if (!o.url) o.url = files[0].url;
+      var at = r.orders.indexOf(o);
+      files.forEach(function (f, i) {
+        var one = i === 0 ? o : { no: o.no, src: o.src };
+        one.ban = ychk_banLabel_(f);
+        one.url = f.url || one.url || null;
+        one.check = f.state;
+        one.date = f.shipDate;
+        if (i > 0) r.orders.splice(at + i, 0, one);
+      });
     });
     r.check = ychk_combine_(rel.map(function (e) { return e.state; }));
   });

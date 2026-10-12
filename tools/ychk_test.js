@@ -90,8 +90,12 @@ console.log('■ 区画に付ける');
   chk('★コピーが1枚に決まればコピーを開く', B('1').orders[0].url === 'https://drive/' + BEFORE[1].name, B('1').orders[0].url);
   chk('★3枚のうち2枚済なら「一部チェック済」', B('40').check === '一部チェック済', B('40').check);
   chk('★済だけが入る区画は「チェック済」', B('41').check === 'チェック済', B('41').check);
-  chk('★依頼Noが無くても容器Noの重なりで足す（番号）',
-    B('41').orders.length === 1 && B('41').orders[0].no === '26-40377' && B('41').orders[0].src === '番号', B('41').orders);
+  chk('★依頼Noが無くても容器Noの重なりで足す（番号）・枝番ごとにボタン',
+    B('41').orders.length === 2 && B('41').orders.every((o) => o.no === '26-40377' && o.src === '番号') &&
+    B('41').orders.map((o) => o.ban).join() === '(2),(3)', B('41').orders);
+  chk('★<40> は3枚それぞれのボタン（コピーを開く・状態も別々）',
+    B('40').orders.map((o) => o.ban + o.check).join() === '(1)チェック前,(2)チェック済,(3)チェック済' &&
+    B('40').orders.every((o) => /^https:\/\/drive\/26\.10\.16_26-40377/.test(o.url)), B('40').orders);
   chk('★範囲の無いファイルは依頼Noで結ぶ（年度なしでも）', B('5').check === 'チェック済' && B('5').orders[0].check === 'チェック済', B('5'));
   chk('★範囲が重ならない枝番は付けない', !B('6').check && !B('6').orders[0].check, B('6'));
   chk('空き区画には付けない', !B('7').check && B('7').orders.length === 0, B('7'));
@@ -183,7 +187,7 @@ console.log('■ 群が2つ入った区画（実物 50k <10>「654,655」）');
   ]);
   const raw = { '50k': [r] };
   s2.ychk_attachToBlocks_(raw, ents, '50k', '2026-10-12');
-  chk('★<10> に 26-50430 が付く', r.orders.length === 1 && r.orders[0].no === '26-50430', r.orders);
+  chk('★<10> に 26-50430 の (1)(2) が付く', r.orders.length === 2 && r.orders.every((o) => o.no === '26-50430'), r.orders);
   chk('★<10> はチェック前', r.check === 'チェック前', r.check);
 }
 
@@ -266,6 +270,31 @@ console.log('■ 出荷希望日が過ぎた指図書は、番号の重なりで
   chk('出荷前なら付ける', raw2['50k'][0].orders.length === 1 && raw2['50k'][0].orders[0].src === '番号');
 }
 
+console.log('■ 枝番ごとにチェック済のコピーを開く（実物 50k <3> 26-60821）');
+{
+  /* ★ 実際に起きた：<3> の「26-60821 ✓済」を押すと、元の指図書（書き込みなし）の
+       (3)（59708〜59721・<7> のもの）が開き、チェックされていないように見えた。
+       ◆チェック完了 の (1) には赤のチェックと押印がある。 */
+  const s5 = sb();
+  const DONE_URL = 'https://drive.google.com/file/d/1ZxYyFlWEoMW_ofU0WmYs4lY2C_jK-VRC/view';
+  const ents = s5.ychk_dedupe_([
+    s5.ychk_entry_(F('26.10.14_26-60821-0(1)_沖縄ガス 中部支社.pdf', '得意先コード:9300\n数量:80\n容器No:HEP55421~HEP55500\n品名:新軽量118L (50kg)', DONE_URL), 'チェック済'),
+    s5.ychk_entry_(F('26.10.14_26-60821-0(2)_沖縄ガス 中部支社.pdf', '得意先コード:9300\n数量:6\n品名:新軽量118L (50kg)'), 'チェック済'),
+    s5.ychk_entry_(F('26.10.14_26-60821-0(3)_沖縄ガス 中部支社.pdf', '得意先コード:9300\n容器No:HEP59708~HEP59721\n品名:#1 18 L (50 kg) LPX\n_読めず:1'), 'チェック済'),
+  ]);
+  const b3 = { found: true, pos: '3', rangeStart: 55421, rangeEnd: 55500,
+    orders: [{ no: '26-60821', url: 'https://drive.google.com/file/d/1etf6V4s_ibvwIHoTDJc-SguCYDLvJEdu/view', src: '手入力' }] };
+  const b7 = { found: true, pos: '7', rangeStart: 59701, rangeEnd: 59800,
+    orders: [{ no: '26-60821', url: 'orig', src: '手入力' }] };
+  s5.ychk_attachToBlocks_({ '50k': [b3, b7] }, ents, '50k', '2026-10-12');
+  chk('★<3> の (1) はチェック完了のコピー（書き込みあり）を開く', b3.orders[0].ban === '(1)' && b3.orders[0].url === DONE_URL, b3.orders[0]);
+  chk('★<3> に (3)（59708〜59721）は付かない', !b3.orders.some((o) => o.ban === '(3)'), b3.orders.map((o) => o.ban));
+  chk('<3> に範囲の分からない (2) は付ける', b3.orders.some((o) => o.ban === '(2)'));
+  chk('★<7> には (3) が付く（数量が読めなくても範囲が重なる）', b7.orders.some((o) => o.ban === '(3)'), b7.orders.map((o) => o.ban));
+  chk('<7> に (1)（55421〜55500）は付かない', !b7.orders.some((o) => o.ban === '(1)'));
+  chk('元の指図書（書き込みなし）のURLは残らない', !b3.orders.some((o) => /1etf6V4s/.test(o.url)), b3.orders.map((o) => o.url));
+}
+
 // ===== 画面（390px） =====
 (async () => {
   const { chromium } = require('playwright');
@@ -274,7 +303,7 @@ console.log('■ 出荷希望日が過ぎた指図書は、番号の重なりで
   const E = { updated: '2026-10-11 12:00', error: null };
   const yard = JSON.stringify({ '50k': [
     { pos: '4', found: true, kind: 'fill', groupNo: 627, rangeStart: 62601, rangeEnd: 62700, qty: 100, check: 'チェック済',
-      orders: [{ no: '26-20354', url: 'https://drive.google.com/file/d/a/view', date: '10/16', src: '手入力', check: 'チェック済' },
+      orders: [{ no: '26-20354', ban: '(1)', url: 'https://drive.google.com/file/d/a/view', date: '10/16', src: '手入力', check: 'チェック済' },
                { no: '26-20355', url: 'https://drive.google.com/file/d/b/view', date: '10/16', src: '番号', check: 'チェック前' }] },
     { pos: '6', found: true, kind: 'fill', groupNo: 647, rangeStart: 64601, rangeEnd: 64700, qty: 100, check: 'チェック前',
       orders: [{ no: '26-50406', url: 'https://drive.google.com/file/d/c/view', date: '10/13', src: '手入力', check: 'チェック前' },
@@ -327,7 +356,7 @@ console.log('■ 出荷希望日が過ぎた指図書は、番号の重なりで
   await page.waitForTimeout(400);
   let t = await page.evaluate(() => document.body.innerText);
   chk('★明細の状態にチェック済', /引当済\nチェック済/.test(t), t.slice(t.indexOf('状態'), t.indexOf('状態') + 60));
-  chk('★指図書ボタンに「✓済」と「チェック前」', /26-20354（10\/16） を開く\n?✓済/.test(t) && /26-20355（10\/16） を開く\n?番号\n?チェック前/.test(t),
+  chk('★指図書ボタンに「✓済」と「チェック前」', /26-20354\(1\)（10\/16） を開く\n?✓済/.test(t) && /26-20355（10\/16） を開く\n?番号\n?チェック前/.test(t),
     t.slice(t.indexOf('出荷作業指図書'), t.indexOf('出荷作業指図書') + 200));
   await page.screenshot({ path: SP + '/ychk_detail.png' });
 
