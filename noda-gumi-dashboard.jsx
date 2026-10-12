@@ -761,15 +761,17 @@ function DispatchTab({ grid, onSaveCell, onWeek, saving }) {
 }
 
 function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel }) {
-  const planLpTotal = planBySize.reduce((sum, s) => sum + s.count, 0);
+  // サイズ別が読めていなければ「—」（0本と見分ける）
+  const planLpTotal = planBySize.length ? planBySize.reduce((sum, s) => sum + s.count, 0) : null;
+  const fmt = (n) => (n == null ? "—" : n.toLocaleString());
   return (
     <div className="nd-tab">
       <Collapsible title="受注出荷計画表 概要" note="共有ドライブ・日次自動取得"
-        closedNote={"受注 " + planLpTotal.toLocaleString() + " 本"}>
+        closedNote={"受注 " + fmt(planLpTotal) + " 本"}>
         <Card className="p-4 mb-3" style={{ background: NAVY }}>
           <div className="text-xs text-slate-300 mb-1">受注 合計本数（LP容器）</div>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold tabular-nums text-white">{planLpTotal.toLocaleString()}</span>
+            <span className="text-2xl font-bold tabular-nums text-white">{fmt(planLpTotal)}</span>
             <span className="text-xs text-slate-400">本</span>
           </div>
         </Card>
@@ -787,6 +789,9 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
         </div>
         <Card className="overflow-hidden">
           <div className="divide-y divide-slate-100">
+            {planRecent.length === 0 && (
+              <p className="px-4 py-3 text-xs text-slate-400">前日の表から増えた受注はありません。</p>
+            )}
             {planRecent.map((o, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-3">
                 <span className="text-xs font-mono tabular-nums text-slate-400 w-20 shrink-0">{o.date}</span>
@@ -805,6 +810,9 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
         closedNote={orders.length + " 件"}>
         <Card className="overflow-hidden">
           <div className="divide-y divide-slate-100">
+            {orders.length === 0 && (
+              <p className="px-4 py-3 text-xs text-slate-400">この月の指図書はまだありません。</p>
+            )}
             {orders.map((o, i) => (
               <a key={i} href={o.url} target="_blank" rel="noopener noreferrer"
                 onClick={(e) => openPdfQuick_(e, o.url, "指図書 " + o.orderNo)}
@@ -823,8 +831,8 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[
-          { label: `指図書 保存済（${monthLabel}・累計）`, value: String(total), unit: "件", icon: FileText, tone: "ok" },
-          { label: "本日 保存分",              value: String(today), unit: "件", icon: Clock,    tone: today > 0 ? "warn" : "neutral" },
+          { label: `指図書 保存済（${monthLabel}・累計）`, value: total == null ? "—" : String(total), unit: "件", icon: FileText, tone: "ok" },
+          { label: "本日 保存分",              value: today == null ? "—" : String(today), unit: "件", icon: Clock,    tone: today > 0 ? "warn" : "neutral" },
         ].map((s, i) => {
           const Icon = s.icon;
           return (
@@ -1659,7 +1667,7 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, byS
         <YardMap yardLive={yardLive} onRefresh={onRefresh} />
       </Collapsible>
       <Collapsible title="サイズ別 在庫本数" note="在庫照会"
-        closedNote={"合計 " + invTotal.toLocaleString() + " 本"}>
+        closedNote={"合計 " + (invTotal == null ? "—" : invTotal.toLocaleString()) + " 本"}>
         {/* ★ 在庫照会CSVの「分類」列から出した9分類の内訳。
                2K/5K/8K/10K/20K(三部軽量)/20K(直付)/30K/50K(軽量型)/50K(S)。
                取れないときだけ 50kg/20kg の2つに落とす。 */}
@@ -1669,7 +1677,7 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, byS
               <div className="text-[11px] text-slate-500 mb-0.5 truncate">{s.label}</div>
               <div className="flex items-baseline gap-1">
                 <span className="text-lg font-bold tabular-nums text-slate-900">
-                  {(s.count != null ? s.count : s.total).toLocaleString()}
+                  {(() => { const v = s.count != null ? s.count : s.total; return v == null ? "—" : v.toLocaleString(); })()}
                 </span>
                 <span className="text-[10px] text-slate-400">本{s.approx ? "※" : ""}</span>
               </div>
@@ -1678,7 +1686,7 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, byS
           <Card className="p-3" style={{ background: NAVY }}>
             <div className="text-[11px] text-slate-300 mb-0.5">合計</div>
             <div className="flex items-baseline gap-1">
-              <span className="text-lg font-bold tabular-nums text-white">{invTotal.toLocaleString()}</span>
+              <span className="text-lg font-bold tabular-nums text-white">{invTotal == null ? "—" : invTotal.toLocaleString()}</span>
               <span className="text-[10px] text-slate-400">本</span>
             </div>
           </Card>
@@ -1700,7 +1708,7 @@ function YardTab({ inventory, invTotal, byYear, oldest, yardLive, onRefresh, byS
                 </div>
               </div>
             ))}
-            <p className="text-[11px] text-slate-400 pt-1">最古の刻印月：{oldest}（古いロットの滞留チェック用）</p>
+            {oldest && <p className="text-[11px] text-slate-400 pt-1">最古の刻印月：{oldest}（古いロットの滞留チェック用）</p>}
           </Card>
         </Collapsible>
       </div>
@@ -3863,48 +3871,57 @@ export default function App() {
   const dateLabel = now.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
   const timeLabel = now.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
 
-  // ライブデータがあれば優先、無ければフォールバック（ダミー/前回確認済み値）を使う
-  const shippingTotal = live.shipping ? live.shipping.total : SHIPPING_TOTAL_FALLBACK;
-  const shippingToday = live.shipping ? live.shipping.todayCount : SHIPPING_TODAY_FALLBACK;
+  /* ★ 見本の数字（〜_FALLBACK）は、サーバの無いプレビューでだけ使う。
+       本番（GAS）で読めなかったときや空のときに見本を出すと、8月の見本の数字や
+       指図書・受注の一覧が本物のように出てしまっていた（新規受注が無い日に
+       「26/08/07 …」が出る、月初に先月の見本の指図書が出る、など）。
+       本番では、読めなければ「—」、空なら空と出す。 */
+  const useDummy = !isGasEnv;
+  const fmtN = (n) => (n == null ? "—" : Number(n).toLocaleString());
+  const shippingTotal = live.shipping ? live.shipping.total : (useDummy ? SHIPPING_TOTAL_FALLBACK : null);
+  const shippingToday = live.shipping ? live.shipping.todayCount : (useDummy ? SHIPPING_TODAY_FALLBACK : null);
   // 指図書フォルダは月ごとに自動判定される（GAS側で実施済み）。表示ラベルも
   // 実際に使われた月（live.shipping.folder、例:"9月"）に合わせる。
   // 未取得時は現在の日本時間の月をフォールバックとして使う。
   const shippingMonthLabel = (live.shipping && live.shipping.folder)
     ? live.shipping.folder
     : `${new Date().getMonth() + 1}月`;
-  const shippingOrders = live.shipping && live.shipping.recent && live.shipping.recent.length > 0
-    ? live.shipping.recent.map((o) => ({
+  const shippingOrders = live.shipping
+    ? (live.shipping.recent || []).map((o) => ({
         date: o.date.slice(5).replace("-", "/"),
         orderNo: o.orderNo,
         fileName: o.fileName,
         url: o.url,
       }))
-    : SHIPPING_ORDERS_FALLBACK;
+    : (useDummy ? SHIPPING_ORDERS_FALLBACK : []);
 
-  const planTotal = live.orderPlan ? live.orderPlan.totalOrders : ORDERPLAN_TOTAL_FALLBACK;
-  const planRecent = live.orderPlan && live.orderPlan.recent && live.orderPlan.recent.length > 0
-    ? live.orderPlan.recent
-    : ORDERPLAN_RECENT_FALLBACK;
-  let planBySize = ORDERPLAN_BYSIZE_FALLBACK;
+  const planTotal = live.orderPlan ? live.orderPlan.totalOrders : (useDummy ? ORDERPLAN_TOTAL_FALLBACK : null);
+  const planRecent = live.orderPlan
+    ? (live.orderPlan.recent || [])
+    : (useDummy ? ORDERPLAN_RECENT_FALLBACK : []);
+  let planBySize = useDummy ? ORDERPLAN_BYSIZE_FALLBACK : [];
   if (live.orderPlan && live.orderPlan.bySize) {
     const by = live.orderPlan.bySize;
     const order = ["2K", "5K", "8K", "10K", "20K_三部軽量", "20K_直付", "30K", "50K_軽量型", "50K_S"];
     const picked = order
       .map((key) => (by[key] ? { label: by[key].label, count: by[key].count } : null))
       .filter(Boolean);
-    if (picked.length > 0) planBySize = picked;
+    if (picked.length > 0 || !useDummy) planBySize = picked;
   }
-  const planLpTotalForKpi = planBySize.reduce((sum, s) => sum + s.count, 0);
+  // サイズ別が1つも無い（読めていない）なら合計は出さない（0本と見分けるため）
+  const planLpTotalForKpi = planBySize.length ? planBySize.reduce((sum, s) => sum + s.count, 0) : null;
 
-  const dispatchDateLabel = live.dispatch && live.dispatch.dateLabel ? live.dispatch.dateLabel : DISPATCH_DATE_FALLBACK;
-  const dispatchShipments = live.dispatch && live.dispatch.shipments ? live.dispatch.shipments : DISPATCH_SHIPMENTS_FALLBACK;
+  const dispatchDateLabel = live.dispatch && live.dispatch.dateLabel ? live.dispatch.dateLabel : (useDummy ? DISPATCH_DATE_FALLBACK : "—");
+  const dispatchShipments = live.dispatch && live.dispatch.shipments ? live.dispatch.shipments : (useDummy ? DISPATCH_SHIPMENTS_FALLBACK : []);
   const dispatchWeek = live.dispatch && live.dispatch.week && live.dispatch.week.length > 0
     ? live.dispatch.week
-    : [{ dateLabel: dispatchDateLabel, shipments: dispatchShipments, qty20k: 6, qty50k: 282, koguchi20k: 6, koguchi50k: 32, kontena20k: 0, kontena50k: 0 }];
+    : (useDummy
+      ? [{ dateLabel: dispatchDateLabel, shipments: dispatchShipments, qty20k: 6, qty50k: 282, koguchi20k: 6, koguchi50k: 32, kontena20k: 0, kontena50k: 0 }]
+      : []);
 
-  const inv50 = live.inventory && live.inventory.sizes && live.inventory.sizes["50k"] ? live.inventory.sizes["50k"].total : INVENTORY_FALLBACK[0].total;
-  const inv20 = live.inventory && live.inventory.sizes && live.inventory.sizes["20k"] ? live.inventory.sizes["20k"].total : INVENTORY_FALLBACK[1].total;
-  const invTotal = live.inventory ? live.inventory.totals.total : INV_TOTAL_FALLBACK;
+  const inv50 = live.inventory && live.inventory.sizes && live.inventory.sizes["50k"] ? live.inventory.sizes["50k"].total : (useDummy ? INVENTORY_FALLBACK[0].total : null);
+  const inv20 = live.inventory && live.inventory.sizes && live.inventory.sizes["20k"] ? live.inventory.sizes["20k"].total : (useDummy ? INVENTORY_FALLBACK[1].total : null);
+  const invTotal = live.inventory && live.inventory.totals ? live.inventory.totals.total : (useDummy ? INV_TOTAL_FALLBACK : null);
   const inventory = [
     { size: "50k", label: "50kg 容器", total: inv50, tone: "ok" },
     { size: "20k", label: "20kg 容器", total: inv20, tone: "ok" },
@@ -3921,8 +3938,8 @@ export default function App() {
       .filter(Boolean);
   }
 
-  let invByYear = INV_BY_YEAR_FALLBACK;
-  let invOldest = OLDEST_KOKUIN_FALLBACK;
+  let invByYear = useDummy ? INV_BY_YEAR_FALLBACK : [];
+  let invOldest = useDummy ? OLDEST_KOKUIN_FALLBACK : null;
   if (live.inventory && live.inventory.sizes) {
     const merged = {};
     let oldestKey = null;
@@ -4024,7 +4041,7 @@ export default function App() {
 
   const tabKpis = {
     orders: [
-      { label: `指図書 保存済(${shippingMonthLabel})`, value: String(shippingTotal), unit: "件", icon: FileText, tone: "ok" },
+      { label: `指図書 保存済(${shippingMonthLabel})`, value: shippingTotal == null ? "—" : String(shippingTotal), unit: "件", icon: FileText, tone: "ok" },
       {
         label: "受注計画 前日比",
         value: (() => {
@@ -4035,12 +4052,13 @@ export default function App() {
         unit: "本", icon: Package, tone: "ok"
       },
       // ★ 受注出荷計画表のサイズ別受注本数の合計。「LP容器 合計本数」だと在庫と見分けが付かなかった
-      { label: "受注 合計本数（LP容器）", value: planLpTotalForKpi.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
+      { label: "受注 合計本数（LP容器）", value: fmtN(planLpTotalForKpi), unit: "本", icon: Boxes, tone: "neutral" },
     ],
     yard: [
-      { label: "50k 在庫", value: inv50.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
-      { label: "20k 在庫", value: inv20.toLocaleString(), unit: "本", icon: Boxes, tone: "ok" },
-      { label: "在庫合計", value: invTotal.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
+      { label: "50k 在庫", value: fmtN(inv50), unit: "本", icon: Boxes, tone: "ok" },
+      { label: "20k 在庫", value: fmtN(inv20), unit: "本", icon: Boxes, tone: "ok" },
+      // ★ 全サイズ（10K・30Kなども）の合計。50k＋20kと合わないので、そうと書く
+      { label: "在庫合計（全サイズ）", value: fmtN(invTotal), unit: "本", icon: Boxes, tone: "neutral" },
       { label: "50kg 搬入可能数", value: yardEmpty50k.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
       { label: "20kg 搬入可能数", value: yardEmpty20k.toLocaleString(), unit: "本", icon: Boxes, tone: "neutral" },
     ],
