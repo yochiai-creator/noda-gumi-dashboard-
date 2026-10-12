@@ -104,6 +104,27 @@ console.log('■ 置かないもの・捨てる');
   chk('捨てたら無い', s.nc_peek_('f') === null);
 }
 
+console.log('■ 起動時のまとめ受け取り（getDashboardBundle）');
+{
+  const c = fakeCache(); const s = sb(c);
+  s.nc_put_('inventory', { totals: { total: 7435 } }, 600);
+  s.nc_put_('shipping', { total: 186 }, 600);
+  const bigYard = JSON.stringify({ '50k': new Array(3000).fill({ pos: '1', 依頼: '入込場の区画' }) });
+  s.nc_put_('yardMapBoth', bigYard, 600);
+  s.nc_put_('dispatchGrid_0', { weekOffset: 0 }, 600);
+  s.nc_put_('dispatchGrid_1', { weekOffset: 1 }, 600);
+  let gets = 0; const g0 = c.getAll; c.getAll = (ks) => { gets++; return g0(ks); };
+  const b = s.getDashboardBundle();
+  chk('★あるものは data に入る', b.data.inventory.totals.total === 7435 && b.data.shipping.total === 186, b.data);
+  chk('★分けて置いた大きいもの（ヤードマップ）もつないで返す', b.data.yardMap === bigYard);
+  chk('配車表は今週（0）のぶん', b.data.dispGrid && b.data.dispGrid.weekOffset === 0);
+  chk('★無いものは missing（画面が1本ずつ取りに行く）', b.missing.includes('monthly') && b.missing.includes('armPlan') && !b.missing.includes('inventory'), b.missing);
+  chk('★キャッシュの読み出しは2回だけ（目印→切れ端）', gets === 2, gets);
+  chk('ここでは作らない（置いたものが増えない）', Object.keys(c.store).length === 5 + Object.keys(c.store).filter((k) => k.indexOf('#') > 0).length);
+  const e = sb(fakeCache()).getDashboardBundle();
+  chk('空なら全部 missing', Object.keys(e.data).length === 0 && e.missing.length === 11, e);
+}
+
 // ===== 先読み =====
 function wsb(hour, props) {
   const s = sb(fakeCache());

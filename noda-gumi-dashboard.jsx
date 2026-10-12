@@ -3421,7 +3421,9 @@ class ErrorBoundary extends React.Component {
 const SNAP_KEY = "nodaDashSnap";
 const SNAP_MAX_AGE_MS = 24 * 3600 * 1000;
 const SNAP_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "invTrend", "monthly",
-                   "dispGrid", "yardCap", "yardCapUrl", "armPlan", "armMonthly"];
+                   "dispGrid", "yardCap", "yardCapUrl", "armPlan", "armMonthly",
+                   // 野外置場タブのぶん（開いた瞬間に出す。裏で取り直す）
+                   "yardTab", "yardDaily", "yardLog", "lots", "cTypes", "plan"];
 
 /* このスクリプト自身の長さ。読み込まれた瞬間に測る（GASがページに足す別の
    スクリプトは毎回中身が変わるので数えない）。測れなければ前回のデータは使わない。 */
@@ -3484,6 +3486,9 @@ export default function App() {
   const [initialLoadDone, setInitialLoadDone] = useState(!!snap0);
   // 最新が全部そろったか（前回のデータを出しているあいだは false）
   const [freshDone, setFreshDone] = useState(false);
+  // 野外置場タブのデータをいつ取ったか（このページを開いてから）と、取り中の本数
+  const [yardTabAt, setYardTabAt] = useState(null);
+  const [yardTabPending, setYardTabPending] = useState(0);
 
   const isGasEnv = typeof google !== "undefined" && google.script && google.script.run;
 
@@ -3546,6 +3551,65 @@ export default function App() {
     fetchDispatchGrid(week, false);
   };
 
+  /* ★ 起動時に取るもの。1つずつ「取りに行く」と「受け取ったら置く」を持つ。
+       まずサーバの作り置きを1回でまとめて受け取り（getDashboardBundle）、
+       作り置きに無かったものだけをここから1本ずつ取りに行く。 */
+  const parseYardMap = (json) => {
+    try {
+      const parsed = typeof json === "string" ? JSON.parse(json) : json;
+      const toMap = (arr) => {
+        const m = {};
+        (arr || []).forEach((r) => { if (r && r.found && r.pos != null) m[String(r.pos)] = r; });
+        return m;
+      };
+      setYardLive({ "50k": toMap(parsed["50k"]), "20k": toMap(parsed["20k"]) });
+    } catch (e) {
+      // パース失敗時は静的データのまま（何もしない）
+    }
+  };
+  // ★ markLoaded は名前を直書きで渡す（build.js が LOAD_KEYS との食い違いを文字で確かめるため）
+  const put = (liveKey, mark, extra) => (d) => {
+    setLive((prev) => ({ ...prev, [liveKey]: d, ...(extra || {}) }));
+    mark();
+  };
+  const putErr = (liveKey, mark, asField) => (err) => {
+    setLive((prev) => asField
+      ? { ...prev, [liveKey]: { error: String(err) } }
+      : { ...prev, error: String(err), ...(liveKey === "inventory" ? { loading: false } : {}) });
+    mark();
+  };
+  const LIVE_SPEC = {
+    inventory:  { ok: put("inventory", () => markLoaded("inventory"), { loading: false }), ng: putErr("inventory", () => markLoaded("inventory")),
+                  call: (r, f) => r.getInventoryDashboardData(f) },
+    shipping:   { ok: put("shipping", () => markLoaded("shipping")), ng: putErr("shipping", () => markLoaded("shipping")),
+                  call: (r, f) => r.getShippingDashboardData(f) },
+    orderPlan:  { ok: put("orderPlan", () => markLoaded("orderPlan")), ng: putErr("orderPlan", () => markLoaded("orderPlan")),
+                  call: (r, f) => r.getOrderPlanDashboardData(f) },
+    dispatch:   { ok: put("dispatch", () => markLoaded("dispatch")), ng: putErr("dispatch", () => markLoaded("dispatch")),
+                  call: (r, f) => r.getDispatchTodayData(f) },
+    // 蓄積シートから在庫推移を取得
+    invTrend:   { ok: put("invTrend", () => markLoaded("invTrend")), ng: putErr("invTrend", () => markLoaded("invTrend"), true),
+                  call: (r, f) => r.getInventoryTrendData(f) },
+    // 在庫・出荷・受注を月でそろえたまとめ
+    monthly:    { ok: put("monthly", () => markLoaded("monthly")), ng: putErr("monthly", () => markLoaded("monthly"), true),
+                  call: (r, f) => r.getMonthlyCombinedData(f) },
+    // アーム（建機）の出荷予定。アームタブに出す
+    armPlan:    { ok: put("armPlan", () => markLoaded("armPlan")), ng: putErr("armPlan", () => markLoaded("armPlan"), true),
+                  call: (r, f) => r.getArmShipPlan(f) },
+    // アームの月別出荷実績（年度はじめから）。実績・推移タブに出す
+    armMonthly: { ok: put("armMonthly", () => markLoaded("armMonthly")), ng: putErr("armMonthly", () => markLoaded("armMonthly"), true),
+                  call: (r, f) => r.getArmMonthlyData(f) },
+    // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
+    yardMap:    { ok: (json) => { markLoaded("yardMap"); parseYardMap(json); }, ng: () => markLoaded("yardMap"),
+                  call: (r, f) => r.getYardMapUpdatesBothWithOrderText(
+                    MAP_50K.blocks.map((b) => ({ pos: String(b.pos) })),
+                    MAP_20K.blocks.map((b) => ({ pos: String(b.pos) })), f) },
+  };
+  const fetchOne = (key, force) => {
+    const sp = LIVE_SPEC[key];
+    sp.call(google.script.run.withSuccessHandler(sp.ok).withFailureHandler(sp.ng), force === true);
+  };
+
   const fetchLiveData = (force) => {
     setNow(new Date());
     // GAS環境(google.script.run が使える)でだけ実データを取りに行く。
@@ -3557,90 +3621,53 @@ export default function App() {
     }
     setLive((prev) => ({ ...prev, loading: true, error: null }));
 
-    google.script.run
-      .withSuccessHandler((inv) => { setLive((prev) => ({ ...prev, inventory: inv, loading: false })); markLoaded("inventory"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err), loading: false })); markLoaded("inventory"); })
-      .getInventoryDashboardData(force === true);
-
-    google.script.run
-      .withSuccessHandler((sh) => { setLive((prev) => ({ ...prev, shipping: sh })); markLoaded("shipping"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded("shipping"); })
-      .getShippingDashboardData(force === true);
-
-    google.script.run
-      .withSuccessHandler((op) => { setLive((prev) => ({ ...prev, orderPlan: op })); markLoaded("orderPlan"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded("orderPlan"); })
-      .getOrderPlanDashboardData(force === true);
-
-    google.script.run
-      .withSuccessHandler((d) => { setLive((prev) => ({ ...prev, dispatch: d })); markLoaded("dispatch"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, error: String(err) })); markLoaded("dispatch"); })
-      .getDispatchTodayData(force === true);
-
     /* ★ getShippingActualsSummary の取得はやめた（2026/09/13）。
          使っていたのは「月次出荷実績」カードだけで、そのカードを消したため。
          集計そのものはサーバ側で getMonthlyCombinedData が使っているので、
          「在庫・出荷・受注」の数字は今までどおり出る。 */
 
-    // 蓄積シートから在庫推移を取得
-    google.script.run
-      .withSuccessHandler((it) => { setLive((prev) => ({ ...prev, invTrend: it })); markLoaded("invTrend"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, invTrend: { error: String(err) } })); markLoaded("invTrend"); })
-      .getInventoryTrendData(force === true);
-
-    // 在庫・出荷・受注を月でそろえたまとめ
-    google.script.run
-      .withSuccessHandler((mc) => { setLive((prev) => ({ ...prev, monthly: mc })); markLoaded("monthly"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, monthly: { error: String(err) } })); markLoaded("monthly"); })
-      .getMonthlyCombinedData(force === true);
-
-    // 配車表のトラック×日付グリッド
-    fetchDispatchGrid(gridWeek, force === true, () => markLoaded("dispGrid"));
-
-    // アーム（建機）の出荷予定。アームタブに出す
-    google.script.run
-      .withSuccessHandler((ap) => { setLive((prev) => ({ ...prev, armPlan: ap })); markLoaded("armPlan"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, armPlan: { error: String(err) } })); markLoaded("armPlan"); })
-      .getArmShipPlan(force === true);
-
-    // アームの月別出荷実績（年度はじめから）。実績・推移タブに出す
-    google.script.run
-      .withSuccessHandler((am) => { setLive((prev) => ({ ...prev, armMonthly: am })); markLoaded("armMonthly"); })
-      .withFailureHandler((err) => { setLive((prev) => ({ ...prev, armMonthly: { error: String(err) } })); markLoaded("armMonthly"); })
-      .getArmMonthlyData(force === true);
-
-    // 野外置場（置場容量）の合計と、埋め込むURL。
-    // URLは変わらないので1回取れれば取り直さない。
+    // 野外置場の合計（KPI用）。シートを読むだけで軽いので、いつも1本で取る
     google.script.run
       .withSuccessHandler((yc) => { setLive((prev) => ({ ...prev, yardCap: yc })); markLoaded("yardCap"); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, yardCap: { error: String(err) } })); markLoaded("yardCap"); })
       .getYardCapacitySummary();
-
     google.script.run
       .withSuccessHandler((u) => { setLive((prev) => ({ ...prev, yardCapUrl: u })); })
       .withFailureHandler((err) => { setLive((prev) => ({ ...prev, yardCapUrl: { error: String(err) } })); })
       .getYardCapacityUrl();
 
-    // ヤードマップ（50k/20k）を、実際のスプレッドシートの最新状態に合わせて取得
-    const q50k = MAP_50K.blocks.map((b) => ({ pos: String(b.pos) }));
-    const q20k = MAP_20K.blocks.map((b) => ({ pos: String(b.pos) }));
-    google.script.run
-      .withSuccessHandler((json) => {
-        markLoaded("yardMap");
-        try {
-          const parsed = JSON.parse(json);
-          const toMap = (arr) => {
-            const m = {};
-            (arr || []).forEach((r) => { if (r && r.found && r.pos != null) m[String(r.pos)] = r; });
-            return m;
-          };
-          setYardLive({ "50k": toMap(parsed["50k"]), "20k": toMap(parsed["20k"]) });
-        } catch (e) {
-          // パース失敗時は静的データのまま（何もしない）
+    const all = Object.keys(LIVE_SPEC);
+    // 更新ボタン（force）は作り置きを使わず、全部を作り直す
+    if (force === true) {
+      all.forEach((k) => fetchOne(k, true));
+      fetchDispatchGrid(gridWeek, true, () => markLoaded("dispGrid"));
+      return;
+    }
+    /* ★ 作り置きを1回でまとめて受け取る。1本ずつ呼ぶとGASの起動待ちが本数ぶん
+         重なって遅かった。作り置きに無いものだけ1本ずつ取りに行く。
+         まとめて受け取れなかったとき（古いサーバなど）は全部を1本ずつ。 */
+    const fallback = () => {
+      all.forEach((k) => fetchOne(k, false));
+      fetchDispatchGrid(gridWeek, false, () => markLoaded("dispGrid"));
+    };
+    const runB = google.script.run;
+    if (typeof runB.getDashboardBundle !== "function") { fallback(); return; }
+    runB
+      .withSuccessHandler((b) => {
+        if (!b || !b.data) { fallback(); return; }
+        const data = b.data;
+        all.forEach((k) => { if (k in data) LIVE_SPEC[k].ok(data[k]); else fetchOne(k, false); });
+        // 配車表は今週のぶんだけ作り置きにある。別の週を見ているときはその週を取る
+        if (gridWeek === 0 && data.dispGrid) {
+          setLive((prev) => ({ ...prev, dispGrid: data.dispGrid })); markLoaded("dispGrid");
+        } else {
+          fetchDispatchGrid(gridWeek, false, () => markLoaded("dispGrid"));
         }
+        // 生産計画（野外置場タブ）も作り置きにあれば先に置いておく
+        if (data.plan) setLive((prev) => ({ ...prev, plan: data.plan }));
       })
-      .withFailureHandler(() => markLoaded("yardMap"))
-      .getYardMapUpdatesBothWithOrderText(q50k, q20k, force === true);
+      .withFailureHandler(() => fallback())
+      .getDashboardBundle();
   };
 
   /* 野外置場タブの中身。
@@ -3650,30 +3677,26 @@ export default function App() {
        直したつもりが直っていないように見えて一番困る。 */
   const fetchYardTab = () => {
     if (!isGasEnv) return;
-    google.script.run
-      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, yardTab: d })))
-      .withFailureHandler((err) => setLive((prev) => ({ ...prev, yardTab: { error: String(err) } })))
-      .getYardTabData();
-    google.script.run
-      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, yardDaily: d })))
-      .withFailureHandler((err) => setLive((prev) => ({ ...prev, yardDaily: { error: String(err) } })))
-      .getYardDailyTotals();
-    google.script.run
-      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, yardLog: d })))
-      .withFailureHandler((err) => setLive((prev) => ({ ...prev, yardLog: { error: String(err) } })))
-      .getYardChangeLog("", 60);
-    google.script.run
-      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, lots: d })))
-      .withFailureHandler((err) => setLive((prev) => ({ ...prev, lots: { error: String(err) } })))
-      .getProdLots("", 60);
-    google.script.run
-      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, cTypes: d })))
-      .withFailureHandler((err) => setLive((prev) => ({ ...prev, cTypes: { error: String(err) } })))
-      .getContainerTypes();
-    google.script.run
-      .withSuccessHandler((d) => setLive((prev) => ({ ...prev, plan: d })))
-      .withFailureHandler((err) => setLive((prev) => ({ ...prev, plan: { error: String(err) } })))
-      .getProdPlanData(false);
+    // ★ いつ取ったかと、まだ返ってきていない本数（前回のデータを出したまま裏で取り直すため）
+    setYardTabAt(Date.now());
+    setYardTabPending(6);
+    const done1 = () => setYardTabPending((n) => Math.max(0, n - 1));
+    /* ★ 1本でも呼べなかったら（関数が無いなど）、その1本だけエラーにする。
+         裏で先に取っておく読み込みが、画面全体を止めてはいけない。 */
+    const one = (key, call) => {
+      const ng = (err) => { done1(); setLive((prev) => ({ ...prev, [key]: { error: String(err) } })); };
+      try {
+        call(google.script.run
+          .withSuccessHandler((d) => { done1(); setLive((prev) => ({ ...prev, [key]: d })); })
+          .withFailureHandler(ng));
+      } catch (e) { ng(e); }
+    };
+    one("yardTab", (r) => r.getYardTabData());
+    one("yardDaily", (r) => r.getYardDailyTotals());
+    one("yardLog", (r) => r.getYardChangeLog("", 60));
+    one("lots", (r) => r.getProdLots("", 60));
+    one("cTypes", (r) => r.getContainerTypes());
+    one("plan", (r) => r.getProdPlanData(false));
   };
 
   /* 生産の流れ（登録・受検・入庫）。
@@ -3742,9 +3765,15 @@ export default function App() {
     return () => clearTimeout(t);
   }, [freshDone, live, yardLive]);
 
-  // 野外置場タブを開いたときに1回だけ取る
+  /* ★ 野外置場タブは、起動の読み込みが終わったら裏で先に取っておく。
+       今まではタブを開いてから6本を取りに行っていて、開くたびに待たされた。 */
   useEffect(() => {
-    if (tab === "yardcap" && !live.yardTab) fetchYardTab();
+    if (freshDone && !yardTabAt) fetchYardTab();
+  }, [freshDone]);
+  /* タブを開いたとき、取ってから1分以上たっていれば裏で取り直す。
+     前回のデータは出したままにして、そろったら差し替える。 */
+  useEffect(() => {
+    if (tab === "yardcap" && (!yardTabAt || Date.now() - yardTabAt > 60 * 1000)) fetchYardTab();
   }, [tab]);
 
   const dateLabel = now.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
@@ -4093,6 +4122,12 @@ export default function App() {
           {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
+          {/* ★ 前回のデータを出したまま取り直しているあいだは、そうと書く */}
+          {tab === "yardcap" && yardTabPending > 0 && live.yardTab && (
+            <p className="text-[11px] text-center py-1 rounded-md" style={{ background: "#fef3c7", color: "#92400e" }}>
+              最新を読み込んでいます…（置場の数字は直前のものです）
+            </p>
+          )}
           {tab === "yardcap" && <YardCapacityTab summary={live.yardCap} data={live.yardTab}
             daily={live.yardDaily} log={live.yardLog} lotData={live.lots} types={live.cTypes}
             url={live.yardCapUrl}

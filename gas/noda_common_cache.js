@@ -169,6 +169,68 @@ function nc_put_(name, data, ttlSec) {
   }
 }
 
+/* いくつものキャッシュを、まとめて2回の読み出しで取る（目印→切れ端）。
+   無いものは入れない。 */
+function nc_peekMany_(names) {
+  var out = {};
+  var cache;
+  try { cache = CacheService.getScriptCache(); } catch (err) { return out; }
+  var keys = names.map(nc_cacheKey_);
+  var got = {};
+  try { got = cache.getAll(keys) || {}; } catch (err2) { return out; }
+  var need = [];
+  var heads = {};
+  names.forEach(function (n, i) {
+    var raw = got[keys[i]];
+    if (raw == null) return;
+    try {
+      var obj = JSON.parse(raw);
+      if (obj && typeof obj === 'object' && obj.__ncChunks) {
+        heads[n] = nc_chunkKeys_(keys[i], obj.id, obj.__ncChunks);
+        need = need.concat(heads[n]);
+      } else {
+        if (obj && typeof obj === 'object') obj.cached = true;
+        out[n] = obj;
+      }
+    } catch (e) { /* 壊れていたら無いことにする */ }
+  });
+  if (need.length) {
+    var parts = {};
+    try { parts = cache.getAll(need) || {}; } catch (e3) { parts = {}; }
+    Object.keys(heads).forEach(function (n) {
+      var ks = heads[n];
+      for (var i = 0; i < ks.length; i++) if (parts[ks[i]] == null) return;
+      try {
+        var obj = JSON.parse(ks.map(function (k) { return parts[k]; }).join(''));
+        if (obj && typeof obj === 'object') obj.cached = true;
+        out[n] = obj;
+      } catch (e4) { /* 無いことにする */ }
+    });
+  }
+  return out;
+}
+
+/* ★ 画面を開いたときに、作り置き（先読み）してあるものを1回でまとめて返す。
+     今までは11本を別々に呼んでいて、1本ごとにGASの起動の待ちがかかっていた。
+     ここでは作らない（キャッシュを見るだけ）。無かったものは missing で返し、
+     画面がそれだけを今までどおり1本ずつ取りに行く。 */
+var NC_BUNDLE_KEYS = {
+  inventory: 'inventory', shipping: 'shipping', orderPlan: 'orderPlan', dispatch: 'dispatch',
+  invTrend: 'inventoryTrend', monthly: 'monthlyCombined', dispGrid: 'dispatchGrid_0',
+  armPlan: 'armPlan', armMonthly: 'armMonthly', yardMap: 'yardMapBoth', plan: 'prodPlan3'
+};
+
+function getDashboardBundle() {
+  var names = Object.keys(NC_BUNDLE_KEYS).map(function (k) { return NC_BUNDLE_KEYS[k]; });
+  var hit = nc_peekMany_(names);
+  var data = {}, missing = [];
+  Object.keys(NC_BUNDLE_KEYS).forEach(function (k) {
+    var v = hit[NC_BUNDLE_KEYS[k]];
+    if (v != null) data[k] = v; else missing.push(k);
+  });
+  return { data: data, missing: missing };
+}
+
 function nc_chunkKeys_(key, id, n) {
   var out = [];
   for (var i = 0; i < n; i++) out.push(key + '#' + id + '#' + i);
