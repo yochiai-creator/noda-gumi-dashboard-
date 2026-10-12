@@ -3493,7 +3493,9 @@ class ErrorBoundary extends React.Component {
    ★ 端末の保存は使えないことがある（プライベートブラウズ等）。使えなければ
      今までどおり読み込みを待つだけ。 */
 const SNAP_KEY = "nodaDashSnap";
-const SNAP_MAX_AGE_MS = 24 * 3600 * 1000;
+/* ★ 4日。24時間だと、土日を挟んだ月曜の朝に前回のデータが使えず待たされた。
+     祝日が続いても月曜の朝に出るように。古さは帯に曜日つきで出す。 */
+const SNAP_MAX_AGE_MS = 4 * 24 * 3600 * 1000;
 const SNAP_KEYS = ["inventory", "shipping", "orderPlan", "dispatch", "invTrend", "monthly",
                    "dispGrid", "yardCap", "yardCapUrl", "armPlan", "armMonthly",
                    // 野外置場タブのぶん（開いた瞬間に出す。裏で取り直す）
@@ -4151,7 +4153,7 @@ export default function App() {
       {/* ★ 前回のデータを出しているあいだは、そうと分かるように書く */}
       {snap0 && !freshDone && (
         <div className="text-[11px] text-center py-1" style={{ background: "#fef3c7", color: "#92400e" }}>
-          前回（{new Date(snap0.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}）のデータを表示中・最新を読み込んでいます…
+          前回（{new Date(snap0.t).toLocaleString("ja-JP", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" })}）のデータを表示中・最新を読み込んでいます…
         </div>
       )}
 

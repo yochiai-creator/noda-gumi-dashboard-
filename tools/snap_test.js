@@ -129,14 +129,30 @@ const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
   chk('★版が違えば読み込みを待つ', /データを読み込んでいます/.test(await text(p)));
   await p.close();
 
-  console.log('■ 古すぎる前回のデータは使わない（24時間）');
+  console.log('■ 金曜の夕方に見たデータを月曜の朝に出す（4日まで）');
+  {
+    // まず正しく端末に残す（そろうまで開いておく）、それから63時間前にずらす
+    const q = await open(9050, 200);
+    await q.waitForTimeout(5000);
+    await q.evaluate(() => { const s = JSON.parse(localStorage.getItem('nodaDashSnap') || 'null');
+      if (s) { s.t = Date.now() - 63 * 3600 * 1000; localStorage.setItem('nodaDashSnap', JSON.stringify(s)); } });
+    await q.close();
+  }
+  p = await open(9100, 1500);
+  await p.waitForTimeout(500);
+  t = await text(p);
+  chk('★63時間前（金曜18時→月曜9時）のデータも出す', !/データを読み込んでいます/.test(t) && /前回（/.test(t), t.slice(0, 200));
+  chk('★帯に曜日を出す（古さが分かる）', /前回（[^）]*\([月火水木金土日]\)|前回（[^）]*[月火水木金土日]/.test(t), t.slice(0, 200));
+  await p.close();
+
+  console.log('■ 古すぎる前回のデータは使わない（4日）');
   await ctx.newPage().then(async (q) => { await q.goto('file://' + tmp); await q.waitForTimeout(2500);
     await q.evaluate(() => { const s = JSON.parse(localStorage.getItem('nodaDashSnap') || 'null');
-      if (s) { s.t = Date.now() - 25 * 3600 * 1000; localStorage.setItem('nodaDashSnap', JSON.stringify(s)); } });
+      if (s) { s.t = Date.now() - 97 * 3600 * 1000; localStorage.setItem('nodaDashSnap', JSON.stringify(s)); } });
     await q.close(); });
   p = await open(9000, 1500);
   await p.waitForTimeout(500);
-  chk('★25時間前のデータは出さない', /データを読み込んでいます/.test(await text(p)));
+  chk('★4日と1時間前のデータは出さない', /データを読み込んでいます/.test(await text(p)));
   await p.close();
 
   console.log('■ 端末の保存が使えなくても動く');
