@@ -807,6 +807,7 @@ function OrdersTab({ orders, total, today, planBySize, planRecent, monthLabel })
           <div className="divide-y divide-slate-100">
             {orders.map((o, i) => (
               <a key={i} href={o.url} target="_blank" rel="noopener noreferrer"
+                onClick={(e) => openPdfQuick_(e, o.url, "指図書 " + o.orderNo)}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
                 <span className="text-xs font-mono tabular-nums text-slate-400 w-10 shrink-0">{o.date}</span>
                 <div className="min-w-0 flex-1">
@@ -1230,7 +1231,14 @@ function YardMap({ yardLive, onRefresh }) {
          下のボタンから選んでもらう。 */
     const withUrl = (b.orders || []).filter((o) => o && o.url);
     if (withUrl.length === 1) {
-      try { window.open(withUrl[0].url, "_blank", "noopener"); } catch (err) { /* 開けなくても選択は続ける */ }
+      const o1 = withUrl[0];
+      try {
+        // アプリの中で開ければそれで（ポップアップの制限も関係ない）。だめなら新しいタブ
+        if (!(PDF_VIEW.open && drivePreviewUrl_(o1.url)
+              && (PDF_VIEW.open(o1.url, "指図書 " + o1.no + (o1.ban || "") + (o1.check ? "　" + o1.check : "")), true))) {
+          window.open(o1.url, "_blank", "noopener");
+        }
+      } catch (err) { /* 開けなくても選択は続ける */ }
     }
 
     /* ★ タップのたびに「指図書PDFを検索中…」が出るのをやめる。
@@ -1587,6 +1595,7 @@ function YardMap({ yardLive, onRefresh }) {
                 {sel.orders.map((o, i) =>
                   o.url ? (
                     <a key={i} href={o.url} target="_blank" rel="noopener noreferrer"
+                      onClick={(e) => openPdfQuick_(e, o.url, "指図書 " + o.no + (o.ban || "") + (o.check ? "　" + o.check : ""))}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
                       style={{ background: "#2563eb" }}>
                       {/* ★ 一律「26-」を付けていたが、マスタには 24- の区画もある。
@@ -2586,7 +2595,7 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
                             {r.c.orders.map((o, oi) => (
                               o.url ? (
                                 <a key={oi} href={o.url} target="_blank" rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
+                                  onClick={(e) => { e.stopPropagation(); openPdfQuick_(e, o.url, "指図書 " + o.no + (o.ban || "") + (o.check ? "　" + o.check : "")); }}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
                                   style={o.guess
                                     ? { background: "#fff", color: "#2563eb", border: "1px solid #93c5fd", textDecoration: "none" }
@@ -3381,6 +3390,62 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
 /* ★ undefined.toLocaleString() のような想定外のエラーが起きたとき、Reactは
      画面をまるごと空にしてしまう。落合さんの手元では真っ白になるだけで、
      何が起きたのか分からない。ここで捕まえて、そのまま画面に出す。 */
+/* ===== 指図書をアプリの中でさっと開く =====
+   ★ 今まではリンクで Drive の通常の画面を新しいタブに開いていた。Drive の画面は重く、
+     iPhone では Drive アプリに切り替わることもあって、出てくるまで待たされた。
+     Drive の軽い表示（/preview）を、アプリの上にかぶせて開く。閉じればそのまま元の画面。
+     開けないとき用に「別のタブで開く」も置く。 */
+const PDF_VIEW = { open: null };
+
+function drivePreviewUrl_(url) {
+  const t = String(url || "");
+  const m = t.match(/\/d\/([A-Za-z0-9_-]{10,})/) || t.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
+  return m ? "https://drive.google.com/file/d/" + m[1] + "/preview" : null;
+}
+
+/* リンクのタップで呼ぶ。開けるならアプリの中で開き、だめなら普通のリンクのまま */
+function openPdfQuick_(e, url, title) {
+  if (!PDF_VIEW.open || !drivePreviewUrl_(url)) return false;
+  if (e) { e.preventDefault(); e.stopPropagation(); }
+  PDF_VIEW.open(url, title);
+  return true;
+}
+
+function PdfViewer({ doc, onClose }) {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    // 後ろの画面がスクロールしないように
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+  const src = drivePreviewUrl_(doc.url);
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#fff", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: NAVY, color: "#fff", flexShrink: 0 }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {doc.title || "指図書"}
+        </span>
+        <a href={doc.url} target="_blank" rel="noopener noreferrer"
+          style={{ fontSize: 11, color: "#cbd5e1", textDecoration: "underline", whiteSpace: "nowrap" }}>別のタブで開く</a>
+        <button onClick={onClose}
+          style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", background: "#fff", border: "none", borderRadius: 6, padding: "6px 12px" }}>
+          閉じる
+        </button>
+      </div>
+      <div style={{ position: "relative", flex: 1 }}>
+        {!loaded && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#64748b" }}>
+            指図書を開いています…
+          </div>
+        )}
+        <iframe title={doc.title || "指図書"} src={src} onLoad={() => setLoaded(true)}
+          allow="autoplay" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0, background: "transparent" }} />
+      </div>
+    </div>
+  );
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -3474,6 +3539,12 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const LIVE_EMPTY = { inventory: null, shipping: null, orderPlan: null, dispatch: null, invTrend: null, monthly: null, dispGrid: null, yardCap: null, yardCapUrl: null, loading: true, error: null };
   // 前回のデータ（あれば開いた瞬間に出す）。GAS環境のときだけ
+  // アプリの中で開いている指図書（無ければ null）
+  const [pdfDoc, setPdfDoc] = useState(null);
+  useEffect(() => {
+    PDF_VIEW.open = (url, title) => setPdfDoc({ url, title });
+    return () => { PDF_VIEW.open = null; };
+  }, []);
   const [snap0] = useState(() =>
     (typeof google !== "undefined" && google.script && google.script.run) ? snapLoad_() : null);
   const [live, setLive] = useState(() => (snap0 ? { ...LIVE_EMPTY, ...snap0.live } : LIVE_EMPTY));
@@ -4056,6 +4127,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900" style={{ fontFamily: '"Noto Sans JP", system-ui, -apple-system, "Hiragino Kaku Gothic ProN", sans-serif' }}>
+      {pdfDoc && <PdfViewer doc={pdfDoc} onClose={() => setPdfDoc(null)} />}
       {/* ヘッダー（タブごとに内容が変わる） */}
       <header style={{ background: NAVY }} className="text-white">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">

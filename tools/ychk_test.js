@@ -329,6 +329,9 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
     { pos: '4', found: true, kind: 'fill', groupNo: 627, rangeStart: 62601, rangeEnd: 62700, qty: 100, check: 'チェック済',
       orders: [{ no: '26-20354', ban: '(1)', url: 'https://drive.google.com/file/d/a/view', date: '10/16', src: '手入力', check: 'チェック済' },
                { no: '26-20355', url: 'https://drive.google.com/file/d/b/view', date: '10/16', src: '番号', check: 'チェック前' }] },
+    // ★ 指図書が1件の区画（本物と同じ長さのID）。タップでアプリの中に開く
+    { pos: '8', found: true, kind: 'fill', groupNo: 628, rangeStart: 62701, rangeEnd: 62800, qty: 100, check: 'チェック済',
+      orders: [{ no: '26-60841', ban: '(1)', url: 'https://drive.google.com/file/d/1AsJ_XmsS4kr6VupHS37kkrgVGlDzQ1wF/view?usp=drivesdk', date: '10/15', src: '手入力', check: 'チェック済' }] },
     { pos: '6', found: true, kind: 'fill', groupNo: 647, rangeStart: 64601, rangeEnd: 64700, qty: 100, check: 'チェック前',
       orders: [{ no: '26-50406', url: 'https://drive.google.com/file/d/c/view', date: '10/13', src: '手入力', check: 'チェック前' },
                { no: '26-60768', url: 'https://drive.google.com/file/d/d/view', date: '10/14', src: '手入力' }] },
@@ -370,7 +373,7 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
   console.log('■ 画面：マップの印・明細・凡例・一覧');
   const marks = await page.evaluate(() => [...document.querySelectorAll('svg circle')]
     .filter((c) => c.getAttribute('stroke') === '#059669').map((c) => c.getAttribute('fill')));
-  chk('★チェック済の区画に緑の印（チェック前には出さない）', marks.length === 1 && marks[0] === '#059669', marks);
+  chk('★チェック済の区画に緑の印（チェック前には出さない）', marks.length === 2 && marks.every((m) => m === '#059669'), marks);
   chk('凡例に「チェック済」', /チェック済（白抜きは一部）/.test(await page.evaluate(() => document.body.innerText)));
 
   await page.evaluate(() => {
@@ -383,6 +386,37 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
   chk('★指図書ボタンに「✓済」と「チェック前」', /26-20354\(1\)（10\/16） を開く\n?✓済/.test(t) && /26-20355（10\/16） を開く\n?番号\n?チェック前/.test(t),
     t.slice(t.indexOf('出荷作業指図書'), t.indexOf('出荷作業指図書') + 200));
   await page.screenshot({ path: SP + '/ychk_detail.png' });
+
+  console.log('■ 画面：指図書をアプリの中でさっと開く');
+  await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return null; }; });
+  await page.evaluate(() => {
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<8>');
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await page.waitForTimeout(400);
+  let ov = await page.evaluate(() => {
+    const f = document.querySelector('iframe');
+    return { src: f && f.getAttribute('src'), opened: window.__opened, text: document.body.innerText.slice(0, 120) };
+  });
+  chk('★1件の区画をタップすると、アプリの中に開く（Driveの軽い表示 /preview）',
+    ov.src === 'https://drive.google.com/file/d/1AsJ_XmsS4kr6VupHS37kkrgVGlDzQ1wF/preview', ov);
+  chk('★新しいタブは開かない', ov.opened.length === 0, ov.opened);
+  chk('見出しに依頼No・枝番・チェックの状態', /指図書 26-60841\(1\)　チェック済/.test(ov.text), ov.text);
+  await page.screenshot({ path: SP + '/ychk_viewer.png' });
+  await page.locator('button', { hasText: '閉じる' }).first().click();
+  await page.waitForTimeout(200);
+  chk('★「閉じる」で元の画面に戻る', await page.evaluate(() => !document.querySelector('iframe')));
+  // 明細のボタンからも
+  await page.evaluate(() => {
+    const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<4>');
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await page.waitForTimeout(300);
+  await page.locator('a', { hasText: '26-20354(1)' }).first().click();
+  await page.waitForTimeout(300);
+  ov = await page.evaluate(() => { const f = document.querySelector('iframe'); return f && f.getAttribute('src'); });
+  chk('IDの短い（見本の）リンクは今までどおり別タブ（アプリの中では開かない）', ov === null, ov);
+  await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent === '閉じる'); if (b) b.click(); });
 
   await page.locator('button', { hasText: '一覧' }).first().click();
   await page.waitForTimeout(300);
