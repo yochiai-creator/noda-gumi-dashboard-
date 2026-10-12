@@ -435,6 +435,13 @@ function yard_computeUpdates_(sizeKey, queries) {
     if (result.found) {
       try { yard_applyMultiGno_(sizeKey, result); } catch (multiErr) { Logger.log('群番号の読み直しでエラー: ' + String(multiErr)); }
     }
+    // ★ 一部が出荷されて残りの範囲（「55421～55500」）がマップに書いてあれば、それを使う
+    if (result.found && match && match.gnoCellA1 && !result.gnos) {
+      try {
+        loadMapGridIfNeeded_();
+        yard_applyLiveRange_(sizeKey, result, mapGrid, match.gnoCellA1);
+      } catch (rngErr) { Logger.log('残りの範囲の読み取りでエラー: ' + String(rngErr)); }
+    }
     out.push(result);
   }
   return out;
@@ -522,6 +529,46 @@ function yard_applyMultiGno_(sizeKey, result) {
   } else {
     result.rangeStart = null; result.rangeEnd = null;
   }
+  return result;
+}
+
+/* ★ マップに書いてある「残りの範囲」を読む。
+     範囲は群番号から計算していたが、一部が出荷されると人がマップの範囲を書き直す
+     （50k <3> GNo 555：計算は 55401〜55500・100本、マップは 55421～55500・80本）。
+     計算のままだと、出荷済みの 55401〜55420（26-60448、10/5出荷）がまだ置いてある
+     ことになり、その指図書が区画に付いていた。
+   区画ごとに書き方の位置が少し違うので、GNoのセルの1〜3行下・左2〜右3列の中から
+   「数 ～ 数」の並びを探す。両端がその群の範囲の中にあるときだけ使う
+   （隣の区画の範囲を拾わないように）。見つからなければ今までどおり（計算のまま）。 */
+function yard_liveRangeNear_(grid, gnoA1, gStart, gEnd) {
+  var p = yard_parseA1_(gnoA1);
+  if (!p) return null;
+  for (var r = p.row + 1; r <= p.row + 3; r++) {
+    var row = grid[r];
+    if (!row) continue;
+    for (var c = Math.max(1, p.col - 2); c <= p.col + 3; c++) {
+      if (!/^[～〜~]$/.test(String(row[c] == null ? '' : row[c]).trim())) continue;
+      var a = Number(String(row[c - 1]).replace(/[,\s]/g, ''));
+      var b = Number(String(row[c + 1]).replace(/[,\s]/g, ''));
+      if (!(a > 0) || !(b > 0) || a > b) continue;
+      if (a < gStart || b > gEnd) continue;
+      return { a: a, b: b };
+    }
+  }
+  return null;
+}
+
+function yard_applyLiveRange_(sizeKey, result, grid, gnoA1) {
+  var g = Number(result.groupNo);
+  if (!(g >= 1 && g <= YARD_GNO_MAX)) return result;
+  var full = yard_computeRangeFromGNo_(sizeKey, g);
+  if (!full) return result;
+  var near = yard_liveRangeNear_(grid, gnoA1, full.start, full.end);
+  if (!near || (near.a === full.start && near.b === full.end)) return result;
+  result.rangeStart = near.a;
+  result.rangeEnd = near.b;
+  result.qty = near.b - near.a + 1;
+  result.rangeFromMap = true;
   return result;
 }
 

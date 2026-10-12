@@ -258,8 +258,12 @@ function 入込場の容器番号で指図書を当ててみる() {
  *   Drive検索は重いうえ、番号で当てたぶんは索引に必ず載っている（索引から
  *   当てているので）。手入力だけのものは今までどおりDrive検索に回す。
  */
-function ycno_attachToBlocks_(raw, idx) {
+/* ★ 出荷希望日が今日より前の指図書は、番号の重なりでは付けない。
+     もう出て行った容器なので区画には無い（50k <3> に 10/5出荷の 26-60448 が付いていた）。
+     人が打った依頼Noはそのまま残す（人が消すまでは人の判断）。 */
+function ycno_attachToBlocks_(raw, idx, todayKey) {
   var ranges = (idx && idx.ranges) || [];
+  if (!todayKey) todayKey = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   ['50k', '20k'].forEach(function (sizeKey) {
     (raw[sizeKey] || []).forEach(function (r) {
       if (!r || !r.found) return;
@@ -275,6 +279,7 @@ function ycno_attachToBlocks_(raw, idx) {
 
       ycno_match_(sizeKey, rng, ranges).forEach(function (h) {
         var bare = ycno_bare_(h.no);
+        if (h.date && String(h.date) < todayKey && !have[bare]) return;   // もう出荷した
         if (have[bare]) { have[bare].src = '両方'; return; }   // 手入力と一致
         var e = idx.byOrder ? idx.byOrder[h.no] : null;
         var one = { no: h.no, src: '番号',

@@ -222,7 +222,7 @@ console.log('■ 区画に足す（手入力と番号の両方を出す）');
     ],
     '20k': [{ found: true, pos: 1, rangeStart: 76151, rangeEnd: 76200, orders: [] }],
   };
-  const out = s.ycno_attachToBlocks_(raw, idx);
+  const out = s.ycno_attachToBlocks_(raw, idx, '2026-09-01');
   const b = {}; out['50k'].forEach((x) => { b[x.pos] = x; });
 
   chk('★手入力と番号が同じなら二重に出さない', b[1].orders.length === 1, b[1].orders);
@@ -250,7 +250,7 @@ console.log('■ 区画に足す（手入力と番号の両方を出す）');
   s2.shipact_shortDate_ = (d) => String(d).slice(5);
   const r2 = s2.ycno_attachToBlocks_(
     { '50k': [{ found: true, pos: 1, rangeStart: 57601, rangeEnd: 57700, orders: [] }], '20k': [] },
-    { ranges: idx.ranges, byOrder: {} });
+    { ranges: idx.ranges, byOrder: {} }, '2026-09-01');
   chk('索引にPDFが無ければURLは空にする（落ちない）',
     r2['50k'][0].orders[0].url === null, r2['50k'][0].orders[0]);
 }

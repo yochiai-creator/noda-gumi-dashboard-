@@ -45,9 +45,11 @@ var YCHK_CONFIG = {
 function ychk_parseName_(name) {
   var m = String(name || '').match(/^(\d{2})\.(\d{1,2})\.(\d{1,2})_(\d{2}-\d+)-(\d+)(?:\((\d+)\))?/);
   if (!m) return null;
+  var p2 = function (x) { return (Number(x) < 10 ? '0' : '') + Number(x); };
   return {
     orderNo: m[4], eda: Number(m[5]), ver: m[6] ? Number(m[6]) : null,
-    shipDate: Number(m[2]) + '/' + Number(m[3])
+    shipDate: Number(m[2]) + '/' + Number(m[3]),
+    dateKey: '20' + m[1] + '-' + p2(m[2]) + '-' + p2(m[3])
   };
 }
 
@@ -73,7 +75,7 @@ function ychk_entry_(file, state) {
   if (!n) return null;
   var d = ychk_parseDesc_(file.description);
   return {
-    orderNo: n.orderNo, eda: n.eda, ver: n.ver, shipDate: n.shipDate,
+    orderNo: n.orderNo, eda: n.eda, ver: n.ver, shipDate: n.shipDate, dateKey: n.dateKey,
     a: d.a, b: d.b, qty: d.qty, state: state,
     url: file.url || null, name: file.name
   };
@@ -103,8 +105,9 @@ function ychk_combine_(states) {
 }
 
 /* 区画（50kだけ）にチェックの状態を付ける。raw は getYardMapUpdatesBoth の形。 */
-function ychk_attachToBlocks_(raw, entries, sizeKey) {
+function ychk_attachToBlocks_(raw, entries, sizeKey, todayKey) {
   sizeKey = sizeKey || '50k';
+  if (!todayKey) todayKey = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
   (raw[sizeKey] || []).forEach(function (r) {
     if (!r || !r.found) return;
     if (!r.orders) r.orders = [];
@@ -119,6 +122,8 @@ function ychk_attachToBlocks_(raw, entries, sizeKey) {
     entries.forEach(function (e) {
       var overlap = rngOk && e.a != null && e.a <= rb && ra <= e.b;
       var byNo = !!mine[ychk_bare_(e.orderNo)];
+      // ★ 出荷希望日が過ぎたものは、番号の重なりだけでは付けない（もう出て行った）
+      if (overlap && !byNo && e.dateKey && e.dateKey < todayKey) overlap = false;
       // 範囲が読めているファイルは、範囲が重なるときだけこの区画のもの
       if (e.a != null ? overlap : byNo) rel.push(e);
     });

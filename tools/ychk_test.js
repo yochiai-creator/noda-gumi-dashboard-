@@ -82,7 +82,7 @@ console.log('■ 区画に付ける');
     // 何も結び付かない区画
     { pos: '8', found: true, rangeStart: 1, rangeEnd: 100, orders: [] },
   ], '20k': [{ pos: '1', found: true, rangeStart: 65101, rangeEnd: 65260, orders: [] }] };
-  s.ychk_attachToBlocks_(raw, entries(s), '50k');
+  s.ychk_attachToBlocks_(raw, entries(s), '50k', '2026-10-11');
   const B = (p) => raw['50k'].find((r) => r.pos === p);
 
   chk('★チェック前の区画', B('1').check === 'チェック前' && B('2').check === 'チェック前', [B('1').check, B('2').check]);
@@ -182,9 +182,88 @@ console.log('■ 群が2つ入った区画（実物 50k <10>「654,655」）');
     s2.ychk_entry_(F('26.10.19_26-50430-0(2)_ひかり工機株式会社.pdf', '得意先コード:0820\n数量:80\n容器No:HEP65381~HEP65460\n容器サイズ:50'), 'チェック前'),
   ]);
   const raw = { '50k': [r] };
-  s2.ychk_attachToBlocks_(raw, ents, '50k');
+  s2.ychk_attachToBlocks_(raw, ents, '50k', '2026-10-12');
   chk('★<10> に 26-50430 が付く', r.orders.length === 1 && r.orders[0].no === '26-50430', r.orders);
   chk('★<10> はチェック前', r.check === 'チェック前', r.check);
+}
+
+console.log('■ マップに書いてある残りの範囲を使う（実物 50k <3>・<20>）');
+{
+  /* ★ 実際に起きた：<3> GNo 555 はマップに「55421～55500・80本」と書き直されて
+       いたのに、群番号から計算した 55401〜55500・100本 を出していた。そのため
+       10/5に出荷済みの 26-60448（55401〜55420）が「番号」で付いていた。 */
+  const e = { Logger: { log: () => {} }, JSON, Object, Number, String, Math, Date, Array, isNaN };
+  vm.createContext(e);
+  vm.runInContext(fs.readFileSync(GAS + 'noda_yard_edit_engine.js', 'utf8'), e);
+  // 50ｋ刷込場シートの1〜8行目（実物の値をそのまま）
+  const grid = [
+    [],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '上小屋'],
+    ['', '', '', '', '', '', '', '', '', '', '底黒', '', '', '', '', '', '', '', '', '', '', '', '644', '< 20 >', '残２０', '634', '< 21 >', '残１'],
+    ['', '＜1＞', '626', '', '＜２＞', '625', '', '', '＜３＞', '555', '', '', '', '', '', '651', '', '< 19 >', '残５０', '', '←50/50', '64361', '～', '64400', '63301', '～', '63400'],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '65001', '～', '65100', '100', '本', '', '40', '本'],
+    ['', '62501', '～', '62600', '62401', '～', '62500', '', '55421', '～', '55500', '-99', '～', '0'],
+    ['', '', '', '100本', '', '', '100本', '', '', '80本'],
+  ];
+  const run = (gno, a1) => { const r = { groupNo: gno, rangeStart: null, rangeEnd: null, qty: 100 };
+    const full = e.yard_computeRangeFromGNo_('50k', gno); r.rangeStart = full.start; r.rangeEnd = full.end;
+    e.yard_applyLiveRange_('50k', r, grid, a1); return r; };
+  const r3 = run(555, 'J4');
+  chk('★<3> は 55421〜55500', r3.rangeStart === 55421 && r3.rangeEnd === 55500, r3);
+  chk('★<3> は 80本', r3.qty === 80, r3.qty);
+  const r20 = run(644, 'W3');
+  chk('★<20> は 64361〜64400・40本', r20.rangeStart === 64361 && r20.rangeEnd === 64400 && r20.qty === 40, r20);
+  const r1 = run(626, 'C4');
+  chk('<1> は書き直しなし（62501〜62600・100本のまま）', r1.rangeStart === 62501 && r1.rangeEnd === 62600 && r1.qty === 100 && !r1.rangeFromMap, r1);
+  const r21 = run(634, 'Z3');
+  chk('<21> も満杯のまま', r21.rangeStart === 63301 && r21.rangeEnd === 63400 && !r21.rangeFromMap, r21);
+  const r19 = run(651, 'P4');
+  chk('<19>（65001～65100）も満杯のまま', r19.rangeStart === 65001 && r19.rangeEnd === 65100 && !r19.rangeFromMap, r19);
+  chk('★隣の区画の範囲は拾わない（<2> の群で <3> の並びを見ても使わない）',
+    e.yard_liveRangeNear_(grid, 'F4', 62401, 62500).a === 62401);
+  chk('空きの「-99～0」は使わない', e.yard_liveRangeNear_(grid, 'M4', 1, 100) === null);
+
+  // 直した範囲だと、出荷済みの 26-60448 は重ならない
+  const s3 = sb();
+  const ents = s3.ychk_dedupe_([
+    s3.ychk_entry_(F('26.10.05_26-60448-0(1)_(株)りゅうせき北部物流.pdf', '得意先コード:G716\n数量:20\n容器No:HEP55401~HEP55420'), 'チェック済'),
+    s3.ychk_entry_(F('26.10.14_26-60821-0(1)_沖縄ガス 中部支社.pdf', '得意先コード:9300\n数量:80\n容器No:HEP55421~HEP55500\n品名:新軽量118L (50kg)'), 'チェック前'),
+  ]);
+  const blk = { found: true, pos: '3', rangeStart: 55421, rangeEnd: 55500, orders: [{ no: '26-60821', url: 'o', src: '手入力' }] };
+  s3.ychk_attachToBlocks_({ '50k': [blk] }, ents, '50k', '2026-10-12');
+  chk('★<3> に 26-60448 は付かない', blk.orders.length === 1 && blk.orders[0].no === '26-60821', blk.orders);
+  chk('★<3> は 26-60821 だけでチェック前', blk.check === 'チェック前', blk.check);
+}
+
+console.log('■ 出荷希望日が過ぎた指図書は、番号の重なりでは付けない');
+{
+  const s4 = sb();
+  const ents = s4.ychk_dedupe_([
+    s4.ychk_entry_(F('26.10.05_26-60448-0(1)_(株)りゅうせき北部物流.pdf', '数量:20\n容器No:HEP55401~HEP55420'), 'チェック済'),
+  ]);
+  chk('名前から日付', ents[0].dateKey === '2026-10-05', ents[0].dateKey);
+  // マップが直されていない（100本のまま）でも、過ぎた指図書は付かない
+  const blk = { found: true, pos: '3', rangeStart: 55401, rangeEnd: 55500, orders: [] };
+  s4.ychk_attachToBlocks_({ '50k': [blk] }, ents, '50k', '2026-10-12');
+  chk('★10/5出荷のものは 10/12 には付かない', blk.orders.length === 0 && !blk.check, blk);
+  const blk2 = { found: true, pos: '3', rangeStart: 55401, rangeEnd: 55500, orders: [] };
+  s4.ychk_attachToBlocks_({ '50k': [blk2] }, ents, '50k', '2026-10-05');
+  chk('出荷当日はまだ付ける', blk2.orders.length === 1, blk2);
+  const blk3 = { found: true, pos: '3', rangeStart: 55401, rangeEnd: 55500, orders: [{ no: '26-60448', src: '手入力' }] };
+  s4.ychk_attachToBlocks_({ '50k': [blk3] }, ents, '50k', '2026-10-12');
+  chk('人が打った依頼Noは過ぎていても残す（状態も付ける）', blk3.orders[0].check === 'チェック済', blk3.orders);
+
+  const ycs = { Logger: { log: () => {} }, JSON, Object, Number, String, Math, Date, Array, isNaN,
+    shipact_shortDate_: (d) => String(d).slice(5).replace('-', '/'), shipact_fileUrl_: (id) => 'u/' + id };
+  vm.createContext(ycs);
+  vm.runInContext(fs.readFileSync(GAS + 'noda_yard_cno_match.js', 'utf8'), ycs);
+  const idx = { ranges: [{ no: '26-60448', prefix: 'HEP', a: 55401, b: 55420, date: '2026-10-05', size: '50kg', qty: 20, check: '一致' }], byOrder: {} };
+  const raw = { '50k': [{ found: true, pos: '3', rangeStart: 55401, rangeEnd: 55500, orders: [] }], '20k': [] };
+  ycs.ycno_attachToBlocks_(raw, idx, '2026-10-12');
+  chk('★容器番号の索引（実績シート）からも過ぎたものは付けない', raw['50k'][0].orders.length === 0, raw['50k'][0].orders);
+  const raw2 = { '50k': [{ found: true, pos: '3', rangeStart: 55401, rangeEnd: 55500, orders: [] }], '20k': [] };
+  ycs.ycno_attachToBlocks_(raw2, idx, '2026-10-01');
+  chk('出荷前なら付ける', raw2['50k'][0].orders.length === 1 && raw2['50k'][0].orders[0].src === '番号');
 }
 
 // ===== 画面（390px） =====
