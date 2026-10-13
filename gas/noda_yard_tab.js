@@ -46,6 +46,11 @@ function getYardTabData() {
     });
     data.totals = yardtab_totals_(data.locations);
     try { data.sheetUrl = yardGetSpreadsheet_().getUrl(); } catch (e) { /* 無くても動く */ }
+    /* ★ 敷地図（元アプリの敷地レイアウト図）をダッシュボードに入れたので、建屋の位置・向きの
+         手直しと、囲みのエリアも一緒に返す。どちらもスクリプトプロパティなので軽い。 */
+    data.site = { overrides: {}, zones: [] };
+    try { data.site.overrides = yardGetBuildingOverrides() || {}; } catch (e2) { /* 無くても描ける */ }
+    try { data.site.zones = yardGetAreaZones() || []; } catch (e3) { /* 無くても描ける */ }
   } catch (err) {
     data.error = String(err);
     Logger.log('野外置場の一覧でエラー: ' + String(err));
@@ -78,8 +83,17 @@ function yardtab_shape_(r) {
     sizes: sizes, 率: rate, 収容数なし: 未設定,
     /* 超過・満杯のほうが急ぎなので、そちらが立っていればそちらを出す。 */
     状態: rate >= 1 ? '超過' : rate >= 0.8 ? '満杯に近い' : (未設定 ? '収容数なし' : ''),
-    updatedAt: r.updatedAt || '', updatedBy: r.updatedBy || ''
+    updatedAt: r.updatedAt || '', updatedBy: r.updatedBy || '',
+    // 敷地図の上の位置（元アプリで動かして保存したもの）。無ければ画面側の初期位置
+    mapX: yardtab_num_(r.mapX), mapY: yardtab_num_(r.mapY)
   };
+}
+
+/* 空や文字は null（0 と区別する。0 は地図の端にある本物の位置かもしれない） */
+function yardtab_num_(v) {
+  if (v === '' || v == null) return null;
+  var x = Number(v);
+  return isNaN(x) ? null : x;
 }
 
 function yardtab_totals_(list) {

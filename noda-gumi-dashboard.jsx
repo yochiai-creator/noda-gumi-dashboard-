@@ -3054,6 +3054,259 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
     中身は47KBの独自UI（敷地レイアウト図・建物編集・変更履歴）なので、Reactに
     書き直さずそのまま iframe で読み込む。旧アプリ側も setXFrameOptionsMode(ALLOWALL)
     が入っていて、もともと埋め込む前提で書かれていた。 */
+/* ===== 野外置場の敷地図（元の屋外在庫管理アプリから移したもの） =====
+   神鋼機器工業様の敷地配置図から実寸換算した座標（EMU/1000）。変えるときは元アプリの
+   yard_capacity_script.html と合わせる。 */
+const SITE_MAP = {"boundary":[[879.4,2086.4],[1078.6,1857.8],[1344.5,1734.5],[1827.7,1676.4],[2218.6,1676.4],[2367.2,1752.6],[2542.3,1810.7],[3058.3,1828.8],[3141.2,1828.8],[3300.1,1476.9],[3305.7,1485.6],[2797.2,1485.6],[2797.2,1313.6],[3295.4,1313.6],[3451.8,893.5],[4132.3,893.5],[4132.3,1570.5],[3518.7,1570.5],[3529,1561.8],[3516.8,1590.1],[3438,1811],[3963.4,1811],[4197,1738.1],[6612.1,1738.1],[6593.3,1733.8],[7086.8,1542.2],[7814,1074.2],[8698.7,530],[9524.4,101.2],[10469.2,81.6],[11303.3,81.6],[11295.8,81.6],[14250.3,22.8],[14642,37.9],[17518.5,5299],[15497.5,10309.4],[14498.6,12439.5],[13716.4,12173.6],[9500,11492.2],[3393.9,9759.5],[2827.2,9494],[2097.3,8923.7],[1494.9,8048.6],[1215.3,7138.7],[943.2,4389.4],[1191.1,4381.2],[943.5,4219.3],[1191.1,3876.4],[905.4,3676.4],[848.2,2514.4],[886.3,2523.9],[857.7,2076.2]],"pond":[[9600,7185.7],[10485.2,7680.8],[11189.1,8191.4],[11930.6,8851.7],[11443.7,9675],[10998,10474.3],[10678.1,10375.2],[10633.2,10409.9],[9335.1,10141.3],[9356.5,9447],[9314.6,8926.3],[9272.5,8329.7],[9483.6,8218.7],[9492.7,8019.1],[9507.2,7693.5],[9600,7185.7]],"unlabeled":[[11262.7,9896.5,419.1,247.6],[8586.2,8343.9,28.6,114.3],[5090.5,8772.5,361.9,266.7],[4490.4,5600.7,381,361.9],[2452.1,4924.4,381,323.8],[4442.8,5695.9,866.8,457.2],[12248.8,4141.1,214.8,183]],"buildings":[{"name":"大型仕上工場","x":12266.5,"y":6868.8,"w":2281.8,"h":585.6},{"name":"焼却炉","x":2198.9,"y":4874.6,"w":745.9,"h":250.6}],"shapes":[{"name":"大型製缶工場","points":[[7543.5,4640.1],[11154.5,4649.6],[11198.6,6177.4],[7584.9,6148]]},{"name":"保全工場","points":[[6398.2,6570],[7466.6,6584.3],[7460.9,7168.9],[6392.4,7154.7]]},{"name":"製品第三倉庫","points":[[6470.6,7562.5],[7420.9,7585.3],[7416.1,7854],[6465.8,7831.1]]},{"name":"製品第二倉庫","points":[[6415.1,7093.3],[7488.4,7222.3],[7454.8,7594.3],[6381.5,7465.3]]},{"name":"北作業場","points":[[2036.5,4512.6],[2968.5,4543],[2960.3,4882.1],[2028.2,4851.7]]},{"name":"水処理","points":[[1988.9,5194.1],[2944.6,5196.7],[2942.9,6003.6],[1987.3,6000.9]]},{"name":"塗装工場","points":[[15180.7,5509],[15732.9,5464.2],[15844.3,7333.4],[15292.1,7378.2]]},{"name":"小型検査工場","points":[[14080.8,5409.5],[14495.9,5415.7],[14484.5,6434.2],[14069.4,6427.9]]},{"name":"工作工場","points":[[12935.2,5293.8],[13249.7,5279.5],[13272.1,5947],[12957.5,5961.3]]},{"name":"班長室","points":[[9747.8,3829.3],[10291.8,3869.1],[10280.9,4068.1],[9736.9,4028.3]]},{"name":"西製品倉庫","points":[[8084.3,10584.4],[14636.1,12082.8],[14518.6,12376.6],[10045.4,11473.2],[7981.5,11039.8]]},{"name":"特殊製缶工場","points":[[3561.6,3749.8],[8978.2,3815.2],[8980.1,3601.6],[9038.5,3602.3],[9052.7,2014.5],[8593.9,2008.9],[8593.5,2056.9],[5055.1,2014.1],[5055.9,1927],[4896,1925.1],[4895.3,2012.2],[4662.1,2009.4],[4663.8,1815.5],[4496.5,1813.5],[4494.6,2027],[3577.1,2015.9]]},{"name":"20ｋｇ容器工場","points":[[7277,8386.5],[4740.1,8317.8],[4741.4,8251],[4534.8,8245.4],[4533.5,8312.2],[4030.9,8298.5],[4032.4,8221],[3840.7,8215.8],[3837,8398.8],[3953.6,8440.7],[4028,8442.7],[4011.2,9276],[3845.5,9271.5],[3840.3,9529.9],[4906.8,9558.8],[4905.2,9636.3],[5301.7,9647],[5302.7,9597.5],[5641.4,9606.7],[5642.2,9570],[7252.2,9613.6]]},{"name":"20ｋｇ容器工場","points":[[5302.8,10405.2],[7180.3,10893],[7389,9813.1],[6874.6,9679.9],[6837.7,9866.4],[6372.7,9745.6],[6335.5,9945.4],[5437.6,9711.6]]},{"name":"北製品倉庫Ａ・Ｂ","points":[[1550.7,2023.2],[2470.9,2011.1],[2472.4,2165],[2961.5,2158.6],[2977.1,3761],[1707.8,3777.7],[1700.3,3005.7],[1560.2,3007.5]]},{"name":"特殊容器工場","points":[[4415.3,4490.5],[5657.6,4543.4],[5632.5,5335.8],[5492.4,5329.9],[5484.4,5582.7],[5624.5,5588.7],[5617.1,5820.9],[5469.1,5814.6],[5467.5,5867],[5615.4,5873.3],[5602.9,6267.2],[5009.3,6242],[5011.9,6162.3],[4215.2,6128.4],[4229.1,5691.2],[4290.2,5693.8],[4306,5197.4],[4392.8,5201.1]]},{"name":"50ｋｇ容器工場","points":[[2263.6,6279.4],[2605.2,6288],[2602.9,6407.5],[5127.3,6471.2],[5123.8,6662.3],[5322.7,6667.3],[5324,6597.9],[6082.3,6617],[6058.5,7885.1],[5850.1,7879.8],[5851.3,7819],[5102.4,7800.1],[5101.5,7850.1],[3551.1,7810.9],[3548.9,7930.3],[3398.8,7926.6],[3400.8,7818],[2477.4,7794.7],[2482.1,7545],[2298.2,7540.4],[2251.4,6928.7],[2493.6,6934.8],[2500.1,6585.2],[2366.8,6581.8],[2368.1,6512.4],[2259.3,6509.6]]},{"name":"電気","points":[[8748.1,917.6],[8743.1,1488.2],[9364.7,1495.5],[9364.2,1552.3],[9817.7,1535.3],[9800.4,517],[9363.3,604.6],[9360.5,924.7]]},{"name":"アーム工場","points":[[9670.8,2049.5],[11129.8,2085.8],[11131.9,2000.8],[11367.2,2008.5],[11374.9,3885.7],[9694.1,3742.4]]},{"name":"酸洗工場","points":[[3310.1,6133.3],[3324.7,5707.3],[3310.1,5619.2],[3295.4,4576.2],[4031.9,4568.7],[4073.9,6089.3]]},{"name":"大型検査工場","points":[[12815.5,2881],[13117.6,2882.9],[13116.3,3149.7],[13418.3,3151.6],[13415.4,3760],[14126.2,3764.5],[14122.7,4535.1],[12807.9,4526.9]]},{"name":"材料・容器置場","points":[[15397,1542.4],[17232.6,5589.6],[16695.9,5915.9],[14803.6,1697.8],[15239.9,1526]]},{"name":"第５倉庫","points":[[13961.1,10377.6],[13555.9,11259.3],[13815.1,11422.7],[13792.2,11474.4],[13935.3,11563.6],[14363.5,10631.9]]},{"name":"新事務所","points":[[8304.7,8263.4],[8936.3,8307.4],[8965.8,9664.9],[9147.6,9673.9],[9134.4,10030.5],[8963.5,10022],[8947.9,10443.5],[8370,10414.7]]},{"name":"第二原料倉庫","points":[[12476.6,9277],[12888,9497.3],[12212.2,10878.2],[11786.2,10657.9]]},{"name":"コンテナ倉庫","points":[[13196.7,9907.3],[13547.8,10169.1],[12991.9,11165.4],[12642.7,10903.6]]},{"name":"守衛室","points":[[16287.5,7682.1],[16516.4,7845.4],[16289.3,8274.2],[16060.4,8110.9]]},{"name":"検収倉庫","points":[[14497.6,8927.9],[14717.2,8505.6],[15829.9,9282.7],[15610.4,9707.2]]},{"name":"北プラットホーム","points":[[1067.1,4500.1],[1277.4,4485],[1382.2,6319.3],[1173.7,6334.7]]}],"markers":{"2":{"x":2373.1,"y":5512.4},"3":{"x":3879.9,"y":6999.1},"4":{"x":5182.2,"y":8776.4},"7":{"x":7743.6,"y":5265.3},"8":{"x":8668.7,"y":5265.3},"9":{"x":9522.5,"y":5265.3},"10":{"x":10447.6,"y":5265.3},"11":{"x":12906.8,"y":10514.6},"12":{"x":8286.9,"y":9274.9},"15":{"x":9029.4,"y":11633.8},"19":{"x":14987.8,"y":6167.6},"22":{"x":14355.4,"y":8824.3},"23":{"x":6502.9,"y":7510.5},"25":{"x":9457.5,"y":11633.8},"27":{"x":6783,"y":7187.4},"29":{"x":5912.1,"y":10022.7},"32":{"x":12690,"y":5453.6},"33":{"x":12979.9,"y":6977.3}}};
+
+/* 置場の混み具合の色。元アプリと同じ4段（色だけにせず、凡例と明細で文字でも出す） */
+const SITE_LEVEL = {
+  over:  { fill: "#e0392c", label: "満杯（100%〜）" },
+  warn:  { fill: "#f2a30f", label: "満杯に近い（80%〜）" },
+  ok:    { fill: "#2f9e58", label: "余裕あり" },
+  empty: { fill: "#9aa2af", label: "収容数なし・空" },
+};
+function siteLevel_(r) {
+  const hasMax = (r.sizes || []).some((s) => s.max > 0);
+  if (!hasMax) return "empty";
+  return r.率 >= 1 ? "over" : r.率 >= 0.8 ? "warn" : "ok";
+}
+function siteBldgKind_(name) {
+  if (name.indexOf("倉庫") !== -1 || name.indexOf("置場") !== -1) return "warehouse";
+  if (name.indexOf("事務所") !== -1 || name.indexOf("室") !== -1) return "office";
+  return "factory";
+}
+const SITE_BLDG_STYLE = {
+  factory:   { fill: "#ffffff", stroke: "#45566e", roof: "#c7ccd6" },
+  warehouse: { fill: "#e7eff9", stroke: "#3d5a80", roof: "#b7cbe8" },
+  office:    { fill: "#fdf5e4", stroke: "#9c7a3c", roof: "#e8cf9e" },
+};
+function siteLabelSize_(w, h, name, tall) {
+  const fit = ((tall ? h : w) / name.length) * 0.85;
+  return Math.max(40, Math.min(145, fit));
+}
+function siteTransform_(cx, cy, o) {
+  if (!o) return undefined;
+  return "translate(" + (o.dx || 0) + "," + (o.dy || 0) + ") translate(" + cx + "," + cy + ") " +
+    "rotate(" + (o.rotation || 0) + ") scale(" + (o.scale || 1) + ") translate(" + (-cx) + "," + (-cy) + ")";
+}
+
+/* ===== 野外置場の敷地図 =====
+   ★ 今までは「敷地レイアウト図を開く」で元の屋外在庫管理アプリを別に開いていた。
+     同じ図（建屋・池・敷地の線）をダッシュボードの中に描き、置場ごとのピンを
+     混み具合の色で出す。ピンを押すとその置場の本数が下に出る。
+     建屋の位置の手直し・ピンの置き直しは今までどおり元アプリで（ここは見るだけ）。 */
+function SiteMap({ locations, site, onOpen }) {
+  const VB = { x: -300, y: -300, w: 18400, h: 12700 };
+  const [sel, setSel] = useState(null);
+  const [zoom, setZoom] = useState({ x: VB.x, y: VB.y, s: 1 });
+  const [pxW, setPxW] = useState(360);
+  const svgRef = React.useRef(null);
+  const gest = React.useRef({ mode: null, moved: 0, px: 0, py: 0, d0: 0, z0: null, live: null, raf: 0 });
+  const MAX = 8;
+
+  useEffect(() => {
+    const measure = () => { const el = svgRef.current; if (el) setPxW(el.getBoundingClientRect().width || 360); };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const overrides = (site && site.overrides) || {};
+  const zones = (site && site.zones) || [];
+  const placed = [], unplaced = [];
+  (locations || []).forEach((r) => {
+    const pos = (r.mapX != null && r.mapY != null) ? { x: r.mapX, y: r.mapY } : SITE_MAP.markers[r.no];
+    if (pos) placed.push({ r, pos }); else unplaced.push(r);
+  });
+
+  const clamp = (x, y, s) => {
+    s = Math.min(Math.max(s, 1), MAX);
+    const w = VB.w / s, h = VB.h / s;
+    return { x: Math.min(Math.max(x, VB.x), VB.x + VB.w - w), y: Math.min(Math.max(y, VB.y), VB.y + VB.h - h), s };
+  };
+  const vbOf = (z) => z.x + " " + z.y + " " + (VB.w / z.s) + " " + (VB.h / z.s);
+  // ピンは画面の上でいつも同じくらいの大きさ（指で押せる大きさ）にする
+  const unitPerPx = (VB.w / zoom.s) / (pxW || 360);
+  const pinR = Math.max(150, 11 * unitPerPx);
+
+  const write = (z) => {
+    const g = gest.current;
+    g.live = z;
+    if (g.raf) return;
+    g.raf = requestAnimationFrame(() => {
+      g.raf = 0;
+      if (svgRef.current && g.live) svgRef.current.setAttribute("viewBox", vbOf(g.live));
+    });
+  };
+  const toVb = (cx, cy, z) => {
+    const rect = svgRef.current.getBoundingClientRect();
+    return { x: z.x + (cx - rect.left) * (VB.w / z.s) / rect.width, y: z.y + (cy - rect.top) * (VB.h / z.s) / rect.height };
+  };
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const onTouchStart = (e) => {
+    const g = gest.current, t = e.touches;
+    g.moved = 0; g.z0 = g.live || zoom; g.live = g.z0;
+    if (t.length === 2) { g.mode = "pinch"; g.d0 = dist(t[0], t[1]);
+      g.anchor = toVb((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2, g.z0); }
+    else if (t.length === 1) { g.mode = "pan"; g.px = t[0].clientX; g.py = t[0].clientY; }
+  };
+  const onTouchMove = (e) => {
+    const g = gest.current, t = e.touches;
+    if (g.mode === "pinch" && t.length === 2 && g.d0 > 0) {
+      g.moved = 999;
+      const s = Math.min(Math.max(g.z0.s * dist(t[0], t[1]) / g.d0, 1), MAX);
+      const rect = svgRef.current.getBoundingClientRect();
+      const mx = (t[0].clientX + t[1].clientX) / 2, my = (t[0].clientY + t[1].clientY) / 2;
+      write(clamp(g.anchor.x - (mx - rect.left) * (VB.w / s) / rect.width, g.anchor.y - (my - rect.top) * (VB.h / s) / rect.height, s));
+    } else if (g.mode === "pan" && t.length === 1) {
+      const dx = t[0].clientX - g.px, dy = t[0].clientY - g.py;
+      g.moved += Math.abs(dx) + Math.abs(dy); g.px = t[0].clientX; g.py = t[0].clientY;
+      const z = g.live || zoom;
+      if (z.s > 1) { const u = (VB.w / z.s) / svgRef.current.getBoundingClientRect().width; write(clamp(z.x - dx * u, z.y - dy * u, z.s)); }
+    }
+  };
+  const onTouchEnd = (e) => {
+    const g = gest.current;
+    if (e.touches.length > 0) return;
+    if (g.live && (g.live.x !== zoom.x || g.live.y !== zoom.y || g.live.s !== zoom.s)) setZoom(g.live);
+    g.mode = null; g.live = null;
+  };
+  // 動かしたあとの指離れをピンのタップにしない
+  const onClickCapture = (e) => { if (gest.current.moved > 8) { e.stopPropagation(); e.preventDefault(); gest.current.moved = 0; } };
+  const zoomBy = (k) => setZoom((z) => { const c = { x: z.x + VB.w / z.s / 2, y: z.y + VB.h / z.s / 2 }; const s = z.s * k;
+    return clamp(c.x - VB.w / s / 2, c.y - VB.h / s / 2, s); });
+  const zoomTo = (p) => { const s = Math.max(zoom.s, 3); setZoom(clamp(p.x - VB.w / s / 2, p.y - VB.h / s / 2, s)); };
+
+  const selRec = sel != null ? (locations || []).find((r) => String(r.no) === String(sel)) : null;
+  const counts = { over: 0, warn: 0, ok: 0, empty: 0 };
+  (locations || []).forEach((r) => { counts[siteLevel_(r)]++; });
+
+  return (
+    <div>
+      <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", touchAction: zoom.s > 1 ? "none" : "pan-y" }}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
+        onClickCapture={onClickCapture}>
+        <svg ref={svgRef} viewBox={vbOf(zoom)} preserveAspectRatio="xMidYMid meet"
+          style={{ width: "100%", height: "auto", display: "block", background: "#dbead2" }}>
+          <rect x={VB.x} y={VB.y} width={VB.w} height={VB.h} fill="#dbead2" />
+          <polygon points={SITE_MAP.boundary.map((p) => p.join(",")).join(" ")} fill="#eee6c8" stroke="#b1552a" strokeWidth="30" strokeLinejoin="round" />
+          <polygon points={SITE_MAP.pond.map((p) => p.join(",")).join(" ")} fill="#a9cbe8" stroke="#6f9dc4" strokeWidth="18" />
+          {SITE_MAP.unlabeled.map((u, i) => (
+            <rect key={"u" + i} x={u[0]} y={u[1]} width={u[2]} height={u[3]} fill="#c9d6e8" stroke="#7c8ea8" strokeWidth="10" />
+          ))}
+          {SITE_MAP.buildings.map((b, i) => {
+            const st = SITE_BLDG_STYLE[siteBldgKind_(b.name)], cx = b.x + b.w / 2, cy = b.y + b.h / 2, tall = b.h > b.w * 1.3;
+            return (
+              <g key={"b" + i} transform={siteTransform_(cx, cy, overrides["rect:" + i])}>
+                <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={st.fill} stroke={st.stroke} strokeWidth="22" />
+                <rect x={b.x} y={b.y} width={b.w} height={Math.min(b.h * 0.24, 130)} fill={st.roof} />
+                <text x={cx} y={cy} dominantBaseline="central" textAnchor="middle" fill="#4b5563" fontWeight="600"
+                  fontSize={siteLabelSize_(b.w, b.h, b.name, tall)} transform={tall ? "rotate(-90 " + cx + " " + cy + ")" : undefined}>{b.name}</text>
+              </g>
+            );
+          })}
+          {SITE_MAP.shapes.map((b, i) => {
+            const xs = b.points.map((p) => p[0]), ys = b.points.map((p) => p[1]);
+            const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+            const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, tall = (y1 - y0) > (x1 - x0) * 1.3;
+            const st = SITE_BLDG_STYLE[siteBldgKind_(b.name)];
+            return (
+              <g key={"s" + i} transform={siteTransform_(cx, cy, overrides["shape:" + i])}>
+                <polygon points={b.points.map((p) => p.join(",")).join(" ")} fill={st.fill} stroke={st.stroke} strokeWidth="22" />
+                <text x={cx} y={cy} dominantBaseline="central" textAnchor="middle" fill="#4b5563" fontWeight="600"
+                  fontSize={siteLabelSize_(x1 - x0, y1 - y0, b.name, tall)} transform={tall ? "rotate(-90 " + cx + " " + cy + ")" : undefined}>{b.name}</text>
+              </g>
+            );
+          })}
+          {zones.map((z) => {
+            const cx = z.x + z.w / 2, cy = z.y + z.h / 2, tall = z.h > z.w * 1.3;
+            return (
+              <g key={"z" + z.id} transform={siteTransform_(cx, cy, overrides["zone:" + z.id])}>
+                <rect x={z.x} y={z.y} width={z.w} height={z.h} fill="rgba(99,102,241,0.1)" stroke="#6366f1" strokeWidth="26" strokeDasharray="60 40" />
+                <text x={cx} y={cy} dominantBaseline="central" textAnchor="middle" fill="#4338ca" fontWeight="700"
+                  fontSize={siteLabelSize_(z.w, z.h, z.name || "", tall)} transform={tall ? "rotate(-90 " + cx + " " + cy + ")" : undefined}>{z.name}</text>
+              </g>
+            );
+          })}
+          {/* 押したピンは最後に描く（重なっていても一番上に出す） */}
+          {placed.slice().sort((a, b) => (String(a.r.no) === String(sel) ? 1 : 0) - (String(b.r.no) === String(sel) ? 1 : 0)).map(({ r, pos }) => {
+            const lv = SITE_LEVEL[siteLevel_(r)], on = String(sel) === String(r.no);
+            const cy = pos.y - pinR * 1.5;
+            return (
+              <g key={"m" + r.no} onClick={() => setSel(on ? null : r.no)} style={{ cursor: "pointer" }}>
+                <ellipse cx={pos.x} cy={pos.y + 14} rx={pinR * 0.5} ry={pinR * 0.2} fill="rgba(16,24,40,0.28)" />
+                <polygon points={(pos.x - pinR * 0.55) + "," + (cy + pinR * 0.7) + " " + (pos.x + pinR * 0.55) + "," + (cy + pinR * 0.7) + " " + pos.x + "," + pos.y} fill={lv.fill} />
+                <circle cx={pos.x} cy={cy} r={pinR} fill={lv.fill} stroke={on ? "#0f172a" : "#fff"} strokeWidth={on ? pinR * 0.22 : pinR * 0.09} />
+                <text x={pos.x} y={cy} dominantBaseline="central" textAnchor="middle" fill="#fff" fontWeight="700"
+                  fontSize={pinR * (String(r.no).length > 1 ? 0.95 : 1.15)}>{r.no}</text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="flex items-center gap-2 mt-2">
+        <button onClick={() => zoomBy(1 / 1.6)} disabled={zoom.s <= 1}
+          className="px-3 py-1 rounded-md text-sm font-bold bg-slate-100 text-slate-700">－</button>
+        <button onClick={() => zoomBy(1.6)} disabled={zoom.s >= MAX}
+          className="px-3 py-1 rounded-md text-sm font-bold bg-slate-100 text-slate-700">＋</button>
+        {zoom.s > 1 && (
+          <button onClick={() => setZoom({ x: VB.x, y: VB.y, s: 1 })}
+            className="px-2 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100">全体に戻す</button>
+        )}
+        <span className="text-[10px] text-slate-400 ml-auto">ピンを押すと本数。2本指で拡大</span>
+      </div>
+
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-600">
+        {Object.keys(SITE_LEVEL).map((k) => (
+          <span key={k} className="flex items-center gap-1">
+            <span className="w-3 h-3 rounded-full inline-block" style={{ background: SITE_LEVEL[k].fill }} />
+            {SITE_LEVEL[k].label} {counts[k]}
+          </span>
+        ))}
+      </div>
+
+      {selRec && (
+        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-slate-900">{selRec.no} {selRec.name}</span>
+            <span className="text-[11px] text-slate-500">{selRec.position}</span>
+            <span className="text-[11px] font-semibold ml-auto" style={{ color: SITE_LEVEL[siteLevel_(selRec)].fill }}>
+              {selRec.状態 || SITE_LEVEL[siteLevel_(selRec)].label}
+            </span>
+          </div>
+          {(selRec.sizes || []).map((s) => (
+            <div key={s.key} className="flex items-center gap-2 mt-1 text-xs tabular-nums">
+              <span className="w-10 text-slate-500">{s.label}</span>
+              <span className="font-semibold text-slate-800">{s.実績.toLocaleString()}</span>
+              <span className="text-slate-400">/ {s.max > 0 ? s.max.toLocaleString() : "—"}</span>
+              <span className="ml-auto text-slate-600">{s.率 != null ? Math.round(s.率 * 100) + "%" : "—"}</span>
+            </div>
+          ))}
+          {selRec.note && <div className="text-[11px] text-slate-500 mt-1">{selRec.note}</div>}
+          <div className="flex gap-2 mt-2">
+            <button onClick={() => onOpen && onOpen(selRec)}
+              className="px-3 py-1 rounded-md text-xs font-semibold text-white" style={{ background: NAVY }}>本数を直す</button>
+            <button onClick={() => setSel(null)} className="px-3 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100">閉じる</button>
+          </div>
+        </div>
+      )}
+
+      {unplaced.length > 0 && (
+        <div className="mt-2 text-[11px] text-slate-500">
+          地図に位置が無い置場：
+          {unplaced.map((r) => (
+            <button key={"n" + r.no} onClick={() => onOpen && onOpen(r)}
+              className="ml-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{r.no} {r.name}</button>
+          ))}
+          <span className="block text-[10px] text-slate-400 mt-0.5">ピンの位置は「敷地レイアウト図を開く」（元のアプリ）の配置編集で置けます</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSave, onRefresh,
                           onAddLot, onInspectLot, onStockInLot, onCancelLot, plan, saving }) {
   const [keyword, setKeyword] = useState("");
@@ -3138,6 +3391,17 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
             saving={saving} />
         </Collapsible>
       </Card>
+
+      {/* ---- 敷地図。置場ごとのピンを混み具合の色で ---- */}
+      {list.length > 0 && (
+        <Card className="nd-full p-3">
+          <Collapsible tone="card" title="敷地図" note="置場ごとの混み具合"
+            closedNote={list.length + "か所"}>
+            <SiteMap locations={list} site={data && data.site}
+              onOpen={(r) => { setKeyword(String(r.no)); if (openNo !== r.no) openEdit(r); }} />
+          </Collapsible>
+        </Card>
+      )}
 
       {/* ---- 置場の一覧。ここで本数を直す ---- */}
       <Card className="p-3">

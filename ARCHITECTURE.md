@@ -173,6 +173,7 @@ GASは**全ファイルが1つのグローバル空間**を共有する（→ [8
 | `cmaster_test` | node | 機種マスタ（Shift_JIS・サイズの割り当て） |
 | `arm_test` | node | アーム出荷予定・月別、明細PDFの名前の揺れ |
 | `dispcache_test` | node | 配車の週切替で読み直さないこと |
+| `sitemap_test` | node＋ブラウザ | 野外置場の敷地図（実物の置場18か所のピン・色・押したときの本数・拡大・位置の無い置場） |
 | `resp_test` | ブラウザ | スマホ・タブレット・パソコンの3つの幅で、はみ出し・KPIの並び・2列の段・配車表の初期表示 |
 | `snap_test` | ブラウザ | 前回のデータを端末に残し、開いた瞬間に出す／版が変わったら使わない |
 | `chart_test` `disp_grid_test` `disp_week_height_test` `load_wait_test` `tap_test` `yard_kpi_test` `yardcap_test` `yardlag_test` | ブラウザ | 390px の実ブラウザ（Playwright）で描いて測る。字の大きさ、はみ出し、タップ、読み込み待ち、マップを動かしたときの1コマの時間 |
@@ -512,7 +513,12 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
 - 収容数は普段いじらせない。「収容数も直す」を押したときだけ3サイズとも出す
   （今0のサイズを隠すと、20kg用を50kg用に変える直し方ができない）。
 - 推移は `日次在庫` に1日1行（変更履歴は文字なので推移は作れない）。
-- 敷地レイアウト図と建屋の編集は作り直していない。旧画面（`?page=yard`）をリンクで開く。
+- **敷地図**（2026/10/13〜）：元アプリの敷地レイアウト図（建屋・池・敷地の線。座標は元アプリの
+  `yard_capacity_script.html` からそのまま移した `SITE_MAP`）をタブの中に描き、置場ごとのピンを混み具合の色
+  （満杯・80%〜・余裕・収容数なし）で出す。ピンの位置は置場容量シートの「地図X/Y」、無ければ元アプリの初期位置。
+  建屋の位置・向きの手直し（`yardGetBuildingOverrides`）と囲みのエリア（`yardGetAreaZones`）も `getYardTabData` で返す。
+  ピンを押すと本数、「本数を直す」で一覧のその置場をひらく。ドラッグ・2本指・＋－で拡大。
+  **見るだけ**。建屋の手直し・ピンの置き直しは今までどおり元アプリ（`?page=yard`）で。`sitemap_test`。
 
 ### 9.8 生産計画（`noda_prod_plan.js`）
 
