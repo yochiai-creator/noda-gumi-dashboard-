@@ -4123,8 +4123,9 @@ function YardMap({
     className: "text-[10px] text-slate-400 mb-1.5"
   }, "\u51FA\u8377\u4F5C\u696D\u6307\u56F3\u66F8", sel.orders.some(o => o.src === "番号") && "　※「番号」は容器Noの重なりから当てたもの（手入力ではありません）"), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-1.5"
-  }, sel.orders.map((o, i) => o.url ? /*#__PURE__*/React.createElement("a", {
-    key: i,
+  }, sel.orders.map((o, i) => o.url ? /*#__PURE__*/React.createElement(React.Fragment, {
+    key: i
+  }, /*#__PURE__*/React.createElement("a", {
     href: o.url,
     target: "_blank",
     rel: "noopener noreferrer",
@@ -4145,7 +4146,15 @@ function YardMap({
     style: {
       background: o.check === "チェック前" ? "rgba(255,255,255,.3)" : "#059669"
     }
-  }, o.check === "チェック前" ? "チェック前" : o.check === "チェック済" ? "✓済" : "一部済")) : /*#__PURE__*/React.createElement("span", {
+  }, o.check === "チェック前" ? "チェック前" : o.check === "チェック済" ? "✓済" : "一部済")), o.check === "チェック前" && o.fileId && /*#__PURE__*/React.createElement("a", {
+    href: penAppUrl_(o.fileId),
+    target: "_blank",
+    rel: "noopener noreferrer",
+    className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white",
+    style: {
+      background: "#c2410c"
+    }
+  }, "\u270E ", o.no, o.ban || "", " \u306B\u66F8\u304D\u8FBC\u3080")) : /*#__PURE__*/React.createElement("span", {
     key: i,
     className: "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-400 bg-slate-100"
   }, o.no, "\uFF08PDF\u672A\u691C\u51FA\uFF09"))))), /*#__PURE__*/React.createElement("div", {
@@ -7146,6 +7155,12 @@ function YardCapacityTab({
 const PDF_VIEW = {
   open: null
 };
+
+/* 指図書 書き込みアプリ（Apple Pencil でチェックするアプリ。別のApps Script「指図書 書き込み」）。
+   ?file=<コピーのファイルID> を付けて開くと、その指図書をすぐ開く（アプリ側 7.16）。
+   入込場のチェック前の指図書から、一覧を探し直さずに書き込めるようにする（落合さん 10/25）。 */
+const PEN_APP_URL = "https://script.google.com/a/macros/nodagumi40.com/s/AKfycbx1nHyWtxs8J1wm7J06Bem_I8cxyYyHxKEJFSybrDYBG6ZYCUSK70UJH3w2j94xtklOWg/exec";
+const penAppUrl_ = fileId => PEN_APP_URL + "?file=" + encodeURIComponent(fileId);
 function drivePreviewUrl_(url) {
   const t = String(url || "");
   const m = t.match(/\/d\/([A-Za-z0-9_-]{10,})/) || t.match(/[?&]id=([A-Za-z0-9_-]{10,})/);

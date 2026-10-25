@@ -1666,7 +1666,8 @@ function YardMap({ yardLive, onRefresh }) {
               <div className="flex flex-wrap gap-1.5">
                 {sel.orders.map((o, i) =>
                   o.url ? (
-                    <a key={i} href={o.url} target="_blank" rel="noopener noreferrer"
+                    <React.Fragment key={i}>
+                    <a href={o.url} target="_blank" rel="noopener noreferrer"
                       onClick={(e) => openPdfQuick_(e, o.url, "指図書 " + o.no + (o.ban || "") + (o.check ? "　" + o.check : ""))}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
                       style={{ background: "#2563eb" }}>
@@ -1689,6 +1690,15 @@ function YardMap({ yardLive, onRefresh }) {
                         </span>
                       )}
                     </a>
+                    {/* ★ チェック前は、書き込みアプリでその指図書をすぐ開けるようにする */}
+                    {o.check === "チェック前" && o.fileId && (
+                      <a href={penAppUrl_(o.fileId)} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
+                        style={{ background: "#c2410c" }}>
+                        ✎ {o.no}{o.ban || ""} に書き込む
+                      </a>
+                    )}
+                    </React.Fragment>
                   ) : (
                     <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-400 bg-slate-100">
                       {o.no}（PDF未検出）
@@ -3738,6 +3748,12 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
      Drive の軽い表示（/preview）を、アプリの上にかぶせて開く。閉じればそのまま元の画面。
      開けないとき用に「別のタブで開く」も置く。 */
 const PDF_VIEW = { open: null };
+
+/* 指図書 書き込みアプリ（Apple Pencil でチェックするアプリ。別のApps Script「指図書 書き込み」）。
+   ?file=<コピーのファイルID> を付けて開くと、その指図書をすぐ開く（アプリ側 7.16）。
+   入込場のチェック前の指図書から、一覧を探し直さずに書き込めるようにする（落合さん 10/25）。 */
+const PEN_APP_URL = "https://script.google.com/a/macros/nodagumi40.com/s/AKfycbx1nHyWtxs8J1wm7J06Bem_I8cxyYyHxKEJFSybrDYBG6ZYCUSK70UJH3w2j94xtklOWg/exec";
+const penAppUrl_ = (fileId) => PEN_APP_URL + "?file=" + encodeURIComponent(fileId);
 
 function drivePreviewUrl_(url) {
   const t = String(url || "");

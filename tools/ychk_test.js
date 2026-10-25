@@ -22,7 +22,7 @@ function sb() {
   return s;
 }
 
-const F = (name, description, url) => ({ name, description, url: url || 'https://drive/' + name });
+const F = (name, description, url) => ({ name, description, url: url || 'https://drive/' + name, id: 'ID_' + name.slice(0, 22) });
 const BEFORE = [
   F('26.10.16_26-40377-0(1)_エア・ウォーター物流(株)石狩流通センター.pdf',
     '得意先コード:0190\n数量:80\n容器No:HEP65101~HEP65180\n品名:新軽量118L(50kg)\n容器サイズ:50'),
@@ -88,6 +88,7 @@ console.log('■ 区画に付ける');
   chk('★チェック前の区画', B('1').check === 'チェック前' && B('2').check === 'チェック前', [B('1').check, B('2').check]);
   chk('注文にもチェック前', B('1').orders[0].check === 'チェック前');
   chk('★コピーが1枚に決まればコピーを開く', B('1').orders[0].url === 'https://drive/' + BEFORE[1].name, B('1').orders[0].url);
+  chk('★注文にコピーのファイルID（書き込みアプリで開く）', B('1').orders[0].fileId === BEFORE[1].id, B('1').orders[0].fileId);
   chk('★3枚のうち2枚済なら「一部チェック済」', B('40').check === '一部チェック済', B('40').check);
   chk('★済だけが入る区画は「チェック済」', B('41').check === 'チェック済', B('41').check);
   chk('★依頼Noが無くても容器Noの重なりで足す（番号）・枝番ごとにボタン',
@@ -125,7 +126,7 @@ console.log('■ Driveのフォルダをたどる（全角の「50Ｋ」・月�
     M11: [],
   };
   const pdfs = {
-    U50: BEFORE.map((f) => ({ name: f.name, description: f.description, webViewLink: f.url })),
+    U50: BEFORE.map((f, i) => ({ id: 'FILE' + i, name: f.name, description: f.description, webViewLink: f.url })),
     C50: DONE.map((f) => ({ name: f.name, description: f.description, webViewLink: f.url })),
     C50s: [{ name: '26.09.30_26-60700-0(1)_x.pdf', description: '数量:10\n容器No:HEP60001~HEP60010', webViewLink: 'u' }],
     U20: [{ name: '26.10.16_26-11111-0(1)_x.pdf', description: '', webViewLink: 'u' }],
@@ -146,6 +147,7 @@ console.log('■ Driveのフォルダをたどる（全角の「50Ｋ」・月�
   chk('20Ｋのフォルダは読まない', !e.some((x) => x.orderNo === '26-11111'));
   chk('★共有ドライブの中も見る指定で呼ぶ', seen.length > 0 && seen.every((o) => o.supportsAllDrives && o.includeItemsFromAllDrives), seen[0]);
   chk('20kは空', s.ychk_entries_('20k').length === 0);
+  chk('★コピーのファイルIDを持つ（書き込みアプリで開くため）', e.filter((x) => x.state === 'チェック前').every((x) => /^FILE\d$/.test(x.fileId)), e.map((x) => x.fileId));
 }
 
 console.log('■ 群が2つ入った区画（実物 50k <10>「654,655」）');
@@ -328,7 +330,7 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
   const yard = JSON.stringify({ '50k': [
     { pos: '4', found: true, kind: 'fill', groupNo: 627, rangeStart: 62601, rangeEnd: 62700, qty: 100, check: 'チェック済',
       orders: [{ no: '26-20354', ban: '(1)', url: 'https://drive.google.com/file/d/a/view', date: '10/16', src: '手入力', check: 'チェック済' },
-               { no: '26-20355', url: 'https://drive.google.com/file/d/b/view', date: '10/16', src: '番号', check: 'チェック前' }] },
+               { no: '26-20355', url: 'https://drive.google.com/file/d/b/view', date: '10/16', src: '番号', check: 'チェック前', fileId: '1PenCopyId_b-xyz' }] },
     // ★ 指図書が1件の区画（本物と同じ長さのID）。タップでアプリの中に開く
     { pos: '8', found: true, kind: 'fill', groupNo: 628, rangeStart: 62701, rangeEnd: 62800, qty: 100, check: 'チェック済',
       orders: [{ no: '26-60841', ban: '(1)', url: 'https://drive.google.com/file/d/1AsJ_XmsS4kr6VupHS37kkrgVGlDzQ1wF/view?usp=drivesdk', date: '10/15', src: '手入力', check: 'チェック済' }] },
@@ -385,6 +387,10 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
   chk('★明細の状態にチェック済', /引当済\nチェック済/.test(t), t.slice(t.indexOf('状態'), t.indexOf('状態') + 60));
   chk('★指図書ボタンに「✓済」と「チェック前」', /26-20354\(1\)（10\/16） を開く\n?✓済/.test(t) && /26-20355（10\/16） を開く\n?番号\n?チェック前/.test(t),
     t.slice(t.indexOf('出荷作業指図書'), t.indexOf('出荷作業指図書') + 200));
+  chk('★チェック前の指図書に「書き込む」ボタン（チェック済には出さない）', /26-20355 に書き込む/.test(t) && !/26-20354\(1\) に書き込む/.test(t),
+    t.slice(t.indexOf('出荷作業指図書'), t.indexOf('出荷作業指図書') + 260));
+  const pen = await page.evaluate(() => [...document.querySelectorAll('a')].filter((a) => /に書き込む/.test(a.textContent)).map((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target') })));
+  chk('★書き込みアプリをそのファイルで開く（?file=ID・別のタブ）', pen.length === 1 && /\/s\/AKfycbx1nHy[^/]+\/exec\?file=1PenCopyId_b-xyz$/.test(pen[0].href) && pen[0].target === '_blank', pen);
   await page.screenshot({ path: SP + '/ychk_detail.png' });
 
   console.log('■ 画面：指図書をアプリの中でさっと開く');

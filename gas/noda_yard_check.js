@@ -80,7 +80,9 @@ function ychk_entry_(file, state) {
   return {
     orderNo: n.orderNo, eda: n.eda, ver: n.ver, shipDate: n.shipDate, dateKey: n.dateKey,
     a: d.a, b: d.b, ra: d.ra, rb: d.rb, qty: d.qty, state: state,
-    url: file.url || null, name: file.name
+    url: file.url || null, name: file.name,
+    // コピーのファイルID。チェック前のものを書き込みアプリで開くのに使う（?file=ID）
+    fileId: file.id || null
   };
 }
 
@@ -166,6 +168,7 @@ function ychk_attachToBlocks_(raw, entries, sizeKey, todayKey) {
         var one = i === 0 ? o : { no: o.no, src: o.src };
         one.ban = ychk_banLabel_(f);
         one.url = f.url || one.url || null;
+        one.fileId = f.fileId || null;
         one.check = f.state;
         one.date = f.shipDate;
         if (i > 0) r.orders.splice(at + i, 0, one);
@@ -200,6 +203,7 @@ function ychk_splitOrders_(orders, entries, dateKey) {
         Object.keys(o).forEach(function (k) { one[k] = o[k]; });
         one.ban = ychk_banLabel_(f);
         one.url = f.url || o.url || null;
+        one.fileId = f.fileId || null;
         one.check = f.state;
         one.date = f.shipDate;
         out.push(one);
@@ -240,7 +244,7 @@ function ychk_subFolder_(parentId, name) {
 function ychk_pdfsIn_(folderId) {
   return ychk_list_("'" + folderId + "' in parents and mimeType = 'application/pdf' and trashed = false",
                     'id, name, description, webViewLink')
-    .map(function (f) { return { name: f.name, description: f.description, url: f.webViewLink }; });
+    .map(function (f) { return { id: f.id, name: f.name, description: f.description, url: f.webViewLink }; });
 }
 
 /* 50kのコピーを全部集める。チェック完了は先月・今月・来月を見る
