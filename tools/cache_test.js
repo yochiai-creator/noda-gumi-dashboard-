@@ -126,12 +126,12 @@ console.log('■ 起動時のまとめ受け取り（getDashboardBundle）');
 }
 
 // ===== 先読み =====
-function wsb(hour, props) {
+function wsb(hour, props, minute) {
   const s = sb(fakeCache());
   const called = [];
   const triggers = [];
   Object.assign(s, {
-    Utilities: { formatDate: (d, tz, f) => (f === 'H' ? String(hour) : '') },
+    Utilities: { formatDate: (d, tz, f) => (f === 'H' ? String(hour) : f === 'm' ? String(minute || 0) : '') },
     PropertiesService: { getScriptProperties: () => ({
       getProperty: (k) => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
     ScriptApp: {
@@ -166,6 +166,28 @@ console.log('■ 先読み：時間帯');
   const s6 = wsb(6, {});
   s6.warmDashboardCaches();
   chk('6時から回す', s6.__called.length === 11, s6.__called);
+}
+
+console.log('■ 先読み：夜の最後の回は控えを長くもたせる');
+{
+  const s9 = wsb(9, {});
+  s9.warmDashboardCaches();
+  chk('昼は期限を延ばさない', s9.NC_TTL_FLOOR_SEC === 0, s9.NC_TTL_FLOOR_SEC);
+  const props = {};
+  const a = wsb(20, props, 10);
+  a.warmDashboardCaches();
+  chk('★20時台は期限を延ばす（6時間近く）', a.NC_TTL_FLOOR_SEC >= 20000 && a.NC_TTL_FLOOR_SEC <= 21600, a.NC_TTL_FLOOR_SEC);
+  const b = wsb(20, props, 52);
+  b.warmDashboardCaches();
+  chk('★20時50分過ぎの回は1日1回のものも全部作り直す（11本）', b.__called.length === 11, b.__called);
+  // 期限の下限が nc_put_ に効く
+  const c = fakeCache(); const s = sb(c);
+  s.NC_TTL_FLOOR_SEC = 21000;
+  s.nc_put_('x', { a: 1 }, 1500);
+  chk('★下限があれば短い期限でも長く置く', Object.keys(c.ttl).some((k) => c.ttl[k] === 21000), c.ttl);
+  const c2 = fakeCache(); const s2 = sb(c2);
+  s2.nc_put_('x', { a: 1 }, 1500);
+  chk('下限が無ければ期限どおり', Object.keys(c2.ttl).every((k) => c2.ttl[k] === 1500), c2.ttl);
 }
 
 console.log('■ 先読み：何を作り直すか');

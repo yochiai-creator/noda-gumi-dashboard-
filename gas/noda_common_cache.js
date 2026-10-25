@@ -136,8 +136,15 @@ function nc_peek_(name) {
 }
 
 /** 作った結果をキャッシュに置く。エラー結果と大きすぎるものは置かない。 */
+/* ★ 置くときの期限の下限（秒）。ふだんは0（各集計の期限どおり）。
+     先読みの夜の最後の回（20時台）だけ長くして、21時に先読みが止まったあとも
+     控えが残るようにする（以前は21時半ごろには切れ、夜に開くたびに一から作っていた）。
+     GASのグローバルは1回の実行の中だけのものなので、ほかの実行には効かない。 */
+var NC_TTL_FLOOR_SEC = 0;
+
 function nc_put_(name, data, ttlSec) {
   if (!data || data.error) return false;   // エラーは次回すぐ再試行できるように残さない
+  ttlSec = Math.min(21600, Math.max(Number(ttlSec) || 0, NC_TTL_FLOOR_SEC || 0));
   var cache;
   try { cache = CacheService.getScriptCache(); } catch (err) {
     Logger.log('CacheService取得エラー(' + name + '): ' + String(err));

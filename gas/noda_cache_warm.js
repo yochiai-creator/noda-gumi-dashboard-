@@ -16,7 +16,8 @@
  *   期限を作り直しの間隔より長くしてあるので、動いている時間帯は切れ目が無い。
  *   画面から直したもの（配車・ヤード）は今までどおり直した時点で捨てて作り直す。
  *
- * ★ 動かす時間帯は 6時〜21時。夜は誰も見ないので回さない（実行時間の節約）。
+ * ★ 動かす時間帯は 6時〜21時。夜は回さない（実行時間の節約）。
+ *   そのかわり20時台に作る控えは6時間近くもたせる（夜に開いても待たされないように。2026/10/25）。
  *
  * ★ トリガーは自分で張る。1時間ごとの harvestDailyData の頭で
  *   warm_ensureTrigger_() を呼ぶので、GASエディタで何かを実行する必要はない。
@@ -31,6 +32,11 @@ var WARM_CONFIG = {
   TO_HOUR: 21,      // この時の前まで
   SLOW_AGE_MIN: 25, // 1日1回しか変わらないものは、作ってからこれだけ経ったら作り直す
   BUDGET_MS: 4.5 * 60 * 1000,
+  /* 夜の最後の回（TO_HOUR の前の1時間）に作る控えは、これだけもたせる（CacheServiceの上限は6時間）。
+     20時台に作ったものが夜中の2〜3時ごろまで残るので、夜に開いても待たされない。
+     そのあと朝6時までは誰も見ないので空いてよい（開けば作り直す）。 */
+  NIGHT_TTL_SEC: 21000,
+  LAST_RUN_MINUTE: 50,  // 20時50分より後の回は、1日1回のものも含めて全部作り直して長くもたせる
   PROP: 'warm.builtAt'
 };
 
@@ -69,6 +75,12 @@ function warm_yardQueries_() {
 function warmDashboardCaches() {
   var h = Number(Utilities.formatDate(new Date(), 'Asia/Tokyo', 'H'));
   if (h < WARM_CONFIG.FROM_HOUR || h >= WARM_CONFIG.TO_HOUR) return { skipped: '時間外' };
+  if (h === WARM_CONFIG.TO_HOUR - 1) {
+    // 夜の最後の1時間：控えを長くもたせる。最後の回は全部作り直す（1日1回のものも長い期限で置き直す）
+    NC_TTL_FLOOR_SEC = WARM_CONFIG.NIGHT_TTL_SEC;
+    var m = Number(Utilities.formatDate(new Date(), 'Asia/Tokyo', 'm'));
+    return warm_run_(m >= WARM_CONFIG.LAST_RUN_MINUTE);
+  }
   return warm_run_(false);
 }
 
