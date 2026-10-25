@@ -386,7 +386,7 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
   let t = await page.evaluate(() => document.body.innerText);
   chk('★明細の状態にチェック済', /引当済\nチェック済/.test(t), t.slice(t.indexOf('状態'), t.indexOf('状態') + 60));
   const rowsTxt = await page.evaluate(() => [...document.querySelectorAll('[data-order-row]')].map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
-  chk('★指図書は1枚1行（依頼No・日付・状態・開く）', rowsTxt.length === 2 && /^26-20354\(1\) 10\/16 ✓済 開く$/.test(rowsTxt[0]) && /^26-20355 10\/16 番号 チェック前 開く ✎ 書き込む$/.test(rowsTxt[1]), rowsTxt);
+  chk('★指図書は1枚1行（依頼No・日付・状態・開く）', rowsTxt.length === 2 && /^26-20354\(1\) 10\/16 ✓済 開く$/.test(rowsTxt[0]) && /^26-20355 10\/16 チェック前 開く ✎ 書き込む$/.test(rowsTxt[1]), rowsTxt);
   chk('★チェック前の指図書に「書き込む」ボタン（チェック済には出さない）', /書き込む/.test(rowsTxt[1] || '') && !/書き込む/.test(rowsTxt[0] || ''), rowsTxt);
   const pen = await page.evaluate(() => [...document.querySelectorAll('a')].filter((a) => /書き込む/.test(a.textContent)).map((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target') })));
   chk('★書き込みアプリをそのファイルで開く（?file=ID・別のタブ）', pen.length === 1 && /\/s\/AKfycbx1nHy[^/]+\/exec\?file=1PenCopyId_b-xyz$/.test(pen[0].href) && pen[0].target === '_blank', pen);

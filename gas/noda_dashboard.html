@@ -4121,7 +4121,7 @@ function YardMap({
     className: "mt-2.5 pt-2.5 border-t border-slate-200"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-400 mb-1.5"
-  }, "\u51FA\u8377\u4F5C\u696D\u6307\u56F3\u66F8", sel.orders.some(o => o.src === "番号") && "　※「番号」は容器Noの重なりから当てたもの（手入力ではありません）"), /*#__PURE__*/React.createElement("div", {
+  }, "\u51FA\u8377\u4F5C\u696D\u6307\u56F3\u66F8"), /*#__PURE__*/React.createElement("div", {
     className: "rounded-md border border-slate-200 divide-y divide-slate-100 bg-white"
   }, sel.orders.map((o, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
@@ -4140,9 +4140,7 @@ function YardMap({
     }
   }, o.no, o.ban || ""), o.date && /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] text-slate-400 tabular-nums"
-  }, o.date), o.src === "番号" && /*#__PURE__*/React.createElement("span", {
-    className: "px-1 rounded text-[10px] bg-slate-100 text-slate-500"
-  }, "\u756A\u53F7"), o.check && /*#__PURE__*/React.createElement("span", {
+  }, o.date), o.check && /*#__PURE__*/React.createElement("span", {
     className: "px-1 rounded text-[10px] font-semibold",
     style: o.check === "チェック前" ? {
       background: "#fef3c7",

@@ -1660,8 +1660,6 @@ function YardMap({ yardLive, onRefresh }) {
             <div className="mt-2.5 pt-2.5 border-t border-slate-200">
               <div className="text-[10px] text-slate-400 mb-1.5">
                 出荷作業指図書
-                {sel.orders.some((o) => o.src === "番号") &&
-                  "　※「番号」は容器Noの重なりから当てたもの（手入力ではありません）"}
               </div>
               {/* ★ 指図書1枚を1行に（10/25 落合さん「みにくい」）。ボタンを横に並べて折り返すと、
                      どの「書き込む」がどの指図書のものか分からなくなっていた。
@@ -1675,12 +1673,8 @@ function YardMap({ yardLive, onRefresh }) {
                              日付も出す（古い月のPDFが出ているのか判断できるように）。 */}
                       <span className="text-sm font-semibold tabular-nums" style={{ color: NAVY }}>{o.no}{o.ban || ""}</span>
                       {o.date && <span className="text-[11px] text-slate-400 tabular-nums">{o.date}</span>}
-                      {/* ★ どこから来たリンクかを出す。容器番号から当てたものを
-                             人が書いたものと同じ顔で出すと、間違っていたときに
-                             誰も疑わない。「番号」は容器Noの重なりで当てたぶん。 */}
-                      {o.src === "番号" && (
-                        <span className="px-1 rounded text-[10px] bg-slate-100 text-slate-500">番号</span>
-                      )}
+                      {/* ★ 容器Noの重なりで当てたもの（src＝"番号"）にも以前は「番号」の印を付けていたが、
+                             意味が伝わらないので出さない（10/25 落合さん）。区別はデータ（src）には残してある。 */}
                       {/* チェックの状態（◆容器種類別＝前／◆チェック完了＝済） */}
                       {o.check && (
                         <span className="px-1 rounded text-[10px] font-semibold"
