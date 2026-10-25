@@ -1663,48 +1663,54 @@ function YardMap({ yardLive, onRefresh }) {
                 {sel.orders.some((o) => o.src === "番号") &&
                   "　※「番号」は容器Noの重なりから当てたもの（手入力ではありません）"}
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {sel.orders.map((o, i) =>
-                  o.url ? (
-                    <React.Fragment key={i}>
-                    <a href={o.url} target="_blank" rel="noopener noreferrer"
-                      onClick={(e) => openPdfQuick_(e, o.url, "指図書 " + o.no + (o.ban || "") + (o.check ? "　" + o.check : ""))}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
-                      style={{ background: "#2563eb" }}>
+              {/* ★ 指図書1枚を1行に（10/25 落合さん「みにくい」）。ボタンを横に並べて折り返すと、
+                     どの「書き込む」がどの指図書のものか分からなくなっていた。
+                     左に依頼No・日付・状態、右に「開く」「✎ 書き込む」。 */}
+              <div className="rounded-md border border-slate-200 divide-y divide-slate-100 bg-white">
+                {sel.orders.map((o, i) => (
+                  <div key={i} data-order-row="1" className="flex items-center gap-2 px-2.5 py-1.5">
+                    <span className="flex items-baseline flex-wrap min-w-0" style={{ columnGap: 6, rowGap: 2 }}>
                       {/* ★ 一律「26-」を付けていたが、マスタには 24- の区画もある。
                              年度は依頼Noに含めて返すようにしたのでそのまま出す。
                              日付も出す（古い月のPDFが出ているのか判断できるように）。 */}
-                      <FileText size={12} />{o.no}{o.ban || ""}{o.date ? "（" + o.date + "）" : ""} を開く
+                      <span className="text-sm font-semibold tabular-nums" style={{ color: NAVY }}>{o.no}{o.ban || ""}</span>
+                      {o.date && <span className="text-[11px] text-slate-400 tabular-nums">{o.date}</span>}
                       {/* ★ どこから来たリンクかを出す。容器番号から当てたものを
                              人が書いたものと同じ顔で出すと、間違っていたときに
                              誰も疑わない。「番号」は容器Noの重なりで当てたぶん。 */}
                       {o.src === "番号" && (
-                        <span className="px-1 rounded text-[9px]"
-                          style={{ background: "rgba(255,255,255,.3)" }}>番号</span>
+                        <span className="px-1 rounded text-[10px] bg-slate-100 text-slate-500">番号</span>
                       )}
                       {/* チェックの状態（◆容器種類別＝前／◆チェック完了＝済） */}
                       {o.check && (
-                        <span className="px-1 rounded text-[9px]"
-                          style={{ background: o.check === "チェック前" ? "rgba(255,255,255,.3)" : "#059669" }}>
+                        <span className="px-1 rounded text-[10px] font-semibold"
+                          style={o.check === "チェック前" ? { background: "#fef3c7", color: "#b45309" } : { background: "#dcfce7", color: "#047857" }}>
                           {o.check === "チェック前" ? "チェック前" : o.check === "チェック済" ? "✓済" : "一部済"}
                         </span>
                       )}
-                    </a>
-                    {/* ★ チェック前は、書き込みアプリでその指図書をすぐ開けるようにする */}
-                    {o.check === "チェック前" && o.fileId && (
-                      <a href={penAppUrl_(o.fileId)} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
-                        style={{ background: "#c2410c" }}>
-                        ✎ {o.no}{o.ban || ""} に書き込む
-                      </a>
-                    )}
-                    </React.Fragment>
-                  ) : (
-                    <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-400 bg-slate-100">
-                      {o.no}（PDF未検出）
                     </span>
-                  )
-                )}
+                    <span className="ml-auto flex items-center gap-1.5 shrink-0">
+                      {o.url ? (
+                        <a href={o.url} target="_blank" rel="noopener noreferrer"
+                          onClick={(e) => openPdfQuick_(e, o.url, "指図書 " + o.no + (o.ban || "") + (o.check ? "　" + o.check : ""))}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
+                          style={{ background: "#2563eb" }}>
+                          <FileText size={12} />開く
+                        </a>
+                      ) : (
+                        <span className="px-2 py-1 rounded-md text-xs text-slate-400 bg-slate-100">PDF未検出</span>
+                      )}
+                      {/* ★ チェック前は、書き込みアプリでその指図書をすぐ開けるようにする */}
+                      {o.check === "チェック前" && o.fileId && (
+                        <a href={penAppUrl_(o.fileId)} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-white"
+                          style={{ background: "#c2410c" }}>
+                          ✎ 書き込む
+                        </a>
+                      )}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

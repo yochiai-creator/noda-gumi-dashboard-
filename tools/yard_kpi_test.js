@@ -180,10 +180,13 @@ const REPLY = {
   });
   await page.waitForTimeout(600);
   const pdf = await page.evaluate(() => {
-    const links = [...document.querySelectorAll('a')].filter((a) => /を開く/.test(a.textContent));
-    const dim = [...document.querySelectorAll('span')].filter((x) => /PDF未検出/.test(x.textContent));
-    return { 開くボタン: links.map((a) => a.textContent.trim()), href: links[0] ? links[0].getAttribute('href') : null,
-      未検出: dim.map((x) => x.textContent.trim()) };
+    // 指図書は1枚1行（依頼No・日付・状態｜開く・書き込む）
+    const rows = [...document.querySelectorAll('[data-order-row]')];
+    const open = rows.filter((r) => [...r.querySelectorAll('a')].some((a) => a.textContent.trim() === '開く'));
+    const dim = rows.filter((r) => /PDF未検出/.test(r.textContent));
+    const a0 = open[0] ? [...open[0].querySelectorAll('a')].find((a) => a.textContent.trim() === '開く') : null;
+    return { 開くボタン: open.map((r) => r.innerText.replace(/\n/g, ' ').trim()), href: a0 ? a0.getAttribute('href') : null,
+      未検出: dim.map((r) => r.innerText.replace(/\n/g, ' ').trim()) };
   });
   console.log('   指図書:', JSON.stringify(pdf));
   chk('区画をタップすると指図書のボタンが出る', tapped.ok && pdf.開くボタン.length === 1, pdf);

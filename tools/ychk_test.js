@@ -385,11 +385,10 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
   await page.waitForTimeout(400);
   let t = await page.evaluate(() => document.body.innerText);
   chk('★明細の状態にチェック済', /引当済\nチェック済/.test(t), t.slice(t.indexOf('状態'), t.indexOf('状態') + 60));
-  chk('★指図書ボタンに「✓済」と「チェック前」', /26-20354\(1\)（10\/16） を開く\n?✓済/.test(t) && /26-20355（10\/16） を開く\n?番号\n?チェック前/.test(t),
-    t.slice(t.indexOf('出荷作業指図書'), t.indexOf('出荷作業指図書') + 200));
-  chk('★チェック前の指図書に「書き込む」ボタン（チェック済には出さない）', /26-20355 に書き込む/.test(t) && !/26-20354\(1\) に書き込む/.test(t),
-    t.slice(t.indexOf('出荷作業指図書'), t.indexOf('出荷作業指図書') + 260));
-  const pen = await page.evaluate(() => [...document.querySelectorAll('a')].filter((a) => /に書き込む/.test(a.textContent)).map((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target') })));
+  const rowsTxt = await page.evaluate(() => [...document.querySelectorAll('[data-order-row]')].map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
+  chk('★指図書は1枚1行（依頼No・日付・状態・開く）', rowsTxt.length === 2 && /^26-20354\(1\) 10\/16 ✓済 開く$/.test(rowsTxt[0]) && /^26-20355 10\/16 番号 チェック前 開く ✎ 書き込む$/.test(rowsTxt[1]), rowsTxt);
+  chk('★チェック前の指図書に「書き込む」ボタン（チェック済には出さない）', /書き込む/.test(rowsTxt[1] || '') && !/書き込む/.test(rowsTxt[0] || ''), rowsTxt);
+  const pen = await page.evaluate(() => [...document.querySelectorAll('a')].filter((a) => /書き込む/.test(a.textContent)).map((a) => ({ href: a.getAttribute('href'), target: a.getAttribute('target') })));
   chk('★書き込みアプリをそのファイルで開く（?file=ID・別のタブ）', pen.length === 1 && /\/s\/AKfycbx1nHy[^/]+\/exec\?file=1PenCopyId_b-xyz$/.test(pen[0].href) && pen[0].target === '_blank', pen);
   await page.screenshot({ path: SP + '/ychk_detail.png' });
 
@@ -418,7 +417,7 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
     t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   await page.waitForTimeout(300);
-  await page.locator('a', { hasText: '26-20354(1)' }).first().click();
+  await page.locator('[data-order-row]', { hasText: '26-20354(1)' }).first().locator('a', { hasText: '開く' }).click();
   await page.waitForTimeout(300);
   ov = await page.evaluate(() => { const f = document.querySelector('iframe'); return f && f.getAttribute('src'); });
   chk('IDの短い（見本の）リンクは今までどおり別タブ（アプリの中では開かない）', ov === null, ov);
