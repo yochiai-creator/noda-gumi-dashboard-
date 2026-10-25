@@ -1103,10 +1103,10 @@ function ArmPlan({
     }, "\u53F0"), hasAming && /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] tabular-nums shrink-0 px-1 rounded",
       style: {
-        background: g.fixedN >= g.count ? "#dcfce7" : "#f1f5f9",
-        color: g.fixedN >= g.count ? "#15803d" : VIZ.ink2
+        background: g.paintedN >= g.count ? "#dcfce7" : "#f1f5f9",
+        color: g.paintedN >= g.count ? "#15803d" : VIZ.ink2
       }
-    }, "\u4FEE\u6B63\u6E08 ", g.fixedN || 0, "/", g.count), /*#__PURE__*/React.createElement("span", {
+    }, "\u5857\u88C5\u5B8C\u4E86 ", g.paintedN || 0, "/", g.count), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] text-slate-400 truncate"
     }, g.byDest.map(x => x.名 + " " + x.台数).join("・")), /*#__PURE__*/React.createElement("span", {
       className: "text-[11px] ml-auto shrink-0",

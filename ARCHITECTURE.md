@@ -577,7 +577,7 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
   （別のApps Script、台帳 `13Fj89c-17Ec0YsUUuKdIykSkZV2442SrA35UNoMHUd8`）での段階を付ける。
   `工程記録`・`タップ記録` を**読むだけ**（取消を除く）。決め方は aming の `stage_`／`armView_` と同じ
   （出荷→出荷済、最新タップ否→要処置、良→修正済、塗装完了・塗装後修正完了→塗装済、無し→未塗装）。
-  キーは aming と同じ `図番_号機`（図番は大文字、号機は頭の0を取る）。日の見出しに「修正済 n/m」、
+  キーは aming と同じ `図番_号機`（図番は大文字、号機は頭の0を取る）。日の見出しに「塗装完了 n/m」（塗装済＝塗装完了以降の記録がある本数。10/25 修正済から変更）、
   絞り込みは aming の一覧と同じ5つ（すべて・未塗装・塗装済・未塗装後修正・塗装後修正済）。「amingを開く」ボタン。
   aming が読めなくても予定は出す（印が無いだけ、理由を1行出す）。記録は今までどおり aming でする。
   ずれは armPlan のキャッシュ（先読み10分おき）ぶん。`arm_test`・`aming_ui_test`。

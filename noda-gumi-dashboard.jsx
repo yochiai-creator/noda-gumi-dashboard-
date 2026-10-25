@@ -310,10 +310,11 @@ function ArmPlan({ plan }) {
                 <span className="text-[11px] text-slate-400 shrink-0">({g.weekday})</span>
                 <span className="text-sm font-bold tabular-nums shrink-0">{g.count}</span>
                 <span className="text-[10px] text-slate-400 shrink-0">台</span>
+                {/* ★ 日の見出しは塗装完了の本数（落合さん 10/25：修正済ではなく塗装完了を出す） */}
                 {hasAming && (
                   <span className="text-[10px] tabular-nums shrink-0 px-1 rounded"
-                    style={{ background: g.fixedN >= g.count ? "#dcfce7" : "#f1f5f9", color: g.fixedN >= g.count ? "#15803d" : VIZ.ink2 }}>
-                    修正済 {g.fixedN || 0}/{g.count}
+                    style={{ background: g.paintedN >= g.count ? "#dcfce7" : "#f1f5f9", color: g.paintedN >= g.count ? "#15803d" : VIZ.ink2 }}>
+                    塗装完了 {g.paintedN || 0}/{g.count}
                   </span>
                 )}
                 <span className="text-[10px] text-slate-400 truncate">

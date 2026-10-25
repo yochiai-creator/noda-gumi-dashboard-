@@ -47,7 +47,7 @@ const PLAN = {
   console.log('■ 段階の印・日ごとの修正済・amingを開く');
   let t = await page.evaluate(() => document.body.innerText);
   chk('★amingを開くボタン（amingのURL）', await page.locator('a', { hasText: 'amingを開く' }).getAttribute('href') === PLAN.amingUrl);
-  chk('★日の見出しに「修正済 1/3」', /修正済 1\/3/.test(t), t.slice(0, 600));
+  chk('★日の見出しは塗装完了の本数「塗装完了 2/3」（修正済の本数は出さない）', /塗装完了 2\/3/.test(t) && !/修正済 1\/3/.test(t), t.slice(0, 600));
   chk('★1本ずつに段階（修正済・田中／塗装済／未塗装）', /修正済・田中/.test(t) && /塗装済/.test(t) && /未塗装/.test(t));
   chk('★絞り込みはamingと同じ5つ（数つき）',
     /すべて\s*5/.test(t) && /未塗装\s*1/.test(t) && /塗装済\s*4/.test(t) && /未塗装後修正\s*4/.test(t) && /塗装後修正済\s*1/.test(t), t.slice(0, 800));
@@ -86,7 +86,7 @@ const PLAN = {
   await p2.waitForTimeout(600);
   const t2 = await p2.evaluate(() => document.body.innerText);
   chk('★読めないと書く', /amingの記録が読めませんでした/.test(t2));
-  chk('★予定はそのまま出る（絞り込み・修正済は出さない）', /#325/.test(t2) && !/未塗装後修正/.test(t2) && !/修正済 \d/.test(t2));
+  chk('★予定はそのまま出る（絞り込み・修正済は出さない）', /#325/.test(t2) && !/未塗装後修正/.test(t2) && !/塗装完了 \d/.test(t2));
 
   await b.close();
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
