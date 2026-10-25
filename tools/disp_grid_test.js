@@ -599,7 +599,7 @@ const REPLY = {
     const pdf = [...document.querySelectorAll('a')].filter((a) => /明細PDF/.test(a.textContent))
       .map((a) => a.getAttribute('href'));
     return { 日の見出し: heads, pdf: pdf,
-      号機が出ている: /#325/.test(t), 図番が出ている: /LC12B10557F1/.test(t),
+      号機が出ている: /325号機/.test(t), 図番が出ている: /LC12B10557F1/.test(t),
       情報が出ている: /グレー/.test(t), 検査まだ: /検査まだ/.test(t),
       翌日の中身: /YB12B00240F1/.test(t) };
   });

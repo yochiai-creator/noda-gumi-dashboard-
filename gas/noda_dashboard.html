@@ -1135,7 +1135,7 @@ function ArmPlan({
       style: {
         color: VIZ.ink2
       }
-    }, "#", r.go), r.info && /*#__PURE__*/React.createElement("span", {
+    }, r.go ? r.go + "号機" : ""), r.info && /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] px-1 rounded bg-slate-100 shrink-0",
       style: {
         color: VIZ.ink2

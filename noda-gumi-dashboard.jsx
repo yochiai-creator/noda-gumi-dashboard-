@@ -333,7 +333,7 @@ function ArmPlan({ plan }) {
                         {r.kiki}{r.kishu ? " " + r.kishu : ""}
                       </span>
                       <span className="text-[13px] tabular-nums" style={{ color: VIZ.ink2 }}>
-                        #{r.go}
+                        {r.go ? r.go + "号機" : ""}
                       </span>
                       {r.info && (
                         <span className="text-[10px] px-1 rounded bg-slate-100 shrink-0"

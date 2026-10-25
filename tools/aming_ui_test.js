@@ -57,18 +57,19 @@ const PLAN = {
   await page.locator('button', { hasText: /^未塗装\s*1$/ }).first().click();
   await page.waitForTimeout(300);
   t = await page.evaluate(() => document.body.innerText);
-  chk('★「未塗装」で330号機だけ', /#330/.test(t) && !/#325/.test(t) && !/#328/.test(t), t.slice(0, 800));
+  chk('★「未塗装」で330号機だけ', /330号機/.test(t) && !/325号機/.test(t) && !/328号機/.test(t), t.slice(0, 800));
   chk('★該当が無い日（10/28）は出さない', !/10\/28/.test(t));
   await page.locator('button', { hasText: /^塗装後修正済\s*1$/ }).first().click();
   await page.waitForTimeout(300);
   t = await page.evaluate(() => document.body.innerText);
-  chk('「塗装後修正済」で325号機だけ', /#325/.test(t) && !/#330/.test(t));
+  chk('「塗装後修正済」で325号機だけ', /325号機/.test(t) && !/330号機/.test(t));
   await page.locator('button', { hasText: /^すべて\s*5$/ }).first().click();
   await page.waitForTimeout(300);
   await page.locator('button', { hasText: /10\/28/ }).first().click();
   await page.waitForTimeout(300);
   t = await page.evaluate(() => document.body.innerText);
   chk('要処置が出る', /要処置/.test(t));
+  chk('★号機は「10号機」と書く（#を付けない）', /10号機/.test(t) && !/#\d/.test(t));
   const over = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   chk('横にはみ出さない', !over);
 
@@ -86,7 +87,7 @@ const PLAN = {
   await p2.waitForTimeout(600);
   const t2 = await p2.evaluate(() => document.body.innerText);
   chk('★読めないと書く', /amingの記録が読めませんでした/.test(t2));
-  chk('★予定はそのまま出る（絞り込み・修正済は出さない）', /#325/.test(t2) && !/未塗装後修正/.test(t2) && !/塗装完了 \d/.test(t2));
+  chk('★予定はそのまま出る（絞り込み・修正済は出さない）', /325号機/.test(t2) && !/未塗装後修正/.test(t2) && !/塗装完了 \d/.test(t2));
 
   await b.close();
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
