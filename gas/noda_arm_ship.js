@@ -59,7 +59,18 @@ var ARM_CONFIG = {
   // 前回どのファイルから集計したか
   PROP_SIG: 'armMonthly.sourceSignature',
   PROP_SRC: 'armMonthly.sourceName',
-  PROP_AT: 'armMonthly.harvestedAt'
+  PROP_AT: 'armMonthly.harvestedAt',
+
+  /* ---- aming（刻印を撮って塗装完了・塗装後チェック・出荷を記録するアプリ）----
+     ★ 出荷予定の1本ずつに、amingでの今の段階（未塗装・塗装済・修正済・要処置・出荷済）を付ける。
+       amingの一覧と同じ数え方にする（落合さん 2026/10/25「アームの出荷のところamingに」）。
+       読むだけ。書き込みは今までどおりaming側でする。 */
+  AMING: {
+    SS_ID: '13Fj89c-17Ec0YsUUuKdIykSkZV2442SrA35UNoMHUd8',  // aming 台帳
+    STEPS_SHEET: '工程記録',   // 記録ID・日時・キー・図番・号機・工程・確認者・備考・写真ID・取消
+    TAPS_SHEET: 'タップ記録',  // 記録ID・日時・キー・図番・号機・結果・…・確認者・…・取消
+    URL: 'https://script.google.com/a/macros/nodagumi40.com/s/AKfycbxASmlgFgrQyYGJ1e5OtipzMPre5pfU6H_Lv_IfasA69LtgXnsZ4LPky-XXTH0S5buI3g/exec'
+  }
 };
 
 var ARM_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -115,6 +126,17 @@ function getArmShipPlan_uncached_() {
     }
     data.byKind = Object.keys(kind).map(function (k) { return { 名: k, 台数: kind[k] }; })
       .sort(function (a, b) { return b.台数 - a.台数; });
+
+    // amingの段階。読めなくても予定は出す（段階の印が付かないだけ）
+    data.amingUrl = ARM_CONFIG.AMING.URL;
+    try {
+      arm_attachAming_(data.days, arm_amingIndex_());
+      data.aming = true;
+    } catch (e2) {
+      data.aming = false;
+      data.amingError = 'amingの記録が読めませんでした（' + String(e2 && e2.message || e2) + '）';
+      Logger.log(data.amingError);
+    }
   } catch (err) {
     data.error = String(err);
     Logger.log('アーム出荷予定の取得でエラー: ' + String(err));
@@ -183,6 +205,97 @@ function arm_buildDays_(map, now) {
     });
     return g;
   });
+}
+
+/* ===== aming の段階 ===== */
+
+/* amingのキー（図番_号機）。aming側は図番を大文字・前後の空白なし、号機を数にしてから文字にしている
+   （「0325」→「325」）。同じ作り方をしないと突き合わない。 */
+function arm_amingKey_(zu, go) {
+  var g = String(go == null ? '' : go).trim();
+  if (/^\d+$/.test(g)) g = String(Number(g));
+  return String(zu || '').trim().toUpperCase() + '_' + g;
+}
+
+/* シートの値（1行目が見出し）→ キーごとに、取消されていない記録を追記順にたどる */
+function arm_amingRows_(values, need) {
+  var hdr = (values[0] || []).map(function (h) { return String(h).trim(); });
+  var col = { キー: hdr.indexOf('キー') };
+  need.forEach(function (n) { col[n] = hdr.indexOf(n); });
+  if (col['キー'] < 0) throw new Error('「キー」の列がありません');
+  var out = [];
+  for (var i = 1; i < values.length; i++) {
+    var r = values[i];
+    var key = String(r[col['キー']] || '').trim();
+    if (!key) continue;
+    if (col['取消'] >= 0 && String(r[col['取消']]).trim() === '1') continue;
+    var o = { キー: key };
+    need.forEach(function (n) { if (col[n] >= 0) o[n] = String(r[col[n]] == null ? '' : r[col[n]]).trim(); });
+    out.push(o);
+  }
+  return out;
+}
+
+/* 工程記録とタップ記録の値 → キーごとの段階（純関数）。
+   ★ amingの stage_／armView_ と同じ決め方：
+     出荷の記録 → 出荷済、最新のタップが否 → 要処置、良 → 塗装後チェック済、
+     塗装完了か塗装後修正完了の記録 → 塗装完了、どれも無い → 未。
+     painted＝塗装済（塗装完了以降の記録かタップがある）、
+     fixed＝塗装後修正済（塗装後修正完了・出荷・タップ良のどれか。ただし最新のタップが否なら外す）。 */
+function arm_amingStages_(stepValues, tapValues) {
+  var steps = {}, last = {};
+  arm_amingRows_(stepValues, ['工程', '確認者', '取消']).forEach(function (r) {
+    (steps[r.キー] = steps[r.キー] || {})[r.工程] = r.確認者 || true;
+  });
+  // 追記順なので後勝ち＝最新
+  arm_amingRows_(tapValues, ['結果', '確認者', '取消']).forEach(function (r) { last[r.キー] = r; });
+
+  var idx = {};
+  Object.keys(steps).concat(Object.keys(last)).forEach(function (k) {
+    if (idx[k]) return;
+    var s = steps[k] || {}, t = last[k] || null;
+    var stage = s['出荷'] ? '出荷済'
+      : (t && t.結果 === '否') ? '要処置'
+      : (t && t.結果 === '良') ? '塗装後チェック済'
+      : (s['塗装後修正完了'] || s['塗装完了']) ? '塗装完了' : '未';
+    idx[k] = {
+      stage: stage,
+      painted: !!(s['塗装完了'] || s['塗装後修正完了'] || s['出荷']) || !!t,
+      fixed: !(t && t.結果 === '否') && (!!(s['塗装後修正完了'] || s['出荷']) || !!(t && t.結果 === '良')),
+      by: t ? (t.確認者 || '') : ''
+    };
+  });
+  return idx;
+}
+
+function arm_amingIndex_() {
+  var ss = SpreadsheetApp.openById(ARM_CONFIG.AMING.SS_ID);
+  var read = function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) throw new Error('シート「' + name + '」がありません');
+    return sh.getDataRange().getValues();
+  };
+  return arm_amingStages_(read(ARM_CONFIG.AMING.STEPS_SHEET), read(ARM_CONFIG.AMING.TAPS_SHEET));
+}
+
+/* 出荷予定の1本ずつに段階を付け、日ごとに「塗装後修正済 何本」を数える（純関数）。
+   amingに記録が無いアームは「未」（まだ撮っていない）。 */
+function arm_attachAming_(days, idx) {
+  (days || []).forEach(function (g) {
+    var fixedN = 0, paintedN = 0;
+    g.rows.forEach(function (r) {
+      var a = idx[arm_amingKey_(r.zu, r.go)];
+      r.stage = a ? a.stage : '未';
+      r.painted = a ? a.painted : false;
+      r.fixed = a ? a.fixed : false;
+      r.by = a ? a.by : '';
+      if (r.painted) paintedN++;
+      if (r.fixed) fixedN++;
+    });
+    g.paintedN = paintedN;
+    g.fixedN = fixedN;
+  });
+  return days;
 }
 
 /* 「図番||号機」を分ける。号機が空のときは末尾が「||」になる。

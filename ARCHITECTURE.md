@@ -171,7 +171,8 @@ GASは**全ファイルが1つのグローバル空間**を共有する（→ [8
 | `prodlot_test` | node | 生産ロット。二重に引かない・部分出荷・置いた時点で足す・取消 |
 | `prodplan_test` | node | 生産計画。処理の本数、PDFの月計、月ごとのフォルダ |
 | `cmaster_test` | node | 機種マスタ（Shift_JIS・サイズの割り当て） |
-| `arm_test` | node | アーム出荷予定・月別、明細PDFの名前の揺れ |
+| `arm_test` | node | アーム出荷予定・月別、明細PDFの名前の揺れ、amingの段階の決め方 |
+| `aming_ui_test` | node＋ブラウザ | アーム出荷予定のamingの段階・絞り込み・amingを開く・読めないとき |
 | `dispcache_test` | node | 配車の週切替で読み直さないこと |
 | `sitemap_test` | node＋ブラウザ | 野外置場の敷地図（置場のピン〔紙の配置図から写した位置を含む〕・色・押したときの本数・拡大・位置の無い置場） |
 | `resp_test` | ブラウザ | スマホ・タブレット・パソコンの3つの幅で、はみ出し・KPIの並び・2列の段・配車表の初期表示 |
@@ -198,6 +199,7 @@ GASは**全ファイルが1つのグローバル空間**を共有する（→ [8
 | 容器班別日程計画 | フォルダ `158F4Qjm_W8_CFKmFEHi5u6_eEbrUPt-V` | 月1本の PDF（仮1／Rev0／Rev1…） | 当月の生産計画 |
 | アーム日程表 .xlsm | フォルダ `1NS4WoClO0xlGWSxvFimFcqFGUT0jOKQL` | 週1本・4〜7MB | アームの月別実績 |
 | アーム出荷明細（生成物） | フォルダ `1-RrriADJSmBt2a7HsYpb_c8TUHHJpxkz` | `arm_pdf_snapshot.json` と明細PDF | アーム出荷予定 |
+| aming 台帳（別アプリ aming のもの） | `13Fj89c-17Ec0YsUUuKdIykSkZV2442SrA35UNoMHUd8` | `工程記録`・`タップ記録`（読むだけ） | アーム出荷予定の段階 |
 
 ### 5.2 読み書きするスプレッドシート
 
@@ -571,6 +573,14 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
 - 区分は機器の欄の先頭。`13ton仕上げ` `13ton ｼｮｰﾄ` は `13ton` にまとめる。ブームブラケットは除く。
   **予定と実績で同じ数え方をする。**
 - トラック（どの便で運ぶか）はまだどこにも無い（2026/09/13 確認）。
+- **aming の段階**（2026/10/25〜）：出荷予定の1本ずつに、刻印を撮って記録するアプリ「aming」
+  （別のApps Script、台帳 `13Fj89c-17Ec0YsUUuKdIykSkZV2442SrA35UNoMHUd8`）での段階を付ける。
+  `工程記録`・`タップ記録` を**読むだけ**（取消を除く）。決め方は aming の `stage_`／`armView_` と同じ
+  （出荷→出荷済、最新タップ否→要処置、良→修正済、塗装完了・塗装後修正完了→塗装済、無し→未塗装）。
+  キーは aming と同じ `図番_号機`（図番は大文字、号機は頭の0を取る）。日の見出しに「修正済 n/m」、
+  絞り込みは aming の一覧と同じ5つ（すべて・未塗装・塗装済・未塗装後修正・塗装後修正済）。「amingを開く」ボタン。
+  aming が読めなくても予定は出す（印が無いだけ、理由を1行出す）。記録は今までどおり aming でする。
+  ずれは armPlan のキャッシュ（先読み10分おき）ぶん。`arm_test`・`aming_ui_test`。
 
 ---
 

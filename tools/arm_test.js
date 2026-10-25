@@ -411,5 +411,52 @@ console.log('■ 一番新しい明細PDFを選ぶ');
   chk('1件も無ければ null', build(SNAP, { pdfFiles: [] }).arm_latestPdf_() === null);
 }
 
+console.log('\n■ aming の段階（未塗装・塗装済・修正済・要処置・出荷済）');
+{
+  const sb = build(SNAP);
+  chk('★キーはamingと同じ作り（図番を大文字、号機の頭の0を取る）', sb.arm_amingKey_(' yy12b00902f1g2 ', '0325') === 'YY12B00902F1G2_325', sb.arm_amingKey_(' yy12b00902f1g2 ', '0325'));
+  const STEPH = ['記録ID', '日時', 'キー', '図番', '号機', '工程', '確認者', '備考', '写真ID', '取消'];
+  const TAPH = ['記録ID', '日時', 'キー', '図番', '号機', '結果', 'ねじ穴数', '処置数', '確認者', '備考', '写真ID', '取消'];
+  const st = (k, step, cancel) => ['id', '2026/10/10 08:30', k, '', '', step, 'A.ましゃたか', '', '', cancel ? '1' : ''];
+  const tp = (k, res, by, cancel) => ['id', '2026/10/10 09:00', k, '', '', res, '', '0', by || '田中', '', '', cancel ? '1' : ''];
+  const steps = [STEPH, st('A_1', '塗装完了'), st('B_2', '塗装完了'), st('C_3', '塗装完了'), st('D_4', '出荷'),
+    st('E_5', '塗装完了', true), st('F_6', '塗装後修正完了')];
+  const taps = [TAPH, tp('B_2', '良'), tp('C_3', '良'), tp('C_3', '否'), tp('G_7', '否', '', true)];
+  const idx = sb.arm_amingStages_(steps, taps);
+  chk('塗装完了だけ → 塗装完了（塗装済・未修正）', idx['A_1'] && idx['A_1'].stage === '塗装完了' && idx['A_1'].painted && !idx['A_1'].fixed, idx['A_1']);
+  chk('タップ良 → 塗装後チェック済（修正済）・確認者', idx['B_2'] && idx['B_2'].stage === '塗装後チェック済' && idx['B_2'].fixed && idx['B_2'].by === '田中', idx['B_2']);
+  chk('★最新のタップが否 → 要処置（修正済に数えない）', idx['C_3'] && idx['C_3'].stage === '要処置' && idx['C_3'].painted && !idx['C_3'].fixed, idx['C_3']);
+  chk('出荷の記録 → 出荷済（修正済に数える）', idx['D_4'] && idx['D_4'].stage === '出荷済' && idx['D_4'].fixed, idx['D_4']);
+  chk('★取消した記録は数えない', !idx['E_5'] && !idx['G_7'], [idx['E_5'], idx['G_7']]);
+  chk('塗装後修正完了 → 修正済', idx['F_6'] && idx['F_6'].fixed && idx['F_6'].stage === '塗装完了', idx['F_6']);
+  chk('列の並びが変わっても見出しで探す', sb.arm_amingStages_([['キー', '工程', '取消'], ['A_1', '出荷', '']], [['結果', 'キー'], ['良', 'B_2']])['A_1'].stage === '出荷済');
+
+  const days = [{ rows: [{ zu: 'LC12B10557F1', go: '325' }, { zu: 'LC12B10557F1', go: '328' }, { zu: 'YY12B00902F1G2', go: '1952' }] }];
+  const idx2 = { 'LC12B10557F1_325': { stage: '塗装後チェック済', painted: true, fixed: true, by: '田中' },
+                 'LC12B10557F1_328': { stage: '塗装完了', painted: true, fixed: false, by: '' } };
+  sb.arm_attachAming_(days, idx2);
+  chk('★1本ずつに段階が付く', days[0].rows[0].stage === '塗装後チェック済' && days[0].rows[1].stage === '塗装完了', days[0].rows);
+  chk('★amingに記録が無いアームは「未」', days[0].rows[2].stage === '未' && days[0].rows[2].painted === false, days[0].rows[2]);
+  chk('日ごとに塗装後修正済・塗装済の本数', days[0].fixedN === 1 && days[0].paintedN === 2, [days[0].fixedN, days[0].paintedN]);
+
+  // 画面用の結果にまで通る（シートは偽物）。予定は今日から31日ぶんなので、明日の出荷で作る
+  const t1 = new Date(); t1.setHours(0, 0, 0, 0); t1.setDate(t1.getDate() + 1);
+  const SNAP_NOW = { 'LC12B10557F1||325': row(t1.getTime()), 'LC12B10557F1||328': row(t1.getTime()) };
+  const sb2 = build(SNAP_NOW);
+  sb2.SpreadsheetApp = { openById: (id) => ({ getSheetByName: (n) => ({ getDataRange: () => ({ getValues: () =>
+    n === '工程記録' ? [STEPH, st('LC12B10557F1_325', '塗装完了')] : [TAPH] }) }) }) };
+  const d2 = sb2.getArmShipPlan_uncached_();
+  const all = d2.days.reduce((a, g) => a.concat(g.rows), []);
+  const r325 = all.find((r) => r.zu === 'LC12B10557F1' && r.go === '325');
+  const r328 = all.find((r) => r.zu === 'LC12B10557F1' && r.go === '328');
+  chk('★予定の結果に段階が入る（325号機＝塗装完了、328号機＝未）', d2.aming === true && r325 && r325.stage === '塗装完了' && r328 && r328.stage === '未', [d2.amingError, r325, r328]);
+  chk('amingを開くURLを返す', /^https:\/\/script\.google\.com\/.+\/exec$/.test(d2.amingUrl || ''), d2.amingUrl);
+  // amingが読めなくても予定は出す
+  const sb3 = build(SNAP_NOW);
+  sb3.SpreadsheetApp = { openById: () => { throw new Error('権限がありません'); } };
+  const d3 = sb3.getArmShipPlan_uncached_();
+  chk('★amingが読めなくても予定は出る（印が無いだけ）', !d3.error && d3.days.length > 0 && d3.aming === false && /aming/.test(d3.amingError || ''), [d3.error, d3.aming, d3.amingError]);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

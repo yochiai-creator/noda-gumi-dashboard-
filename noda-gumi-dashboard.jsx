@@ -199,16 +199,40 @@ function SectionTitle({ children, note }) {
      落合さんが見ているPDFと同じ内容を、日ごとにたためる形で出す。
    ★ トラック（どの便で運ぶか）はまだどこにも無いので出していない。
      決まったら、この日の見出しの横に足せる形にしてある。 */
+/* amingの段階（刻印を撮って記録するアプリ「aming」の記録から）。
+   ★ 呼び方と絞り込みはamingの一覧と同じにする。現場はamingで見ているので、言葉がずれると迷う。 */
+const AMING_STAGE = {
+  未: { label: "未塗装", bg: "#fef3c7", fg: "#b45309" },
+  塗装完了: { label: "塗装済", bg: "#dbeafe", fg: "#1d4ed8" },
+  塗装後チェック済: { label: "修正済", bg: "#dcfce7", fg: "#15803d" },
+  要処置: { label: "要処置", bg: "#fee2e2", fg: "#b91c1c" },
+  出荷済: { label: "出荷済", bg: "#f1f5f9", fg: "#64748b" },
+};
+const AMING_FILTERS = {
+  すべて: () => true,
+  未塗装: (r) => !r.painted,
+  塗装済: (r) => !!r.painted,
+  未塗装後修正: (r) => !r.fixed,
+  塗装後修正済: (r) => !!r.fixed,
+};
+
 function ArmPlan({ plan }) {
-  const days = (plan && plan.days) || [];
+  const allDays = (plan && plan.days) || [];
   // 一番近い日だけ開けておく。全部開くとスクロールが終わらない。
   const [openDate, setOpenDate] = useState(null);
+  const [flt, setFlt] = useState("すべて");
+  const hasAming = !!(plan && plan.aming);
+  const f = (hasAming && AMING_FILTERS[flt]) || AMING_FILTERS.すべて;
+  // 絞り込んだら、該当が1本も無い日は出さない
+  const days = allDays.map((g) => ({ ...g, shownRows: g.rows.filter(f) }))
+    .filter((g) => flt === "すべて" || g.shownRows.length > 0);
+  const allRows = allDays.reduce((a, g) => a.concat(g.rows), []);
   const shown = openDate == null ? (days[0] && days[0].date) : openDate;
 
   if (plan && plan.error) {
     return <p className="text-xs text-slate-500">{plan.error}</p>;
   }
-  if (days.length === 0) {
+  if (allDays.length === 0) {
     return <p className="text-xs text-slate-500">直近1か月の出荷予定はありません。</p>;
   }
 
@@ -236,14 +260,41 @@ function ArmPlan({ plan }) {
         <span className="text-[11px] text-slate-400">
           {plan.snapshotAt ? plan.snapshotAt + " 時点" : ""}
         </span>
+        {plan.amingUrl && (
+          <a href={plan.amingUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white ml-auto"
+            style={{ background: "#00A7B5", textDecoration: "none" }}>
+            amingを開く
+          </a>
+        )}
         {plan.pdfUrl && (
           <a href={plan.pdfUrl} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white ml-auto"
+            className={"inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white" + (plan.amingUrl ? "" : " ml-auto")}
             style={{ background: "#2563eb", textDecoration: "none" }}>
             <FileText size={11} />明細PDF
           </a>
         )}
       </div>
+
+      {plan.amingError && (
+        <p className="text-[11px] mb-2" style={{ color: "#b45309" }}>{plan.amingError}</p>
+      )}
+      {hasAming && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {Object.keys(AMING_FILTERS).map((k) => {
+            const on = k === flt;
+            return (
+              <button key={k} onClick={() => setFlt(k)}
+                className="inline-flex items-baseline gap-1 px-2 py-1 rounded-md text-[11px] font-semibold"
+                style={{ background: on ? "#00A7B5" : "#f1f5f9", color: on ? "#fff" : VIZ.ink2, border: "none" }}>
+                {k}
+                <span className="tabular-nums">{allRows.filter(AMING_FILTERS[k]).length}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {days.length === 0 && <p className="text-xs text-slate-500 py-2">該当なし</p>}
 
       <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
         {days.map((g) => {
@@ -259,6 +310,12 @@ function ArmPlan({ plan }) {
                 <span className="text-[11px] text-slate-400 shrink-0">({g.weekday})</span>
                 <span className="text-sm font-bold tabular-nums shrink-0">{g.count}</span>
                 <span className="text-[10px] text-slate-400 shrink-0">台</span>
+                {hasAming && (
+                  <span className="text-[10px] tabular-nums shrink-0 px-1 rounded"
+                    style={{ background: g.fixedN >= g.count ? "#dcfce7" : "#f1f5f9", color: g.fixedN >= g.count ? "#15803d" : VIZ.ink2 }}>
+                    修正済 {g.fixedN || 0}/{g.count}
+                  </span>
+                )}
                 <span className="text-[10px] text-slate-400 truncate">
                   {g.byDest.map((x) => x.名 + " " + x.台数).join("・")}
                 </span>
@@ -267,7 +324,7 @@ function ArmPlan({ plan }) {
                 </span>
               </button>
               <div style={{ display: open ? undefined : "none" }}>
-                {g.rows.map((r, i) => (
+                {g.shownRows.map((r, i) => (
                   <div key={r.key || i} className="px-3 py-1.5 border-t border-slate-100"
                     style={{ background: r.is13 ? "#fefce8" : undefined }}>
                     <span className="flex items-baseline gap-2">
@@ -280,6 +337,12 @@ function ArmPlan({ plan }) {
                       {r.info && (
                         <span className="text-[10px] px-1 rounded bg-slate-100 shrink-0"
                           style={{ color: VIZ.ink2 }}>{r.info}</span>
+                      )}
+                      {hasAming && r.stage && AMING_STAGE[r.stage] && (
+                        <span className="text-[10px] font-semibold px-1 rounded shrink-0"
+                          style={{ background: AMING_STAGE[r.stage].bg, color: AMING_STAGE[r.stage].fg }}>
+                          {AMING_STAGE[r.stage].label}{r.stage === "塗装後チェック済" && r.by ? "・" + r.by : ""}
+                        </span>
                       )}
                       <span className="text-[10px] ml-auto shrink-0" style={{ color: VIZ.ink2 }}>
                         {r.dest}

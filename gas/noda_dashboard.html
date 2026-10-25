@@ -947,19 +947,64 @@ function SectionTitle({
      落合さんが見ているPDFと同じ内容を、日ごとにたためる形で出す。
    ★ トラック（どの便で運ぶか）はまだどこにも無いので出していない。
      決まったら、この日の見出しの横に足せる形にしてある。 */
+/* amingの段階（刻印を撮って記録するアプリ「aming」の記録から）。
+   ★ 呼び方と絞り込みはamingの一覧と同じにする。現場はamingで見ているので、言葉がずれると迷う。 */
+const AMING_STAGE = {
+  未: {
+    label: "未塗装",
+    bg: "#fef3c7",
+    fg: "#b45309"
+  },
+  塗装完了: {
+    label: "塗装済",
+    bg: "#dbeafe",
+    fg: "#1d4ed8"
+  },
+  塗装後チェック済: {
+    label: "修正済",
+    bg: "#dcfce7",
+    fg: "#15803d"
+  },
+  要処置: {
+    label: "要処置",
+    bg: "#fee2e2",
+    fg: "#b91c1c"
+  },
+  出荷済: {
+    label: "出荷済",
+    bg: "#f1f5f9",
+    fg: "#64748b"
+  }
+};
+const AMING_FILTERS = {
+  すべて: () => true,
+  未塗装: r => !r.painted,
+  塗装済: r => !!r.painted,
+  未塗装後修正: r => !r.fixed,
+  塗装後修正済: r => !!r.fixed
+};
 function ArmPlan({
   plan
 }) {
-  const days = plan && plan.days || [];
+  const allDays = plan && plan.days || [];
   // 一番近い日だけ開けておく。全部開くとスクロールが終わらない。
   const [openDate, setOpenDate] = useState(null);
+  const [flt, setFlt] = useState("すべて");
+  const hasAming = !!(plan && plan.aming);
+  const f = hasAming && AMING_FILTERS[flt] || AMING_FILTERS.すべて;
+  // 絞り込んだら、該当が1本も無い日は出さない
+  const days = allDays.map(g => ({
+    ...g,
+    shownRows: g.rows.filter(f)
+  })).filter(g => flt === "すべて" || g.shownRows.length > 0);
+  const allRows = allDays.reduce((a, g) => a.concat(g.rows), []);
   const shown = openDate == null ? days[0] && days[0].date : openDate;
   if (plan && plan.error) {
     return /*#__PURE__*/React.createElement("p", {
       className: "text-xs text-slate-500"
     }, plan.error);
   }
-  if (days.length === 0) {
+  if (allDays.length === 0) {
     return /*#__PURE__*/React.createElement("p", {
       className: "text-xs text-slate-500"
     }, "\u76F4\u8FD11\u304B\u6708\u306E\u51FA\u8377\u4E88\u5B9A\u306F\u3042\u308A\u307E\u305B\u3093\u3002");
@@ -988,18 +1033,50 @@ function ArmPlan({
     className: "flex items-center gap-2 mb-2"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] text-slate-400"
-  }, plan.snapshotAt ? plan.snapshotAt + " 時点" : ""), plan.pdfUrl && /*#__PURE__*/React.createElement("a", {
-    href: plan.pdfUrl,
+  }, plan.snapshotAt ? plan.snapshotAt + " 時点" : ""), plan.amingUrl && /*#__PURE__*/React.createElement("a", {
+    href: plan.amingUrl,
     target: "_blank",
     rel: "noopener noreferrer",
     className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white ml-auto",
+    style: {
+      background: "#00A7B5",
+      textDecoration: "none"
+    }
+  }, "aming\u3092\u958B\u304F"), plan.pdfUrl && /*#__PURE__*/React.createElement("a", {
+    href: plan.pdfUrl,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-white" + (plan.amingUrl ? "" : " ml-auto"),
     style: {
       background: "#2563eb",
       textDecoration: "none"
     }
   }, /*#__PURE__*/React.createElement(FileText, {
     size: 11
-  }), "\u660E\u7D30PDF")), /*#__PURE__*/React.createElement("div", {
+  }), "\u660E\u7D30PDF")), plan.amingError && /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] mb-2",
+    style: {
+      color: "#b45309"
+    }
+  }, plan.amingError), hasAming && /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-1.5 mb-2"
+  }, Object.keys(AMING_FILTERS).map(k => {
+    const on = k === flt;
+    return /*#__PURE__*/React.createElement("button", {
+      key: k,
+      onClick: () => setFlt(k),
+      className: "inline-flex items-baseline gap-1 px-2 py-1 rounded-md text-[11px] font-semibold",
+      style: {
+        background: on ? "#00A7B5" : "#f1f5f9",
+        color: on ? "#fff" : VIZ.ink2,
+        border: "none"
+      }
+    }, k, /*#__PURE__*/React.createElement("span", {
+      className: "tabular-nums"
+    }, allRows.filter(AMING_FILTERS[k]).length));
+  })), days.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u8A72\u5F53\u306A\u3057"), /*#__PURE__*/React.createElement("div", {
     className: "divide-y divide-slate-100 rounded-md border border-slate-200"
   }, days.map(g => {
     const open = g.date === shown;
@@ -1023,7 +1100,13 @@ function ArmPlan({
       className: "text-sm font-bold tabular-nums shrink-0"
     }, g.count), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] text-slate-400 shrink-0"
-    }, "\u53F0"), /*#__PURE__*/React.createElement("span", {
+    }, "\u53F0"), hasAming && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] tabular-nums shrink-0 px-1 rounded",
+      style: {
+        background: g.fixedN >= g.count ? "#dcfce7" : "#f1f5f9",
+        color: g.fixedN >= g.count ? "#15803d" : VIZ.ink2
+      }
+    }, "\u4FEE\u6B63\u6E08 ", g.fixedN || 0, "/", g.count), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] text-slate-400 truncate"
     }, g.byDest.map(x => x.名 + " " + x.台数).join("・")), /*#__PURE__*/React.createElement("span", {
       className: "text-[11px] ml-auto shrink-0",
@@ -1034,7 +1117,7 @@ function ArmPlan({
       style: {
         display: open ? undefined : "none"
       }
-    }, g.rows.map((r, i) => /*#__PURE__*/React.createElement("div", {
+    }, g.shownRows.map((r, i) => /*#__PURE__*/React.createElement("div", {
       key: r.key || i,
       className: "px-3 py-1.5 border-t border-slate-100",
       style: {
@@ -1057,7 +1140,13 @@ function ArmPlan({
       style: {
         color: VIZ.ink2
       }
-    }, r.info), /*#__PURE__*/React.createElement("span", {
+    }, r.info), hasAming && r.stage && AMING_STAGE[r.stage] && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] font-semibold px-1 rounded shrink-0",
+      style: {
+        background: AMING_STAGE[r.stage].bg,
+        color: AMING_STAGE[r.stage].fg
+      }
+    }, AMING_STAGE[r.stage].label, r.stage === "塗装後チェック済" && r.by ? "・" + r.by : ""), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] ml-auto shrink-0",
       style: {
         color: VIZ.ink2
