@@ -210,7 +210,7 @@ console.log('■ 期限は先読みの間隔より長い');
     ['noda_shipping_engine.js', /nc_cached_\('shipping', force, (\d+)/],
     ['noda_dispatch_engine.js', /nc_cached_\('dispatch', force, (\d+)/],
     ['noda_yard_edit_engine.js', /nc_cached_\('yardMapBoth', force === true, (\d+)/],
-    ['noda_arm_ship.js', /nc_cached_\('armPlan', force === true, (\d+)/],
+    ['noda_arm_ship.js', /nc_cached_\('armPlan2', force === true, (\d+)/],
     ['noda_dispatch_grid.js', /var DGRID_TTL = (\d+)/],
   ];
   fast.forEach(([f, re]) => { const t = ttl(f, re); chk('すぐ変わるもの ' + f + ' は10分＋余裕より長い（' + t + '秒）', t >= 20 * 60, t); });

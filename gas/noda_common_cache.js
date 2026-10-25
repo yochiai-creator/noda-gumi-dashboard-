@@ -219,7 +219,7 @@ function nc_peekMany_(names) {
 var NC_BUNDLE_KEYS = {
   inventory: 'inventory', shipping: 'shipping', orderPlan: 'orderPlan', dispatch: 'dispatch',
   invTrend: 'inventoryTrend', monthly: 'monthlyCombined', dispGrid: 'dispatchGrid_0',
-  armPlan: 'armPlan', armMonthly: 'armMonthly', yardMap: 'yardMapBoth', plan: 'prodPlan3'
+  armPlan: 'armPlan2', armMonthly: 'armMonthly', yardMap: 'yardMapBoth', plan: 'prodPlan3'
 };
 
 function getDashboardBundle() {

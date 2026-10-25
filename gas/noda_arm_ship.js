@@ -77,7 +77,8 @@ var ARM_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 // ===== 公開関数：アームの出荷予定（画面用・キャッシュ付き） =====
 function getArmShipPlan(force) {
-  return nc_cached_('armPlan', force === true, 1500, getArmShipPlan_uncached_);
+  // ★ キーの「2」は aming の段階を足したときに上げた（古い控えには段階が無いので、すぐ捨てるため）
+  return nc_cached_('armPlan2', force === true, 1500, getArmShipPlan_uncached_);
 }
 
 function getArmShipPlan_uncached_() {
