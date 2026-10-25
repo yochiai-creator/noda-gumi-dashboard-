@@ -633,7 +633,7 @@ function updateYardBlock(payload) {
       Logger.log('見た目のヤードマップへの反映でエラー: ' + String(visualErr));
     }
     // ★ 直した内容がすぐマップに出るように、一括取得のキャッシュを捨てる
-    nc_forget_('yardMapBoth');
+    nc_forget_('yardMapBoth2');
     result.success = true;
   } catch (err) {
     result.error = String(err);
@@ -1075,7 +1075,8 @@ function getYardMapUpdatesBothWithOrderText(queries50k, queries20k, force) {
        ★ 引数（位置の一覧）は静的データから作る固定のものなので、
          キャッシュのキーには入れない。
        ★ アプリから区画を直したときは updateYardBlock で消している。 */
-  return nc_cached_('yardMapBoth', force === true, 1500, function () {
+  // ★ キーの「2」は指図書のファイルID（書き込みアプリで開く）を足したときに上げた（古い控えにはIDが無いので、すぐ捨てるため）
+  return nc_cached_('yardMapBoth2', force === true, 1500, function () {
     return getYardMapUpdatesBothWithOrderText_uncached_(queries50k, queries20k);
   });
 }

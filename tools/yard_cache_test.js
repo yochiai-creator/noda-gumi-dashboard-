@@ -64,7 +64,7 @@ console.log('■ 一括取得のキャッシュ');
   s.getYardMapUpdatesBothWithOrderText([], []);
   chk('（前提）1回だけ呼ばれている', s.__calls === 1, s.__calls);
   // 区画を直したらキャッシュを捨てる
-  s.nc_forget_('yardMapBoth');
+  s.nc_forget_('yardMapBoth2');
   s.getYardMapUpdatesBothWithOrderText([], []);
   chk('★キャッシュを捨てると取り直す', s.__calls === 2, s.__calls);
 }

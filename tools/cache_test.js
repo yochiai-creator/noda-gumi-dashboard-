@@ -81,8 +81,8 @@ console.log('■ 文字列のまま返すもの（ヤードマップ）');
 {
   const c = fakeCache(); const s = sb(c);
   const str = JSON.stringify({ '50k': new Array(3000).fill({ pos: '1', 依頼: '入込場の区画' }) });
-  s.nc_put_('yardMapBoth', str, 1500);
-  chk('★文字列のまま取り出せる', s.nc_peek_('yardMapBoth') === str);
+  s.nc_put_('yardMapBoth2', str, 1500);
+  chk('★文字列のまま取り出せる', s.nc_peek_('yardMapBoth2') === str);
 }
 
 console.log('■ 絵文字（サロゲートペア）を切れ目で割らない');
@@ -110,7 +110,7 @@ console.log('■ 起動時のまとめ受け取り（getDashboardBundle）');
   s.nc_put_('inventory', { totals: { total: 7435 } }, 600);
   s.nc_put_('shipping', { total: 186 }, 600);
   const bigYard = JSON.stringify({ '50k': new Array(3000).fill({ pos: '1', 依頼: '入込場の区画' }) });
-  s.nc_put_('yardMapBoth', bigYard, 600);
+  s.nc_put_('yardMapBoth2', bigYard, 600);
   s.nc_put_('dispatchGrid_0', { weekOffset: 0 }, 600);
   s.nc_put_('dispatchGrid_1', { weekOffset: 1 }, 600);
   let gets = 0; const g0 = c.getAll; c.getAll = (ks) => { gets++; return g0(ks); };
@@ -209,7 +209,7 @@ console.log('■ 期限は先読みの間隔より長い');
   const fast = [
     ['noda_shipping_engine.js', /nc_cached_\('shipping', force, (\d+)/],
     ['noda_dispatch_engine.js', /nc_cached_\('dispatch', force, (\d+)/],
-    ['noda_yard_edit_engine.js', /nc_cached_\('yardMapBoth', force === true, (\d+)/],
+    ['noda_yard_edit_engine.js', /nc_cached_\('yardMapBoth2', force === true, (\d+)/],
     ['noda_arm_ship.js', /nc_cached_\('armPlan2', force === true, (\d+)/],
     ['noda_dispatch_grid.js', /var DGRID_TTL = (\d+)/],
   ];
