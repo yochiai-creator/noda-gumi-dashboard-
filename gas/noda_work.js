@@ -36,10 +36,11 @@ var WORK_CONFIG = {
   LOG_HEADERS: ['記録ID', '日時', '名前', '種類', '対象', '本数', '元', '先', 'メモ', '取消', '取消日時', '取消した人', '端末アカウント'],
   // 記録の種類。出荷済は指図書ごと、それ以外は在庫の動き（次の段で使う）
   KINDS: ['出荷済', '入庫', '移動', '持ち出し', '廃棄'],
-  // 出荷の進捗に出す範囲（出荷希望日）。過ぎた日は出荷済が付いていないものを見つけるため少し残す
-  PAST_DAYS: 3,
+  // 出荷の進捗に出す範囲（出荷希望日）。今日から。
+  // ★ 過ぎた日は押さなくても出荷済なので出さない（10/26 落合さん「23日になってる」）
+  PAST_DAYS: 0,
   NEXT_DAYS: 7,
-  BASE_CACHE: 'shipProgBase',   // 指図書とチェックの状態（重い）。作業記録は毎回読み直す
+  BASE_CACHE: 'shipProgBase2',   // 指図書とチェックの状態（重い）。作業記録は毎回読み直す
   BASE_TTL: 600
 };
 
@@ -278,6 +279,9 @@ function work_progressDays_(orders, shipped, todayKey) {
       past: date < todayKey, today: date === todayKey,
       count: items.length, shippedN: items.filter(function (o) { return o.shipped; }).length,
       qty: items.reduce(function (a, o) { return a + o.qty; }, 0),
+      // ★ 画面は本数で出す（10/26 落合さん：枚数ではなく本数）
+      shippedQty: items.reduce(function (a, o) { return a + (o.shipped ? o.qty : 0); }, 0),
+      checkBeforeQty: items.reduce(function (a, o) { return a + (o.check === YCHK_CONFIG.STATE_BEFORE ? o.qty : 0); }, 0),
       items: items
     };
   });

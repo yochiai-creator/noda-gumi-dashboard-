@@ -57,10 +57,10 @@ const PROG = {
   console.log('■ タブ・KPI・一覧');
   let t = await page.evaluate(() => document.body.innerText);
   chk('★タブの見出し', /出荷の進捗/.test(await page.evaluate(() => document.querySelector('h1').textContent)));
-  chk('★KPI：今日の出荷 1枚・次の出荷日 10/30 2枚・次の出荷日でチェック前 1', /今日の出荷\s*1/.test(t) && /次の出荷日 10\/30\(金\)\s*2/.test(t) && /次の出荷日でチェック前\s*1/.test(t), t.slice(0, 500));
+  chk('★KPIは本数：今日の出荷 4本・次の出荷日 10/30 5本・チェック前 2本・この先の合計 10本', /今日の出荷\s*4\s*本/.test(t) && /次の出荷日 10\/30\(金\)\s*5\s*本/.test(t) && /次の出荷日でチェック前\s*2\s*本/.test(t) && /この先7日の合計\s*10\s*本/.test(t) && !/枚/.test(t.slice(0, 400)), t.slice(0, 500));
   chk('★当日・過ぎた日は押さなくても「✓出荷済（出荷日）」', /26-20380\(1\)[\s\S]{0,80}✓出荷済（出荷日）/.test(t) && /26-10335\(1\)[\s\S]{0,80}✓出荷済（出荷日）/.test(t));
   chk('★当日の行には出荷済・取消のボタンを出さない', await page.locator('[data-ship-row="26-20380-0(1)"] button').count() === 0);
-  chk('★日ごとに「出荷済 0/2」', /10\/30[\s\S]{0,40}出荷済 0\/2/.test(t), t.slice(t.indexOf('10/30'), t.indexOf('10/30') + 80));
+  chk('★日ごとに「出荷済 0/5本」（枚数ではなく本数）', /10\/30[\s\S]{0,40}5本[\s\S]{0,20}出荷済 0\/5本/.test(t), t.slice(t.indexOf('10/30'), t.indexOf('10/30') + 80));
   chk('1行に依頼No・サイズ・本数・チェックの状態・出荷先', /26-60846\(1\)\s*50kg\s*2本\s*チェック前/.test(t) && /西日本液化 萩/.test(t));
   const disabled = await page.locator('[data-ship-row="26-60846-0(1)"] button', { hasText: '出荷済' }).isDisabled();
   chk('★名前を選ぶまで出荷済は押せない', disabled && /名前を選んでください/.test(t));
@@ -76,13 +76,13 @@ const PROG = {
   const calls = await page.evaluate(() => window.__st.calls);
   chk('★サーバに指図書・名前・本数を送る', calls[0] && calls[0][0] === 'mark' && calls[0][1].key === '26-60846-0(1)' && calls[0][1].name === '野田 太郎' && calls[0][1].qty === 2, calls);
   chk('★押した行は「✓出荷済 名前 時刻」', /✓出荷済 野田 太郎 09:15/.test(t), t.slice(t.indexOf('26-60846'), t.indexOf('26-60846') + 120));
-  chk('★日の数が増える', /10\/30[\s\S]{0,40}出荷済 1\/2/.test(t));
+  chk('★日の本数が増える（2本ぶん）', /10\/30[\s\S]{0,40}出荷済 2\/5本/.test(t));
 
   console.log('■ 取消');
   await page.locator('[data-ship-row="26-60846-0(1)"] button', { hasText: '取消' }).click();
   await page.waitForTimeout(400);
   t = await page.evaluate(() => document.body.innerText);
-  chk('★取り消すと出荷済のボタンに戻る', !/✓出荷済 野田 太郎/.test(t) && /出荷済 0\/2/.test(t));
+  chk('★取り消すと出荷済のボタンに戻る', !/✓出荷済 野田 太郎/.test(t) && /出荷済 0\/5本/.test(t));
 
   console.log('■ まだのものだけ');
   await page.locator('[data-ship-row="26-30575-0(2)"] button', { hasText: '出荷済' }).click();

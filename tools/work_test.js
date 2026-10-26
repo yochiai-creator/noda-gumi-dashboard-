@@ -69,6 +69,8 @@ function sb(opt) {
   s.YCHK_CONFIG = { STATE_BEFORE: 'チェック前', STATE_DONE: 'チェック済' };
   s.ychk_entries_ = () => o.entries || [];
   s.__yard = yardSS;
+  // 過ぎた日の扱い（auto）も確かめたいので、テストでは3日前から出す。ふだん（0＝今日から）は下で別に確かめる
+  if (o.pastDays !== undefined) s.WORK_CONFIG.PAST_DAYS = o.pastDays; else s.WORK_CONFIG.PAST_DAYS = 3;
   return s;
 }
 
@@ -110,6 +112,16 @@ console.log('■ 指図書の一覧（実績シートから）');
   chk('★出荷希望日の当日・過ぎた日は押さなくても出荷済（auto）', it('26-60846-0(1)').shipped && it('26-60846-0(1)').shipped.auto === true &&
     it('26-10335-0(1)').shipped && it('26-10335-0(1)').shipped.auto === true && g28.shippedN === 1 && g27.shippedN === 1, [it('26-60846-0(1)').shipped, g28.shippedN]);
   chk('★先の日はまだ出荷済でない', it('26-30575-0(2)').shipped === null && d.days[2].shippedN === 0);
+}
+
+console.log('■ ふだんは今日から（過ぎた日は出さない）');
+{
+  const s = sb({ actRows: ROWS, entries: ENTRIES, pastDays: null });
+  delete s.WORK_CONFIG.PAST_DAYS;
+  vm.runInContext("WORK_CONFIG.PAST_DAYS = " + JSON.stringify(require('vm').runInNewContext(fs.readFileSync(GAS + 'noda_work.js', 'utf8') + ';WORK_CONFIG.PAST_DAYS', { Utilities: {} })), s);
+  const d = s.getShipProgress();
+  chk('★既定の範囲は今日から（23日などの過ぎた日は出さない）', s.WORK_CONFIG.PAST_DAYS === 0 && d.days[0].date === '2026-10-28', d.days.map((g) => g.date));
+  chk('★日ごとの本数：出荷済の本数とチェック前の本数', d.days[0].shippedQty === 2 && d.days[0].checkBeforeQty === 2 && d.days[1].shippedQty === 0 && d.days[1].qty === 203, d.days.map((g) => [g.qty, g.shippedQty, g.checkBeforeQty]));
 }
 
 console.log('■ 記録する人（社員）');

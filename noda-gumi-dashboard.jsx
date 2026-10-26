@@ -843,16 +843,17 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
         const items = onlyTodo ? d.items.filter((o) => !o.shipped) : d.items;
         if (onlyTodo && items.length === 0) return null;
         const all = d.shippedN >= d.count;
+        const sq = d.shippedQty != null ? d.shippedQty : d.items.reduce((a, o) => a + (o.shipped ? o.qty : 0), 0);
         return (
           <Card key={d.date} className="p-0 overflow-hidden">
             <div className="flex items-baseline gap-2 px-3 py-2 border-b border-slate-100"
               style={{ background: d.today ? "#eff6ff" : undefined }}>
               <span className="text-sm font-bold tabular-nums" style={{ color: NAVY }}>{d.label}</span>
               <span className="text-[11px] text-slate-400">({d.weekday}){d.today ? " 今日" : ""}</span>
-              <span className="text-[11px] text-slate-500 tabular-nums">{d.count}枚・{Number(d.qty).toLocaleString()}本</span>
+              <span className="text-[11px] text-slate-500 tabular-nums">{Number(d.qty).toLocaleString()}本</span>
               <span className="ml-auto text-[11px] font-semibold tabular-nums px-1.5 rounded"
                 style={{ background: all ? "#dcfce7" : d.past ? "#fef3c7" : "#f1f5f9", color: all ? "#15803d" : d.past ? "#b45309" : VIZ.ink2 }}>
-                出荷済 {d.shippedN}/{d.count}
+                出荷済 {Number(sq).toLocaleString()}/{Number(d.qty).toLocaleString()}本
               </span>
             </div>
             <div className="divide-y divide-slate-100">
@@ -4658,14 +4659,16 @@ export default function App() {
       const days = (live.shipProg && live.shipProg.days) || [];
       const today = days.find((d) => d.today);
       const next = days.find((d) => !d.past && !d.today);
-      // ★ 当日は出荷済とみなすので「今日の出荷済」は出さない。今日・次の出荷日の枚数と、
-      //   次の出荷日までにチェックが済んでいない指図書（50kのみ）を出す
-      const nextTodo = next ? next.items.filter((o) => o.check === "チェック前").length : 0;
+      // ★ 全部本数で出す（10/26 落合さん：枚数ではなく本数）。当日は出荷済とみなすので
+      //   「今日の出荷済」は出さない。今日・次の出荷日・この先の合計と、次の出荷日でチェック前の本数（50kのみ）
+      const n = (v) => Number(v || 0).toLocaleString();
+      const nextTodo = next ? next.items.reduce((a, o) => a + (o.check === "チェック前" ? o.qty : 0), 0) : 0;
+      const ahead = days.filter((d) => !d.today).reduce((a, d) => a + d.qty, 0);
       return [
-        { label: "今日の出荷", value: today ? String(today.count) : "—", unit: "枚", icon: Truck, tone: "neutral" },
-        { label: "今日の本数", value: today ? Number(today.qty).toLocaleString() : "—", unit: "本", icon: Package, tone: "neutral" },
-        { label: next ? "次の出荷日 " + next.label + "(" + next.weekday + ")" : "次の出荷日", value: next ? String(next.count) : "—", unit: "枚", icon: FileText, tone: "neutral" },
-        { label: "次の出荷日でチェック前", value: next ? String(nextTodo) : "—", unit: "枚", icon: AlertTriangle, tone: nextTodo > 0 ? "warn" : "ok" },
+        { label: "今日の出荷", value: today ? n(today.qty) : "—", unit: "本", icon: Truck, tone: "neutral" },
+        { label: next ? "次の出荷日 " + next.label + "(" + next.weekday + ")" : "次の出荷日", value: next ? n(next.qty) : "—", unit: "本", icon: FileText, tone: "neutral" },
+        { label: "次の出荷日でチェック前", value: next ? n(nextTodo) : "—", unit: "本", icon: AlertTriangle, tone: nextTodo > 0 ? "warn" : "ok" },
+        { label: "この先7日の合計", value: n(ahead), unit: "本", icon: Package, tone: "neutral" },
       ];
     })(),
     yardcap: (() => {
