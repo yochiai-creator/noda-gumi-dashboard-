@@ -4484,10 +4484,13 @@ export default function App() {
         .withSuccessHandler((d) => setLive((prev) => ({ ...prev, workStaff: d })))
         .withFailureHandler(() => {})
         .getWorkStaff();
-      google.script.run
-        .withSuccessHandler((d) => setMarkAi(d))
-        .withFailureHandler(() => setMarkAi(null))
-        .getMarkAiStatus();
+      /* ★ マークの写真照合は今は止めている（gas_paused/。落合さん 10/27「今は手でチェック」）。
+           サーバに関数が無いと呼んだ時点で投げるので、別に囲む（出荷の進捗まで止めない）。
+           無ければ📷は出さず、手で押すだけになる。 */
+      try {
+        const run = google.script.run.withSuccessHandler((d) => setMarkAi(d)).withFailureHandler(() => setMarkAi(null));
+        if (typeof run.getMarkAiStatus === "function") run.getMarkAiStatus(); else setMarkAi(null);
+      } catch (e2) { setMarkAi(null); }
     } catch (e) { setShipBusy(false); setLive((prev) => ({ ...prev, shipProg: { error: String(e) } })); }
   };
   /* ★ ハンドラを付けてから呼ぶ（google.script.run は呼ぶたびに別の入れものを返す）。

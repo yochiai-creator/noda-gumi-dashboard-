@@ -34,6 +34,7 @@ const PROG = {
     // 偽のサーバ：段階・取消・名前を足す、を覚えておく（サーバと同じ決まり）
     const st = { prog: JSON.parse(JSON.stringify(prog)), staff: [{ 名前: '野田 太郎', 役割: '出荷' }], calls: [], n: 0, log: [] };
     window.__st = st;
+    window.__noAi = true;
     const field = { 'マーク': 'mark', 'ダブルチェック': 'dcheck', '出荷済': 'shipped' };
     const each = (f) => st.prog.days.forEach((g) => g.items.forEach(f));
     const H = {
@@ -68,6 +69,8 @@ const PROG = {
     };
     function mk() { let ok = null; const px = new Proxy({}, { get(t, fn) {
       if (fn === 'withSuccessHandler') return (f) => { ok = f; return px; }; if (fn === 'withFailureHandler') return () => px;
+      // ★ 写真照合はサーバで止めている（gas_paused/）。関数が無い状態でも出荷の進捗が動くことを確かめる
+      if (fn === 'getMarkAiStatus' && window.__noAi) return undefined;
       if (H[fn]) return (...a) => { const r = JSON.parse(JSON.stringify(H[fn](...a))); setTimeout(() => { if (ok) ok(r); }, 0); return px; };
       if (!(fn in d)) return undefined; return () => { setTimeout(() => { if (ok) ok(d[fn]); }, 0); return px; }; } }); return px; }
     window.google = { script: { get run() { return mk(); }, host: {} } };
@@ -83,6 +86,7 @@ const PROG = {
   console.log('■ タブ・KPI・一覧');
   let t = await txt();
   chk('★タブの見出し', /出荷の進捗/.test(await page.evaluate(() => document.querySelector('h1').textContent)));
+  chk('★写真照合の関数がサーバに無くても、一覧は出て📷もキーの欄も出ない', /26-60846\(1\)/.test(t) && !/AI（Gemini）のキー/.test(t) && await page.locator('button', { hasText: '📷 マーク' }).count() === 0 && !/エラー|Error/.test(t.slice(0, 1500)), t.slice(0, 300));
   chk('★KPIは本数：今日 4本・今日でまだ 4本・次の出荷日 10/30 5本・まだ 5本',
     /今日の出荷\s*4\s*本/.test(t) && /今日でまだのもの\s*4\s*本/.test(t) && /次の出荷日 10\/30\(金\)\s*5\s*本/.test(t) && /次の出荷日でまだのもの\s*5\s*本/.test(t) && !/枚/.test(t.slice(0, 500)), t.slice(0, 500));
   chk('★日の見出しにマーク・ダブル・出荷済の本数', /10\/30[\s\S]{0,60}マーク 0\/5[\s\S]{0,20}ダブル 0\/5[\s\S]{0,20}出荷済 0\/5/.test(t), t.slice(t.indexOf('10/30'), t.indexOf('10/30') + 120));
@@ -144,7 +148,10 @@ const PROG = {
   t = await txt();
   chk('★人ごと・段階ごとの本数', /野田 太郎[\s\S]{0,40}マーク 5本[\s\S]{0,20}ダブルチェック 3本/.test(t), t.slice(t.indexOf('チェックの実績'), t.indexOf('チェックの実績') + 300));
 
-  console.log('■ マークの写真照合');
+  console.log('■ マークの写真照合（止めているが、戻したときに動くこと）');
+  await page.evaluate(() => { window.__noAi = false; });
+  await page.locator('button', { hasText: '読み直す' }).click();
+  await page.waitForTimeout(500);
   t = await txt();
   chk('★キーが無ければ持ち主にキーの欄を出し、📷は出さない', /AI（Gemini）のキーを入れてください/.test(t) && await page.locator('button', { hasText: '📷 マーク' }).count() === 0);
   await page.locator('input[placeholder="AIza…"]').fill('AIzaSyD-abcdefghijklmnopqrstuv');

@@ -32,7 +32,7 @@ function msb(opt) {
     const r = (o.replies || [])[calls.length - 1] || { code: 200, json: o.ai };
     return { getResponseCode: () => r.code, getContentText: () => JSON.stringify(r.code === 200 ? { candidates: [{ content: { parts: [{ text: JSON.stringify(r.json) }] } }] } : { error: { status: 'X', message: 'busy' } }) };
   } };
-  vm.runInContext(fs.readFileSync(GAS + 'noda_work_mark.js', 'utf8'), s);
+  vm.runInContext(fs.readFileSync(__dirname + '/../gas_paused/noda_work_mark.js', 'utf8'), s);
   s.addWorkStaff('野田 太郎', '出荷');
   s.__files = files; s.__calls = calls; s.__props = props;
   return s;
