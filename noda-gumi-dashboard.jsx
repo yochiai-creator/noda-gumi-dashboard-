@@ -3729,8 +3729,144 @@ function SiteMap({ locations, site, onOpen }) {
   );
 }
 
+/* ---------- 在庫の動き（移動・入込場への持ち出し・廃棄） ----------
+   ★ 2026/10/26 落合さん。置場の本数は置場容量シートが正のまま、動かした記録を作業記録に足していく。
+     生産からの入庫は「生産の流れ」で置いたときに自動で記録される（ここでは入れない。二重になるため）。 */
+const MOVE_KINDS = [["移動", "置場の移動"], ["持ち出し", "入込場へ持ち出し"], ["廃棄", "廃棄"]];
+const MOVE_SIZES = ["20kg", "30kg", "50kg"];
+const MOVE_TONE = { 入庫: ["#dbeafe", "#1d4ed8"], 移動: ["#ede9fe", "#6d28d9"], 持ち出し: ["#fef3c7", "#b45309"], 廃棄: ["#fee2e2", "#b91c1c"] };
+
+function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCancel, saving, msg }) {
+  const [kind, setKind] = useState("移動");
+  const [size, setSize] = useState("50kg");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [qty, setQty] = useState("");
+  const [memo, setMemo] = useState("");
+  const names = ((staff && staff.staff) || []).map((x) => x.名前);
+  const knownWorker = worker && names.indexOf(worker) >= 0;
+  const key = { "20kg": "a20", "30kg": "a30", "50kg": "a50" }[size];
+  const mkey = { "20kg": "m20", "30kg": "m30", "50kg": "m50" }[size];
+  const locs = locations || [];
+  const fromOpts = locs.filter((r) => (r[key] || 0) > 0);
+  const toOpts = locs.filter((r) => String(r.no) !== String(from) && ((r[mkey] || 0) > 0 || (r[key] || 0) > 0));
+  const src = locs.find((r) => String(r.no) === String(from));
+  const dst = locs.find((r) => String(r.no) === String(to));
+  const n = Number(String(qty).replace(/[^\d]/g, "")) || 0;
+  const yardTo = size === "50kg" ? "50k入込場" : size === "20kg" ? "20k入込場" : "";
+  const sizes = kind === "持ち出し" ? ["20kg", "50kg"] : MOVE_SIZES;
+  const problem = !knownWorker ? "上の「記録する人」で名前を選んでください"
+    : !from ? "どの置場からかを選んでください"
+    : src && n > (src[key] || 0) ? "「" + src.no + " " + src.name + "」の" + size + "は " + (src[key] || 0) + "本しかありません"
+    : kind === "移動" && !to ? "どの置場へかを選んでください"
+    : !n ? "本数を入れてください"
+    : kind === "廃棄" && !memo.trim() ? "廃棄の理由を書いてください" : "";
+  const summary = src ? src.no + " " + src.name + " → " + (kind === "移動" ? (dst ? dst.no + " " + dst.name : "？") : kind === "持ち出し" ? yardTo : "廃棄") + "　" + size + " " + (n || "？") + "本" : "";
+  const submit = () => {
+    if (problem || saving) return;
+    onMove({ kind, size, qty: n, from, to: kind === "移動" ? to : "", memo: memo.trim(), name: worker }, () => { setQty(""); setMemo(""); });
+  };
+  const chip = (on) => ({ background: on ? NAVY : "#f1f5f9", color: on ? "#fff" : VIZ.ink2, border: "none" });
+  const rows = (moves && moves.rows) || [];
+  const totals = (moves && moves.totals) || {};
+  const md = (at) => { const s = String(at || ""); return s.length >= 16 ? Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10)) + " " + s.slice(11, 16) : s; };
+  const MSG = { ok: ["#dcfce7", "#15803d"], info: ["#e0f2fe", "#0369a1"], warn: ["#fef3c7", "#b45309"], error: ["#fee2e2", "#b91c1c"] };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold" style={{ color: NAVY }}>記録する人</span>
+        <select value={knownWorker ? worker : ""} onChange={(e) => onWorker(e.target.value)}
+          className="text-sm px-2 py-1 rounded-md border bg-white" style={{ minWidth: 140, borderColor: knownWorker ? "#cbd5e1" : "#f59e0b", borderWidth: knownWorker ? 1 : 2 }}>
+          <option value="">— 名前を選ぶ —</option>
+          {names.map((nm) => <option key={nm} value={nm}>{nm}</option>)}
+        </select>
+        {names.length === 0 && <span className="text-[11px] text-slate-500">名前は「出荷の進捗」の「名前を足す」で入れられます</span>}
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap">
+        {MOVE_KINDS.map(([k, lab]) => (
+          <button key={k} onClick={() => { setKind(k); if (k === "持ち出し" && size === "30kg") setSize("50kg"); }}
+            className="px-2.5 py-1 rounded-md text-xs font-semibold" style={chip(kind === k)}>{lab}</button>
+        ))}
+      </div>
+      <div className="flex gap-1.5 flex-wrap items-center">
+        <span className="text-[11px] text-slate-500 w-10">サイズ</span>
+        {sizes.map((sz) => (
+          <button key={sz} onClick={() => { setSize(sz); setFrom(""); setTo(""); }}
+            className="px-2.5 py-1 rounded-md text-xs font-semibold" style={chip(size === sz)}>{sz}</button>
+        ))}
+      </div>
+      <div className="flex gap-2 flex-wrap items-center">
+        <span className="text-[11px] text-slate-500 w-10">元</span>
+        <select value={from} onChange={(e) => setFrom(e.target.value)} data-move="from"
+          className="text-sm px-2 py-1 rounded-md border border-slate-300 bg-white" style={{ maxWidth: 260 }}>
+          <option value="">— どの置場から —</option>
+          {fromOpts.map((r) => <option key={r.no} value={r.no}>{r.no} {r.name}{r.position ? "（" + r.position + "）" : ""}　{size} {r[key]}本</option>)}
+        </select>
+      </div>
+      {kind === "移動" && (
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-[11px] text-slate-500 w-10">先</span>
+          <select value={to} onChange={(e) => setTo(e.target.value)} data-move="to"
+            className="text-sm px-2 py-1 rounded-md border border-slate-300 bg-white" style={{ maxWidth: 260 }}>
+            <option value="">— どの置場へ —</option>
+            {toOpts.map((r) => <option key={r.no} value={r.no}>{r.no} {r.name}{r.position ? "（" + r.position + "）" : ""}　{size} {r[key] || 0}/{r[mkey] || "—"}本</option>)}
+          </select>
+        </div>
+      )}
+      {kind === "持ち出し" && <div className="text-[11px] text-slate-500">先：{yardTo}</div>}
+      <div className="flex gap-2 flex-wrap items-center">
+        <span className="text-[11px] text-slate-500 w-10">本数</span>
+        <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="numeric" placeholder="例 80" data-move="qty"
+          className="text-sm px-2 py-1 rounded-md border border-slate-300 tabular-nums" style={{ width: 90 }} />
+        <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder={kind === "廃棄" ? "理由（必ず）" : "メモ（なくてよい）"} data-move="memo"
+          className="text-sm px-2 py-1 rounded-md border border-slate-300" style={{ width: 170 }} />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={submit} data-move="submit"
+          className="text-sm px-4 py-1.5 rounded-md font-bold text-white"
+          style={{ background: problem ? "#94a3b8" : NAVY }}>{saving ? "記録中…" : "記録する"}</button>
+        <span className="text-[12px] tabular-nums" style={{ color: problem ? "#b45309" : VIZ.ink }}>{problem || summary}</span>
+      </div>
+      {msg && (
+        <div data-move-msg="1" className="text-[12px] font-semibold px-3 py-2 rounded-md" style={{ background: MSG[msg.tone][0], color: MSG[msg.tone][1] }}>{msg.text}</div>
+      )}
+
+      <div className="pt-2 border-t border-slate-100">
+        <div className="text-[11px] text-slate-500 mb-1">
+          直近7日の動き（取り消したものも残します）
+          {Object.keys(totals).length > 0 && "：" + Object.keys(totals).map((k) => k + " " + Object.keys(totals[k]).map((sz) => sz + " " + totals[k][sz] + "本").join("・")).join("／")}
+        </div>
+        {!moves && <p className="text-xs text-slate-500">読み込み中…</p>}
+        {moves && moves.error && <p className="text-xs text-amber-700">{moves.error}</p>}
+        {moves && rows.length === 0 && <p className="text-xs text-slate-500">この1週間の記録はありません。</p>}
+        <div className="divide-y divide-slate-100">
+          {rows.map((r) => (
+            <div key={r.id} data-move-row="1" className="flex items-baseline flex-wrap py-1.5" style={{ columnGap: 8, rowGap: 2, opacity: r.canceled ? 0.55 : 1 }}>
+              <span className="text-[11px] tabular-nums text-slate-500">{md(r.at)}</span>
+              <span className="text-[11px] px-1 rounded font-semibold" style={{ background: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[0], color: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[1] }}>{r.kind}</span>
+              <span className="text-[12px] tabular-nums font-semibold" style={{ color: NAVY }}>{r.size} {r.qty}本</span>
+              <span className="text-[12px]" style={{ color: VIZ.ink }}>{r.from || "生産"} → {r.to || (r.kind === "廃棄" ? "廃棄" : "")}</span>
+              <span className="text-[11px] text-slate-500">{r.name}{r.memo ? "　" + r.memo : ""}</span>
+              {r.canceled
+                ? <span className="text-[10px] px-1 rounded" style={{ background: "#fee2e2", color: "#b91c1c" }}>取消{r.canceledBy ? "（" + r.canceledBy + "）" : ""}</span>
+                : r.kind !== "入庫" && (
+                  <button onClick={() => { if (!knownWorker) { window.alert("上の「記録する人」で名前を選んでください"); return; }
+                    if (window.confirm(r.kind + " " + r.size + " " + r.qty + "本（" + (r.from || "") + " → " + (r.to || r.kind) + "）を取り消して、置場の本数を元に戻しますか？")) onCancel(r.id); }}
+                    className="ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100">取消</button>
+                )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSave, onRefresh,
-                          onAddLot, onInspectLot, onStockInLot, onCancelLot, plan, saving }) {
+                          onAddLot, onInspectLot, onStockInLot, onCancelLot, plan, saving,
+                          staff, worker, onWorker, moves, onMove, onCancelMove, moveSaving, moveMsg }) {
   const [keyword, setKeyword] = useState("");
   const [onlyNearFull, setOnlyNearFull] = useState(false);
   const [sortBy, setSortBy] = useState("no");     // "no" | "rate"
@@ -3811,6 +3947,16 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
           <ProdLotCard data={lotData} types={types} locations={list} onAdd={onAddLot}
             onInspect={onInspectLot} onStockIn={onStockInLot} onCancel={onCancelLot}
             saving={saving} />
+        </Collapsible>
+      </Card>
+
+      {/* ---- 在庫の動き。移動・入込場への持ち出し・廃棄（作業記録に残す） ---- */}
+      <Card className="p-3">
+        <Collapsible tone="card" title="在庫の動き"
+          note="置場の移動・入込場への持ち出し・廃棄。置場の本数が動き、誰がいつ何本動かしたかが残ります（生産からの入庫は上の「生産の流れ」で置くと自動で残ります）"
+          closedNote={moves && moves.rows ? "直近7日 " + moves.rows.filter((r) => !r.canceled).length + "件" : ""}>
+          <StockMoveCard locations={list} staff={staff} worker={worker} onWorker={onWorker}
+            moves={moves} onMove={onMove} onCancel={onCancelMove} saving={moveSaving} msg={moveMsg} />
         </Collapsible>
       </Card>
 
@@ -4561,11 +4707,37 @@ export default function App() {
       .addWorkStaff(name, role);
   };
 
+  /* ---- 在庫の動き（移動・持ち出し・廃棄）。記録したら置場の一覧も取り直す ---- */
+  const [moveSaving, setMoveSaving] = useState(false);
+  const [moveMsg, setMoveMsg] = useState(null);
+  const flashMove = (text, tone) => {
+    setMoveMsg({ text, tone });
+    if (tone === "ok") setTimeout(() => setMoveMsg((m) => (m && m.text === text ? null : m)), 5000);
+  };
+  const runMove = (invoke, what, done, okText) => {
+    if (!isGasEnv) return;
+    setMoveSaving(true);
+    flashMove(what + " を記録しています…", "info");
+    try {
+      invoke(google.script.run
+        .withSuccessHandler((d) => {
+          setMoveSaving(false);
+          if (d && d.rows) setLive((prev) => ({ ...prev, stockMoves: d }));
+          flashMove(okText || ("✓ " + what + " を記録しました（置場の本数も動かしました）"), "ok");
+          if (done) done();
+          fetchYardTab();
+        })
+        .withFailureHandler((err) => { setMoveSaving(false); flashMove("記録できませんでした：" + (err && err.message || err), "error"); }));
+    } catch (e) { setMoveSaving(false); flashMove("記録できませんでした：" + String(e), "error"); }
+  };
+  const moveUi = (req, done) => runMove((r) => r.recordStockMove(req), req.kind + " " + req.size + " " + req.qty + "本", done);
+  const cancelMoveUi = (id) => runMove((r) => r.cancelStockMove({ id, name: worker }), "取消", null, "✓ 取り消しました（置場の本数を元に戻しました）");
+
   const fetchYardTab = () => {
     if (!isGasEnv) return;
     // ★ いつ取ったかと、まだ返ってきていない本数（前回のデータを出したまま裏で取り直すため）
     setYardTabAt(Date.now());
-    setYardTabPending(6);
+    setYardTabPending(8);
     const done1 = () => setYardTabPending((n) => Math.max(0, n - 1));
     /* ★ 1本でも呼べなかったら（関数が無いなど）、その1本だけエラーにする。
          裏で先に取っておく読み込みが、画面全体を止めてはいけない。 */
@@ -4583,6 +4755,9 @@ export default function App() {
     one("lots", (r) => r.getProdLots("", 60));
     one("cTypes", (r) => r.getContainerTypes());
     one("plan", (r) => r.getProdPlanData(false));
+    // 在庫の動き（作業記録）と、記録する人の名前
+    one("stockMoves", (r) => r.getStockMoves({}));
+    one("workStaff", (r) => r.getWorkStaff());
   };
 
   /* 生産の流れ（登録・受検・入庫）。
@@ -5063,7 +5238,9 @@ export default function App() {
             onSave={saveYardCount} onRefresh={fetchYardTab}
             onAddLot={addLot} onInspectLot={inspectLot} onStockInLot={stockInLot}
             onCancelLot={cancelLot} plan={live.plan}
-            saving={yardSaving} />}
+            saving={yardSaving}
+            staff={live.workStaff} worker={worker} onWorker={chooseWorker}
+            moves={live.stockMoves} onMove={moveUi} onCancelMove={cancelMoveUi} moveSaving={moveSaving} moveMsg={moveMsg} />}
         </div>
 
         <p className="text-center text-[10px] text-slate-400 pt-2">

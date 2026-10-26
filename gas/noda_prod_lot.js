@@ -155,6 +155,10 @@ function addProdLot(lot) {
           return { ok: false, error: mv.error };
         }
         反映 = mv.反映;
+        // ★ 作業記録にも「入庫」として残す（在庫の入出庫の一覧に出す。2026/10/26）
+        if (反映 && typeof wstock_logFromLot_ === 'function') {
+          wstock_logFromLot_('入庫', { サイズ: v.サイズ, ロットID: id }, null, loc, v.本数, 'ロット ' + id + ' を置いた（生産の流れ）');
+        }
       }
       return { ok: true, error: null, id: id, 本数: v.本数, 機種名: v.機種名,
                置場: loc ? loc.name : '', 在庫に反映: 反映 };
@@ -267,6 +271,11 @@ function stockInLot(id, locationNo) {
           return { ok: false, error: fwd.error };
         }
         反映 = fwd.反映;
+        // ★ 作業記録にも残す。前の置場があれば「移動」、無ければここで初めて置いたので「入庫」
+        if (反映 && typeof wstock_logFromLot_ === 'function') {
+          wstock_logFromLot_(prev ? '移動' : '入庫', found.lot, prev ? lot_findLocation_(prev) : null, loc, qty,
+            'ロット ' + id + (prev ? ' の置き場所を変えた' : ' を置いた') + '（生産の流れ）');
+        }
       } else {
         反映 = !!LOT_CONFIG.SIZE_KEY[found.lot.サイズ];
       }
