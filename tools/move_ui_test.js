@@ -83,14 +83,8 @@ const locs = recs.map(s.yardtab_shape_);
   t = await txt();
   chk('★一覧の先頭に出る', /移動\s*50kg 80本\s*7 大型製缶 → 12 事務所\s*野田 太郎/.test(t));
 
-  console.log('■ 廃棄は理由が要る・持ち出しは入込場へ');
-  await page.locator('button', { hasText: /^廃棄$/ }).click();
-  await page.locator('select[data-move="from"]').selectOption('7');
-  await page.locator('input[data-move="qty"]').fill('3');
-  t = await txt();
-  chk('★廃棄は理由を書くまで記録しない', /廃棄の理由を書いてください/.test(t));
-  await page.locator('button[data-move="submit"]').click();
-  chk('理由が無いまま押してもサーバに送らない', (await page.evaluate(() => window.__st.calls.length)) === 1);
+  console.log('■ 廃棄は出さない・持ち出しは入込場へ');
+  chk('★廃棄のボタンは出さない（「永久欠番・廃却」の書類があるので）', await page.locator('button', { hasText: /^廃棄$/ }).count() === 0);
   await page.locator('button', { hasText: '入込場へ持ち出し' }).click();
   t = await txt();
   chk('★持ち出しの先は50k入込場（サイズで決まる・30kgは選べない）', /先：50k入込場/.test(t) && await page.locator('button', { hasText: /^30kg$/ }).count() === 0);

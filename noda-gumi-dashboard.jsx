@@ -3732,7 +3732,9 @@ function SiteMap({ locations, site, onOpen }) {
 /* ---------- 在庫の動き（移動・入込場への持ち出し・廃棄） ----------
    ★ 2026/10/26 落合さん。置場の本数は置場容量シートが正のまま、動かした記録を作業記録に足していく。
      生産からの入庫は「生産の流れ」で置いたときに自動で記録される（ここでは入れない。二重になるため）。 */
-const MOVE_KINDS = [["移動", "置場の移動"], ["持ち出し", "入込場へ持ち出し"], ["廃棄", "廃棄"]];
+/* ★ 廃棄は入れない（10/27 落合さん「廃棄はログあるよ」）。廃却・欠番は本社の書類が
+     Drive の「永久欠番・廃却」フォルダにあるので、ここで二重に記録しない。 */
+const MOVE_KINDS = [["移動", "置場の移動"], ["持ち出し", "入込場へ持ち出し"]];
 const MOVE_SIZES = ["20kg", "30kg", "50kg"];
 const MOVE_TONE = { 入庫: ["#dbeafe", "#1d4ed8"], 移動: ["#ede9fe", "#6d28d9"], 持ち出し: ["#fef3c7", "#b45309"], 廃棄: ["#fee2e2", "#b91c1c"] };
 
@@ -3953,7 +3955,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       {/* ---- 在庫の動き。移動・入込場への持ち出し・廃棄（作業記録に残す） ---- */}
       <Card className="p-3">
         <Collapsible tone="card" title="在庫の動き"
-          note="置場の移動・入込場への持ち出し・廃棄。置場の本数が動き、誰がいつ何本動かしたかが残ります（生産からの入庫は上の「生産の流れ」で置くと自動で残ります）"
+          note="置場の移動・入込場への持ち出し。置場の本数が動き、誰がいつ何本動かしたかが残ります（生産からの入庫は上の「生産の流れ」で置くと自動で残ります）"
           closedNote={moves && moves.rows ? "直近7日 " + moves.rows.filter((r) => !r.canceled).length + "件" : ""}>
           <StockMoveCard locations={list} staff={staff} worker={worker} onWorker={onWorker}
             moves={moves} onMove={onMove} onCancel={onCancelMove} saving={moveSaving} msg={moveMsg} />

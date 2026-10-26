@@ -58,7 +58,7 @@ console.log('■ 足りない・おかしい入力は動かさない');
   chk('桁違いは断る', /多すぎ/.test(err({ kind: '移動', size: '50kg', qty: 50000, from: '7', to: '12' }) || ''));
   chk('サイズが無いと断る（2kgなど置場の列が無いもの）', /サイズ/.test(err({ kind: '移動', size: '2kg', qty: 1, from: '7', to: '12' }) || ''));
   chk('★入庫はここでは入れない（生産の流れと二重になる）', /種類/.test(err({ kind: '入庫', size: '50kg', qty: 1, from: '7' }) || ''));
-  chk('社員に無い名前は断る', /記録する人/.test((() => { try { s.recordStockMove({ kind: '廃棄', size: '50kg', qty: 1, from: '7', memo: 'x', name: '誰か' }); } catch (x) { return x.message; } })() || ''));
+  chk('社員に無い名前は断る', /記録する人/.test((() => { try { s.recordStockMove({ kind: '持ち出し', size: '50kg', qty: 1, from: '7', name: '誰か' }); } catch (x) { return x.message; } })() || ''));
   chk('★断ったときは記録を残さない', log(s).length === 0);
   // 移動の途中で先に足せなかったら、元に戻す
   const s2 = ssb({ failTo: '12' });
@@ -66,7 +66,7 @@ console.log('■ 足りない・おかしい入力は動かさない');
   chk('★先に足せなかったら元の置場に戻す（片方だけ動いた状態を残さない）', e2 && L(s2, '7').a50 === 300 && L(s2, '12').a50 === 100 && log(s2).length === 0, [e2, L(s2, '7').a50]);
 }
 
-console.log('■ 入込場への持ち出し・廃棄');
+console.log('■ 入込場への持ち出し（廃棄は入れない）');
 {
   const s = ssb();
   s.recordStockMove({ kind: '持ち出し', size: '50kg', qty: 100, from: '7', name: '野田 太郎' });
@@ -75,10 +75,8 @@ console.log('■ 入込場への持ち出し・廃棄');
   chk('20kgは20k入込場', log(s)[1][7] === '20k入込場');
   let e = null; try { s.recordStockMove({ kind: '持ち出し', size: '30kg', qty: 1, from: '7', name: '野田 太郎' }); } catch (x) { e = x.message; }
   chk('30kgは入込場が無いので断る', /入込場がありません/.test(e || ''), e);
-  e = null; try { s.recordStockMove({ kind: '廃棄', size: '50kg', qty: 3, from: '7', name: '野田 太郎' }); } catch (x) { e = x.message; }
-  chk('★廃棄は理由が要る', /理由/.test(e || ''), e);
-  s.recordStockMove({ kind: '廃棄', size: '50kg', qty: 3, from: '7', memo: 'へこみ', name: '野田 太郎' });
-  chk('★廃棄は置場から引き、理由を残す', L(s, '7').a50 === 197 && log(s)[2][3] === '廃棄' && log(s)[2][8] === 'へこみ' && log(s)[2][7] === '', log(s)[2]);
+  e = null; try { s.recordStockMove({ kind: '廃棄', size: '50kg', qty: 3, from: '7', memo: 'へこみ', name: '野田 太郎' }); } catch (x) { e = x.message; }
+  chk('★廃棄は手では入れない（「永久欠番・廃却」の書類があるので）', /種類/.test(e || '') && L(s, '7').a50 === 200 && log(s).length === 2, e);
 }
 
 console.log('■ 取り消すと本数が戻る');
