@@ -851,7 +851,7 @@ function WorkLogPanel({ log }) {
   );
 }
 
-function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAddStaff, busy, onRefresh, log, onLoadLog }) {
+function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAddStaff, busy, onRefresh, log, onLoadLog, saving, msg, onMsg }) {
   const [onlyTodo, setOnlyTodo] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -871,20 +871,28 @@ function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAd
   const lastRec = (o) => (o.shipped && !o.shipped.auto) ? ["出荷済", o.shipped] : o.dcheck ? ["ダブルチェック", o.dcheck] : o.mark ? ["マーク", o.mark] : null;
   const isPending = (o) => o.pending != null ? o.pending : (!o.mark || !o.dcheck || o.check === "チェック前");
 
+  const MSG_TONE = { ok: ["#dcfce7", "#15803d"], info: ["#e0f2fe", "#0369a1"], warn: ["#fef3c7", "#b45309"], error: ["#fee2e2", "#b91c1c"] };
   return (
     <div className="space-y-4">
+      {msg && (
+        <div data-ship-msg="1" className="text-[12px] font-semibold px-3 py-2 rounded-md"
+          style={{ position: "sticky", top: 4, zIndex: 20, background: MSG_TONE[msg.tone][0], color: MSG_TONE[msg.tone][1], boxShadow: "0 1px 4px rgba(0,0,0,.12)" }}>
+          {msg.text}
+        </div>
+      )}
       {/* 記録する人 */}
       <Card className="p-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold" style={{ color: NAVY }}>記録する人</span>
-          <select value={knownWorker ? worker : ""} onChange={(e) => onWorker(e.target.value)}
-            className="text-sm px-2 py-1 rounded-md border border-slate-300 bg-white" style={{ minWidth: 140 }}>
+          <select id="ship-worker" value={knownWorker ? worker : ""} onChange={(e) => onWorker(e.target.value)}
+            className="text-sm px-2 py-1 rounded-md border bg-white"
+            style={{ minWidth: 140, borderColor: knownWorker ? "#cbd5e1" : "#f59e0b", borderWidth: knownWorker ? 1 : 2 }}>
             <option value="">— 名前を選ぶ —</option>
             {names.map((nm) => <option key={nm} value={nm}>{nm}</option>)}
           </select>
           <button onClick={() => setAdding(!adding)}
             className="text-[11px] px-2 py-1 rounded-md bg-slate-100 text-slate-600">{adding ? "やめる" : "名前を足す"}</button>
-          {!knownWorker && <span className="text-[11px] text-amber-700">押す前に、名前を選んでください</span>}
+          {!knownWorker && <span className="text-[11px] font-semibold text-amber-700">押す前に、名前を選んでください</span>}
         </div>
         {adding && (
           <div className="flex items-center gap-2 flex-wrap mt-2">
@@ -946,7 +954,19 @@ function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAd
               {items.map((o) => {
                 const step = nextStep(o);
                 const last = lastRec(o);
-                const off = busy || !knownWorker;
+                const mine = saving === o.key;   // この行を記録中
+                /* ★ ボタンは止めない（止めると押しても何も起きないように見える）。
+                     名前がまだなら、押したときにそう言って、名前の欄へ連れて行く */
+                const press = (fn) => {
+                  if (saving) return;
+                  if (!knownWorker) {
+                    onMsg && onMsg("先に上の「記録する人」で名前を選んでください", "warn");
+                    const el = document.getElementById("ship-worker");
+                    if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+                    return;
+                  }
+                  fn();
+                };
                 return (
                   <div key={o.key} data-ship-row={o.key} className="px-3 py-2"
                     style={{ background: !isPending(o) ? "#f8fafc" : undefined }}>
@@ -967,10 +987,10 @@ function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAd
                             style={{ background: "#2563eb" }}><FileText size={11} />開く</a>
                         )}
                         {step && (
-                          <button disabled={off} onClick={() => onStep(o, step)}
+                          <button onClick={() => press(() => onStep(o, step))}
                             className="text-xs px-3 py-1.5 rounded-md font-bold text-white whitespace-nowrap"
-                            style={{ background: step === "出荷済" ? "#15803d" : step === "マーク" ? "#0e7490" : "#7c3aed", opacity: off ? 0.45 : 1 }}>
-                            {step}
+                            style={{ background: step === "出荷済" ? "#15803d" : step === "マーク" ? "#0e7490" : "#7c3aed", opacity: mine ? 0.6 : 1 }}>
+                            {mine ? "記録中…" : step}
                           </button>
                         )}
                       </span>
@@ -989,9 +1009,9 @@ function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAd
                         ? <StepPill label="出荷（出荷日）" state="done" />
                         : <StepPill label="出荷" rec={o.shipped} />}
                       {last && (
-                        <button disabled={off}
-                          onClick={() => { if (window.confirm(shipLabel_(o) + " の「" + last[0] + "」を取り消しますか？")) onCancel(last[1].id); }}
-                          className="ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100" style={{ opacity: off ? 0.5 : 1 }}>
+                        <button
+                          onClick={() => press(() => { if (window.confirm(shipLabel_(o) + " の「" + last[0] + "」を取り消しますか？")) onCancel(last[1].id, o, last[0]); })}
+                          className="ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100">
                           {last[0]}を取消
                         </button>
                       )}
@@ -4355,8 +4375,14 @@ export default function App() {
        直したつもりが直っていないように見えて一番困る。 */
   /* ---- 出荷の進捗（作業記録）。タブを開いたときに取る。押したら返ってきた最新で差し替える ---- */
   const [worker, setWorker] = useState(workerLoad_);
-  const [shipBusy, setShipBusy] = useState(false);
+  const [shipBusy, setShipBusy] = useState(false);     // 読み込み中（ボタンは止めない）
+  const [shipSaving, setShipSaving] = useState(null);   // 記録中の指図書のキー（そのボタンだけ「記録中…」）
+  const [shipMsg, setShipMsg] = useState(null);         // { text, tone }。押したら必ず何か出す
   const [shipAt, setShipAt] = useState(0);
+  const flashShip = (text, tone) => {
+    setShipMsg({ text, tone, t: Date.now() });
+    if (tone === "ok") setTimeout(() => setShipMsg((m) => (m && m.text === text ? null : m)), 4000);
+  };
   const chooseWorker = (v) => { setWorker(v); workerSave_(v); };
   const fetchShip = (force) => {
     if (!isGasEnv) return;
@@ -4373,20 +4399,28 @@ export default function App() {
         .getWorkStaff();
     } catch (e) { setShipBusy(false); setLive((prev) => ({ ...prev, shipProg: { error: String(e) } })); }
   };
-  /* ★ ハンドラを付けてから呼ぶ（google.script.run は呼ぶたびに別の入れものを返す） */
-  const runShip = (invoke) => {
+  /* ★ ハンドラを付けてから呼ぶ（google.script.run は呼ぶたびに別の入れものを返す）。
+     ★ 押したら必ず目に見える反応を出す（10/26 落合さん「ボタン押してもなんもならん」）。
+       押した行のボタンは「記録中…」、終わったら上に「記録しました」、だめなら赤で理由。 */
+  const runShip = (invoke, key, what) => {
     if (!isGasEnv) return;
-    setShipBusy(true);
-    invoke(google.script.run
-      .withSuccessHandler((d) => {
-        setShipBusy(false);
-        if (d && d.days) setLive((prev) => ({ ...prev, shipProg: d }));
-        if (d && d.dupSkipped) window.alert("もう済んでいました（ほかの端末で押されています）");
-      })
-      .withFailureHandler((err) => { setShipBusy(false); window.alert("記録できませんでした: " + (err && err.message || err)); }));
+    setShipSaving(key);
+    flashShip(what + " を記録しています…", "info");
+    try {
+      invoke(google.script.run
+        .withSuccessHandler((d) => {
+          setShipSaving(null);
+          if (d && d.days) setLive((prev) => ({ ...prev, shipProg: d }));
+          flashShip(d && d.dupSkipped ? what + " は、もう済んでいました（ほかの端末で押されています）" : "✓ " + what + " を記録しました", d && d.dupSkipped ? "warn" : "ok");
+        })
+        .withFailureHandler((err) => {
+          setShipSaving(null);
+          flashShip("記録できませんでした：" + (err && err.message || err), "error");
+        }));
+    } catch (e) { setShipSaving(null); flashShip("記録できませんでした：" + String(e), "error"); }
   };
-  const stepUi = (o, step) => runShip((r) => r.recordShipStep({ key: o.key, step, name: worker, qty: o.qty }));
-  const cancelShipUi = (id) => runShip((r) => r.cancelWorkRecord({ id, name: worker }));
+  const stepUi = (o, step) => runShip((r) => r.recordShipStep({ key: o.key, step, name: worker, qty: o.qty }), o.key, shipLabel_(o) + " の" + step);
+  const cancelShipUi = (id, o, step) => runShip((r) => r.cancelWorkRecord({ id, name: worker }), o ? o.key : id, (o ? shipLabel_(o) + " の" : "") + (step || "") + "の取消");
   const fetchWorkLog = () => {
     if (!isGasEnv) return;
     setLive((prev) => ({ ...prev, workLog: null }));
@@ -4892,6 +4926,7 @@ export default function App() {
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
           {tab === "ship" && <ShipProgressTab data={live.shipProg} staff={live.workStaff} worker={worker}
             onWorker={chooseWorker} onStep={stepUi} onCancel={cancelShipUi} onAddStaff={addStaffUi}
+            saving={shipSaving} msg={shipMsg} onMsg={flashShip}
             busy={shipBusy} onRefresh={() => fetchShip(true)} log={live.workLog} onLoadLog={fetchWorkLog} />}
           {/* ★ 前回のデータを出したまま取り直しているあいだは、そうと書く */}
           {tab === "yardcap" && yardTabPending > 0 && live.yardTab && (

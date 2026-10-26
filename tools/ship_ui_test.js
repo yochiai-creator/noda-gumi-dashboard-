@@ -80,7 +80,11 @@ const PROG = {
   chk('★今日の行：出荷は自動で済・マークのボタンが出る', /✓出荷（出荷日）/.test(await row('26-20380-0(1)').innerText()) &&
     await row('26-20380-0(1)').locator('button', { hasText: /^マーク$/ }).count() === 1);
   chk('★20kgはチェック「—」', /チェック —/.test(await row('26-30608-0').innerText()));
-  chk('★名前を選ぶまで押せない', await row('26-60846-0(1)').locator('button', { hasText: /^マーク$/ }).isDisabled() && /名前を選んでください/.test(t));
+  // ★ ボタンは止めない。名前がまだなら押したときにそう言う（何も起きないように見せない）
+  await row('26-60846-0(1)').locator('button', { hasText: /^マーク$/ }).click();
+  await page.waitForTimeout(300);
+  let msg = await page.evaluate(() => { const m = document.querySelector('[data-ship-msg]'); return m ? m.innerText : ''; });
+  chk('★名前がまだなら、押すと「先に名前を選んで」と出て、記録はしない', /名前を選んでください/.test(msg) && (await page.evaluate(() => window.__st.calls.length)) === 0, msg);
   await page.screenshot({ path: SP + '/ship_tab.png', fullPage: true });
 
   console.log('■ マーク → ダブルチェック → 出荷済（前もって）');
@@ -91,6 +95,8 @@ const PROG = {
   await page.waitForTimeout(400);
   let calls = await page.evaluate(() => window.__st.calls);
   chk('★サーバに指図書・段階・名前・本数を送る', calls[0] && calls[0][1].key === '26-60846-0(1)' && calls[0][1].step === 'マーク' && calls[0][1].name === '野田 太郎' && calls[0][1].qty === 2, calls);
+  msg = await page.evaluate(() => { const m = document.querySelector('[data-ship-msg]'); return m ? m.innerText : ''; });
+  chk('★押したら「記録しました」と出る', /✓ 26-60846\(1\) のマーク を記録しました/.test(msg), msg);
   let r = (await row('26-60846-0(1)').innerText()).replace(/\s+/g, ' ');
   chk('★マークが済むと「✓マーク 名前」、次はダブルチェックのボタン', /✓マーク 野田 太郎/.test(r) && await row('26-60846-0(1)').locator('button', { hasText: /^ダブルチェック$/ }).count() === 1, r);
   t = await txt();
