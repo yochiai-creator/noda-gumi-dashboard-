@@ -112,7 +112,7 @@ GASは**全ファイルが1つのグローバル空間**を共有する（→ [8
 | `noda_dashboard.html` | 7,295 | — | **ビルドで作る実体**。手で直さない（→ [7.2](#72-画面を直すとき)） |
 | `appsscript.json` | — | — | V8 ／ 東京時間 ／ Drive API v3 ／ Webアプリは「デプロイした人として実行・ドメイン内」 |
 | `noda_common_cache.js` | 248 | `nc_` | 共通のキャッシュ（`nc_cached_` `nc_peek_` `nc_put_` `nc_forget_`）と日付整形 `nc_dateText_`。大きいものは3万文字ずつに分けて置く |
-| `noda_work_mark.js` | 250 | `wmark_` | **マークの写真照合**（写真と指図書をGeminiで見比べる） |
+| `noda_work_mark.js` | 237 | `wmark_` | **マークの写真照合**（写真と指図書をGeminiで見比べる） |
 | `noda_work.js` | 312 | `work_` | **作業の記録**（社員・作業記録シート）と**出荷の進捗**（指図書ごとの出荷済） |
 | `noda_cache_warm.js` | 134 | `warm_` | **キャッシュの先読み**。6〜21時に10分おき、人が開く前に集計を作っておく |
 | `Noda inventory engine.js` | 167 | — | 在庫照会CSV（全サイズ混在の1本）を分類列で9区分に集計 |
