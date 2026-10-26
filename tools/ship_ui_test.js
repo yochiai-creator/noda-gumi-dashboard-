@@ -13,10 +13,13 @@ const item = (key, no, ver, size, qty, dest, check) => ({ key, no, eda: 0, ver, 
   url: 'https://drive.google.com/file/d/' + key + '/view', copyUrl: null, fileId: null, shipped: null });
 const PROG = {
   updated: '2026-10-28 08:00', today: '2026-10-28', from: '2026-10-25', to: '2026-11-04', error: null,
+  // ★ 当日と過ぎた日は、押さなくても出荷済（auto）。押すのは先の日のものだけ
   days: [
-    { date: '2026-10-27', label: '10/27', weekday: '火', past: true, today: false, count: 1, shippedN: 0, qty: 5,
-      items: [item('26-10335-0(1)', '26-10335', 1, '20kg', 5, 'イワタニ四国')] },
-    { date: '2026-10-28', label: '10/28', weekday: '水', past: false, today: true, count: 2, shippedN: 0, qty: 5,
+    { date: '2026-10-27', label: '10/27', weekday: '火', past: true, today: false, count: 1, shippedN: 1, qty: 5,
+      items: [Object.assign(item('26-10335-0(1)', '26-10335', 1, '20kg', 5, 'イワタニ四国'), { shipped: { auto: true, at: '2026-10-27' } })] },
+    { date: '2026-10-28', label: '10/28', weekday: '水', past: false, today: true, count: 1, shippedN: 1, qty: 4,
+      items: [Object.assign(item('26-20380-0(1)', '26-20380', 1, '50kg', 4, '鳥取'), { shipped: { auto: true, at: '2026-10-28' } })] },
+    { date: '2026-10-30', label: '10/30', weekday: '金', past: false, today: false, count: 2, shippedN: 0, qty: 5,
       items: [item('26-60846-0(1)', '26-60846', 1, '50kg', 2, '西日本液化 萩', 'チェック前'),
               item('26-30575-0(2)', '26-30575', 2, '50kg', 3, 'ミツウロコ', 'チェック済')] },
   ],
@@ -54,10 +57,11 @@ const PROG = {
   console.log('■ タブ・KPI・一覧');
   let t = await page.evaluate(() => document.body.innerText);
   chk('★タブの見出し', /出荷の進捗/.test(await page.evaluate(() => document.querySelector('h1').textContent)));
-  chk('★KPI：今日の出荷済 0/2・過ぎた日で出荷済が無い 1', /今日の出荷済\s*0\/2/.test(t) && /過ぎた日で出荷済が無い\s*1/.test(t), t.slice(0, 500));
-  chk('★日ごとに「出荷済 0/2」', /10\/28[\s\S]{0,40}出荷済 0\/2/.test(t), t.slice(t.indexOf('10/28'), t.indexOf('10/28') + 80));
+  chk('★KPI：今日の出荷 1枚・次の出荷日 10/30 2枚・次の出荷日でチェック前 1', /今日の出荷\s*1/.test(t) && /次の出荷日 10\/30\(金\)\s*2/.test(t) && /次の出荷日でチェック前\s*1/.test(t), t.slice(0, 500));
+  chk('★当日・過ぎた日は押さなくても「✓出荷済（出荷日）」', /26-20380\(1\)[\s\S]{0,80}✓出荷済（出荷日）/.test(t) && /26-10335\(1\)[\s\S]{0,80}✓出荷済（出荷日）/.test(t));
+  chk('★当日の行には出荷済・取消のボタンを出さない', await page.locator('[data-ship-row="26-20380-0(1)"] button').count() === 0);
+  chk('★日ごとに「出荷済 0/2」', /10\/30[\s\S]{0,40}出荷済 0\/2/.test(t), t.slice(t.indexOf('10/30'), t.indexOf('10/30') + 80));
   chk('1行に依頼No・サイズ・本数・チェックの状態・出荷先', /26-60846\(1\)\s*50kg\s*2本\s*チェック前/.test(t) && /西日本液化 萩/.test(t));
-  chk('★過ぎた日に出荷済が付いていない枚数を出す', /過ぎた日に出荷済が付いていない指図書 1枚/.test(t));
   const disabled = await page.locator('[data-ship-row="26-60846-0(1)"] button', { hasText: '出荷済' }).isDisabled();
   chk('★名前を選ぶまで出荷済は押せない', disabled && /名前を選んでください/.test(t));
   await page.screenshot({ path: SP + '/ship_tab.png', fullPage: true });
@@ -72,7 +76,7 @@ const PROG = {
   const calls = await page.evaluate(() => window.__st.calls);
   chk('★サーバに指図書・名前・本数を送る', calls[0] && calls[0][0] === 'mark' && calls[0][1].key === '26-60846-0(1)' && calls[0][1].name === '野田 太郎' && calls[0][1].qty === 2, calls);
   chk('★押した行は「✓出荷済 名前 時刻」', /✓出荷済 野田 太郎 09:15/.test(t), t.slice(t.indexOf('26-60846'), t.indexOf('26-60846') + 120));
-  chk('★日の数とKPIが増える', /出荷済 1\/2/.test(t) && /今日の出荷済\s*1\/2/.test(t));
+  chk('★日の数が増える', /10\/30[\s\S]{0,40}出荷済 1\/2/.test(t));
 
   console.log('■ 取消');
   await page.locator('[data-ship-row="26-60846-0(1)"] button', { hasText: '取消' }).click();

@@ -102,7 +102,10 @@ console.log('■ 指図書の一覧（実績シートから）');
   chk('指図書のPDFのURL', it('26-10335-0(1)').url === 'https://drive.google.com/file/d/F3/view');
   const g27 = d.days[0], g28 = d.days[1];
   chk('★過ぎた日・今日の印', g27.past === true && g28.today === true && !g28.past, [g27.past, g28.today]);
-  chk('日ごとの枚数と本数', g28.count === 1 && g28.qty === 2 && g28.shippedN === 0);
+  chk('日ごとの枚数と本数', g28.count === 1 && g28.qty === 2);
+  chk('★出荷希望日の当日・過ぎた日は押さなくても出荷済（auto）', it('26-60846-0(1)').shipped && it('26-60846-0(1)').shipped.auto === true &&
+    it('26-10335-0(1)').shipped && it('26-10335-0(1)').shipped.auto === true && g28.shippedN === 1 && g27.shippedN === 1, [it('26-60846-0(1)').shipped, g28.shippedN]);
+  chk('★先の日はまだ出荷済でない', it('26-30575-0(2)').shipped === null && d.days[2].shippedN === 0);
 }
 
 console.log('■ 記録する人（社員）');
@@ -130,24 +133,28 @@ console.log('■ 出荷済を押す・取り消す');
   threw = null; try { s.markShipped({ key: 'あいう', name: '野田 太郎' }); } catch (e) { threw = e.message; }
   chk('指図書が変なら押せない', /指図書/.test(threw || ''), threw);
 
-  let d = s.markShipped({ key: '26-60846-0(1)', name: '野田 太郎', qty: 2 });
+  const K = '26-30575-0(2)';   // 先の日（10/30）の指図書。前もって出したときに押す
+  let d = s.markShipped({ key: K, name: '野田 太郎', qty: 3 });
   const it = (dd, k) => dd.days.reduce((a, g) => a.concat(g.items), []).find((o) => o.key === k);
-  chk('★押すと出荷済（誰が・いつ）', it(d, '26-60846-0(1)').shipped && it(d, '26-60846-0(1)').shipped.by === '野田 太郎', it(d, '26-60846-0(1)'));
-  chk('日の出荷済の数が増える', d.days[1].shippedN === 1);
+  chk('★押すと出荷済（誰が・いつ）', it(d, K).shipped && it(d, K).shipped.by === '野田 太郎' && !it(d, K).shipped.auto, it(d, K));
+  chk('日の出荷済の数が増える', d.days[2].shippedN === 1);
   const log = s.__yard.sheets['作業記録'].rows;
-  chk('★作業記録に1行（種類・対象・本数・端末アカウント）', log.length === 2 && log[1][3] === '出荷済' && log[1][4] === '26-60846-0(1)' && log[1][5] === '2' && log[1][12] === 'genba@nodagumi40.com', log[1]);
+  chk('★作業記録に1行（種類・対象・本数・端末アカウント）', log.length === 2 && log[1][3] === '出荷済' && log[1][4] === K && log[1][5] === '3' && log[1][12] === 'genba@nodagumi40.com', log[1]);
 
-  d = s.markShipped({ key: '26-60846-0(1)', name: '野田 太郎' });
+  d = s.markShipped({ key: K, name: '野田 太郎' });
   chk('★二度押ししても1行のまま（ほかの端末で押されていたら知らせる）', s.__yard.sheets['作業記録'].rows.length === 2 && d.dupSkipped === true);
 
-  const id = it(d, '26-60846-0(1)').shipped.id;
+  const id = it(d, K).shipped.id;
   d = s.cancelWorkRecord({ id, name: '野田 太郎' });
-  chk('★取り消すと出荷済が外れる', !it(d, '26-60846-0(1)').shipped);
+  chk('★取り消すと出荷済が外れる（先の日なので）', it(d, K).shipped === null);
   const row = s.__yard.sheets['作業記録'].rows[1];
   chk('★行は消さずに「取消」の印と、取り消した人', s.__yard.sheets['作業記録'].rows.length === 2 && row[9] === '1' && row[11] === '野田 太郎', row);
 
+  d = s.markShipped({ key: K, name: '野田 太郎' });
+  chk('取り消したあとはもう一度押せる', it(d, K).shipped && s.__yard.sheets['作業記録'].rows.length === 3);
+
   d = s.markShipped({ key: '26-60846-0(1)', name: '野田 太郎' });
-  chk('取り消したあとはもう一度押せる', it(d, '26-60846-0(1)').shipped && s.__yard.sheets['作業記録'].rows.length === 3);
+  chk('当日の指図書も押せば押した人が出る（記録が自動より優先）', it(d, '26-60846-0(1)').shipped.by === '野田 太郎' && !it(d, '26-60846-0(1)').shipped.auto);
 }
 
 console.log('■ 出荷済の索引（純関数）');

@@ -796,7 +796,6 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
   if (!data) return <p className="text-xs text-slate-500 py-2">読み込み中…</p>;
   if (data.error) return <p className="text-xs text-amber-700 py-2">{data.error}</p>;
   const days = data.days || [];
-  const pastLeft = days.filter((d) => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
 
   return (
     <div className="space-y-4">
@@ -834,11 +833,6 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
             className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
             style={{ background: onlyTodo === v ? NAVY : "#f1f5f9", color: onlyTodo === v ? "#fff" : VIZ.ink2, border: "none" }}>{lab}</button>
         ))}
-        {pastLeft > 0 && (
-          <span className="text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "#fef3c7", color: "#b45309" }}>
-            過ぎた日に出荷済が付いていない指図書 {pastLeft}枚
-          </span>
-        )}
         <button onClick={onRefresh} className="ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1">
           <RefreshCw size={12} className={busy ? "animate-spin" : ""} />読み直す
         </button>
@@ -886,7 +880,12 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white"
                         style={{ background: "#2563eb" }}><FileText size={11} />開く</a>
                     )}
-                    {o.shipped ? (
+                    {o.shipped && o.shipped.auto ? (
+                      /* ★ 出荷希望日の当日・過ぎた日は、押さなくても出荷済（落合さん 10/26） */
+                      <span className="text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "#dcfce7", color: "#15803d" }}>
+                        ✓出荷済（出荷日）
+                      </span>
+                    ) : o.shipped ? (
                       <span className="inline-flex items-center gap-1">
                         <span className="text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "#dcfce7", color: "#15803d" }}>
                           ✓出荷済 {o.shipped.by} {hhmm_(o.shipped.at)}
@@ -908,7 +907,8 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
         );
       })}
       <p className="text-[10px] text-slate-400">
-        指図書は取り込んだもの（1時間おき）から、{data.from}〜{data.to} の出荷希望日のぶん。チェックの状態は50kgだけ（20kgはチェックをまだ運用していない）。
+        指図書は取り込んだもの（1時間おき）から、{data.from}〜{data.to} の出荷希望日のぶん。出荷希望日の当日と過ぎた日は、押さなくても出荷済。
+        「出荷済」を押すのは、出荷希望日より前に出したときだけ。チェックの状態は50kgだけ（20kgはチェックをまだ運用していない）。
       </p>
     </div>
   );
@@ -4658,12 +4658,14 @@ export default function App() {
       const days = (live.shipProg && live.shipProg.days) || [];
       const today = days.find((d) => d.today);
       const next = days.find((d) => !d.past && !d.today);
-      const pastLeft = days.filter((d) => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
+      // ★ 当日は出荷済とみなすので「今日の出荷済」は出さない。今日・次の出荷日の枚数と、
+      //   次の出荷日までにチェックが済んでいない指図書（50kのみ）を出す
+      const nextTodo = next ? next.items.filter((o) => o.check === "チェック前").length : 0;
       return [
-        { label: "今日の出荷済", value: today ? today.shippedN + "/" + today.count : "—", unit: "枚", icon: Truck, tone: today && today.shippedN >= today.count ? "ok" : "neutral" },
+        { label: "今日の出荷", value: today ? String(today.count) : "—", unit: "枚", icon: Truck, tone: "neutral" },
         { label: "今日の本数", value: today ? Number(today.qty).toLocaleString() : "—", unit: "本", icon: Package, tone: "neutral" },
         { label: next ? "次の出荷日 " + next.label + "(" + next.weekday + ")" : "次の出荷日", value: next ? String(next.count) : "—", unit: "枚", icon: FileText, tone: "neutral" },
-        { label: "過ぎた日で出荷済が無い", value: String(pastLeft), unit: "枚", icon: AlertTriangle, tone: pastLeft > 0 ? "warn" : "ok" },
+        { label: "次の出荷日でチェック前", value: next ? String(nextTodo) : "—", unit: "枚", icon: AlertTriangle, tone: nextTodo > 0 ? "warn" : "ok" },
       ];
     })(),
     yardcap: (() => {

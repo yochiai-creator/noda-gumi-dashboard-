@@ -22,6 +22,8 @@
  *   指図書（出荷実績データの「実績」シート。1ファイル1行）を出荷希望日ごとに並べ、
  *   チェックの状態（50kのみ。◆チェック完了のコピーから）と、作業記録の「出荷済」を付ける。
  *   段階は「指図書 → チェック完了 → 出荷済」。現場で押すのは出荷済だけ（落合さん：出荷済だけでよい）。
+ *   ★ 出荷希望日の当日（と過ぎた日）は、押さなくても出荷済とみなす（10/26 落合さん「当日は出荷済み扱いで良い」）。
+ *     押すのは、出荷希望日より前に出したときだけ。押した記録があればそちら（誰が・いつ）を出す。
  *
  * 名前の衝突に注意：内部関数はすべて work_ 接頭辞。
  */
@@ -252,12 +254,14 @@ function work_attachCheck_(orders, entries) {
   return orders;
 }
 
-/* 出荷済を付けて日ごとにまとめる（純関数） */
+/* 出荷済を付けて日ごとにまとめる（純関数）。
+   出荷希望日が今日か過ぎていれば、押した記録が無くても出荷済（auto）。 */
 function work_progressDays_(orders, shipped, todayKey) {
   var byDate = {};
   orders.forEach(function (o) {
     var s = shipped[o.key];
-    o.shipped = s ? { id: s.id, at: s.at, by: s.by } : null;
+    o.shipped = s ? { id: s.id, at: s.at, by: s.by }
+      : (o.date <= todayKey ? { auto: true, at: o.date } : null);
     (byDate[o.date] = byDate[o.date] || []).push(o);
   });
   return Object.keys(byDate).sort().map(function (date) {

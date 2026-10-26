@@ -1743,7 +1743,6 @@ function ShipProgressTab({
     className: "text-xs text-amber-700 py-2"
   }, data.error);
   const days = data.days || [];
-  const pastLeft = days.filter(d => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
   }, /*#__PURE__*/React.createElement(Card, {
@@ -1812,13 +1811,7 @@ function ShipProgressTab({
       color: onlyTodo === v ? "#fff" : VIZ.ink2,
       border: "none"
     }
-  }, lab)), pastLeft > 0 && /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] font-semibold px-2 py-1 rounded-md",
-    style: {
-      background: "#fef3c7",
-      color: "#b45309"
-    }
-  }, "\u904E\u304E\u305F\u65E5\u306B\u51FA\u8377\u6E08\u304C\u4ED8\u3044\u3066\u3044\u306A\u3044\u6307\u56F3\u66F8 ", pastLeft, "\u679A"), /*#__PURE__*/React.createElement("button", {
+  }, lab)), /*#__PURE__*/React.createElement("button", {
     onClick: onRefresh,
     className: "ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1"
   }, /*#__PURE__*/React.createElement(RefreshCw, {
@@ -1909,7 +1902,16 @@ function ShipProgressTab({
       }
     }, /*#__PURE__*/React.createElement(FileText, {
       size: 11
-    }), "\u958B\u304F"), o.shipped ? /*#__PURE__*/React.createElement("span", {
+    }), "\u958B\u304F"), o.shipped && o.shipped.auto ?
+    /*#__PURE__*/
+    /* ★ 出荷希望日の当日・過ぎた日は、押さなくても出荷済（落合さん 10/26） */
+    React.createElement("span", {
+      className: "text-[11px] font-semibold px-2 py-1 rounded-md",
+      style: {
+        background: "#dcfce7",
+        color: "#15803d"
+      }
+    }, "\u2713\u51FA\u8377\u6E08\uFF08\u51FA\u8377\u65E5\uFF09") : o.shipped ? /*#__PURE__*/React.createElement("span", {
       className: "inline-flex items-center gap-1"
     }, /*#__PURE__*/React.createElement("span", {
       className: "text-[11px] font-semibold px-2 py-1 rounded-md",
@@ -1937,7 +1939,7 @@ function ShipProgressTab({
     }, "\u51FA\u8377\u6E08"))))));
   }), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400"
-  }, "\u6307\u56F3\u66F8\u306F\u53D6\u308A\u8FBC\u3093\u3060\u3082\u306E\uFF081\u6642\u9593\u304A\u304D\uFF09\u304B\u3089\u3001", data.from, "\u301C", data.to, " \u306E\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u3076\u3093\u3002\u30C1\u30A7\u30C3\u30AF\u306E\u72B6\u614B\u306F50kg\u3060\u3051\uFF0820kg\u306F\u30C1\u30A7\u30C3\u30AF\u3092\u307E\u3060\u904B\u7528\u3057\u3066\u3044\u306A\u3044\uFF09\u3002"));
+  }, "\u6307\u56F3\u66F8\u306F\u53D6\u308A\u8FBC\u3093\u3060\u3082\u306E\uFF081\u6642\u9593\u304A\u304D\uFF09\u304B\u3089\u3001", data.from, "\u301C", data.to, " \u306E\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u3076\u3093\u3002\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u5F53\u65E5\u3068\u904E\u304E\u305F\u65E5\u306F\u3001\u62BC\u3055\u306A\u304F\u3066\u3082\u51FA\u8377\u6E08\u3002 \u300C\u51FA\u8377\u6E08\u300D\u3092\u62BC\u3059\u306E\u306F\u3001\u51FA\u8377\u5E0C\u671B\u65E5\u3088\u308A\u524D\u306B\u51FA\u3057\u305F\u3068\u304D\u3060\u3051\u3002\u30C1\u30A7\u30C3\u30AF\u306E\u72B6\u614B\u306F50kg\u3060\u3051\uFF0820kg\u306F\u30C1\u30A7\u30C3\u30AF\u3092\u307E\u3060\u904B\u7528\u3057\u3066\u3044\u306A\u3044\uFF09\u3002"));
 }
 function ArmTab({
   plan
@@ -8588,13 +8590,15 @@ function App() {
       const days = live.shipProg && live.shipProg.days || [];
       const today = days.find(d => d.today);
       const next = days.find(d => !d.past && !d.today);
-      const pastLeft = days.filter(d => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
+      // ★ 当日は出荷済とみなすので「今日の出荷済」は出さない。今日・次の出荷日の枚数と、
+      //   次の出荷日までにチェックが済んでいない指図書（50kのみ）を出す
+      const nextTodo = next ? next.items.filter(o => o.check === "チェック前").length : 0;
       return [{
-        label: "今日の出荷済",
-        value: today ? today.shippedN + "/" + today.count : "—",
+        label: "今日の出荷",
+        value: today ? String(today.count) : "—",
         unit: "枚",
         icon: Truck,
-        tone: today && today.shippedN >= today.count ? "ok" : "neutral"
+        tone: "neutral"
       }, {
         label: "今日の本数",
         value: today ? Number(today.qty).toLocaleString() : "—",
@@ -8608,11 +8612,11 @@ function App() {
         icon: FileText,
         tone: "neutral"
       }, {
-        label: "過ぎた日で出荷済が無い",
-        value: String(pastLeft),
+        label: "次の出荷日でチェック前",
+        value: next ? String(nextTodo) : "—",
         unit: "枚",
         icon: AlertTriangle,
-        tone: pastLeft > 0 ? "warn" : "ok"
+        tone: nextTodo > 0 ? "warn" : "ok"
       }];
     })(),
     yardcap: (() => {
