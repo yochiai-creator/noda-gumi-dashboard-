@@ -152,6 +152,7 @@ function wsb(hour, props, minute) {
   s.getYardMapUpdatesBothWithOrderText = (q50, q20, f) => { called.push('ヤードマップ' + (f ? '' : '(force無し)') + ':' + q50.length + '/' + q20.length); return '{"50k":[]}'; };
   s.yard_readRefRows_ = (k) => (k === '50k' ? [{ pos: 1 }, { pos: 2 }] : [{ pos: 'A' }]);
   s.getProdPlanData = g('生産計画');
+  s.getShipProgressBase = g('出荷の進捗');
   vm.runInContext(fs.readFileSync(GAS + 'noda_cache_warm.js', 'utf8'), s);
   s.__called = called; s.__triggers = triggers;
   return s;
@@ -165,7 +166,7 @@ console.log('■ 先読み：時間帯');
   chk('5時も回さない', s5.warmDashboardCaches().skipped === '時間外');
   const s6 = wsb(6, {});
   s6.warmDashboardCaches();
-  chk('6時から回す', s6.__called.length === 11, s6.__called);
+  chk('6時から回す', s6.__called.length === 12, s6.__called);
 }
 
 console.log('■ 先読み：夜の最後の回は控えを長くもたせる');
@@ -179,7 +180,7 @@ console.log('■ 先読み：夜の最後の回は控えを長くもたせる');
   chk('★20時台は期限を延ばす（6時間近く）', a.NC_TTL_FLOOR_SEC >= 20000 && a.NC_TTL_FLOOR_SEC <= 21600, a.NC_TTL_FLOOR_SEC);
   const b = wsb(20, props, 52);
   b.warmDashboardCaches();
-  chk('★20時50分過ぎの回は1日1回のものも全部作り直す（11本）', b.__called.length === 11, b.__called);
+  chk('★20時50分過ぎの回は1日1回のものも全部作り直す（12本）', b.__called.length === 12, b.__called);
   // 期限の下限が nc_put_ に効く
   const c = fakeCache(); const s = sb(c);
   s.NC_TTL_FLOOR_SEC = 21000;
@@ -195,7 +196,7 @@ console.log('■ 先読み：何を作り直すか');
   const props = {};
   const s = wsb(9, props);
   const r = s.warmDashboardCaches();
-  chk('★1回目は全部作り直す（11本）', s.__called.length === 11, s.__called);
+  chk('★1回目は全部作り直す（12本）', s.__called.length === 12, s.__called);
   chk('★どれもキャッシュを無視して作り直す', s.__called.every((x) => x.indexOf('force無し') < 0), s.__called);
   chk('★ヤードマップには索引の位置を全部渡す', s.__called.indexOf('ヤードマップ:2/1') >= 0, s.__called);
   chk('エラーは記録に出す', r.items.find((x) => x.name === 'アーム月別').error === '読めない');
@@ -204,7 +205,7 @@ console.log('■ 先読み：何を作り直すか');
   const s2 = wsb(9, props);
   s2.warmDashboardCaches();
   const c2 = s2.__called.map((x) => x.split(':')[0]);
-  chk('★すぐ変わるものは毎回', ['指図書', '当日の配車', '配車表', 'アーム予定', 'ヤードマップ'].every((n) => c2.indexOf(n) >= 0), c2);
+  chk('★すぐ変わるものは毎回', ['指図書', '当日の配車', '配車表', 'アーム予定', 'ヤードマップ', '出荷の進捗'].every((n) => c2.indexOf(n) >= 0), c2);
   chk('★1日1回のものは作ったばかりなら飛ばす', ['在庫', '受注出荷計画', '在庫推移', '月次', '生産計画'].every((n) => c2.indexOf(n) < 0), c2);
   chk('★前回エラーだったものは作り直す', c2.indexOf('アーム月別') >= 0, c2);
 
@@ -214,7 +215,7 @@ console.log('■ 先読み：何を作り直すか');
   props['warm.builtAt'] = JSON.stringify(at);
   const s3 = wsb(9, props);
   s3.warmDashboardCaches();
-  chk('★30分経てば全部', s3.__called.length === 11, s3.__called);
+  chk('★30分経てば全部', s3.__called.length === 12, s3.__called);
 }
 
 console.log('■ 先読み：トリガー');

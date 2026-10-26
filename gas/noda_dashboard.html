@@ -1699,6 +1699,246 @@ function ProdLotCard({
 
 /* ---------- タブ本体 ---------- */
 /* アームは容器とは別の製品なので、配車と混ぜずに独立したタブにしてある。 */
+/* ---------- 出荷の進捗（指図書 → チェック完了 → 出荷済） ----------
+   ★ 業務の基幹として広げる最初の画面（2026/10/26 落合さん）。
+     指図書が来た・チェック完了は自動で分かるので押させない。現場で押すのは「出荷済」だけ。
+     記録は「作業記録」シートに足していくだけ（取消は印を付ける）。誰が押したかは
+     端末で選んだ「記録する人」（全員がGoogleアカウントを持っているわけではないため）。 */
+const WORKER_KEY = "nodaWorker";
+const workerLoad_ = () => {
+  try {
+    return localStorage.getItem(WORKER_KEY) || "";
+  } catch (e) {
+    return "";
+  }
+};
+const workerSave_ = v => {
+  try {
+    localStorage.setItem(WORKER_KEY, v);
+  } catch (e) {/* 覚えられなくても動く */}
+};
+const shipLabel_ = o => o.no + (o.eda ? "-" + o.eda : "") + (o.ver != null ? "(" + o.ver + ")" : "");
+const hhmm_ = at => String(at || "").slice(11, 16);
+function ShipProgressTab({
+  data,
+  staff,
+  worker,
+  onWorker,
+  onMark,
+  onCancel,
+  onAddStaff,
+  busy,
+  onRefresh
+}) {
+  const [onlyTodo, setOnlyTodo] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState("現場");
+  const names = (staff && staff.staff || []).map(x => x.名前);
+  const knownWorker = worker && names.indexOf(worker) >= 0;
+  if (!data) return /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026");
+  if (data.error) return /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-amber-700 py-2"
+  }, data.error);
+  const days = data.days || [];
+  const pastLeft = days.filter(d => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "space-y-4"
+  }, /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-semibold",
+    style: {
+      color: NAVY
+    }
+  }, "\u8A18\u9332\u3059\u308B\u4EBA"), /*#__PURE__*/React.createElement("select", {
+    value: knownWorker ? worker : "",
+    onChange: e => onWorker(e.target.value),
+    className: "text-sm px-2 py-1 rounded-md border border-slate-300 bg-white",
+    style: {
+      minWidth: 140
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014 \u540D\u524D\u3092\u9078\u3076 \u2014"), names.map(n => /*#__PURE__*/React.createElement("option", {
+    key: n,
+    value: n
+  }, n))), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAdding(!adding),
+    className: "text-[11px] px-2 py-1 rounded-md bg-slate-100 text-slate-600"
+  }, adding ? "やめる" : "名前を足す"), !knownWorker && /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] text-amber-700"
+  }, "\u51FA\u8377\u6E08\u3092\u62BC\u3059\u524D\u306B\u3001\u540D\u524D\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044")), adding && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 flex-wrap mt-2"
+  }, /*#__PURE__*/React.createElement("input", {
+    value: newName,
+    onChange: e => setNewName(e.target.value),
+    placeholder: "\u540D\u524D\uFF08\u4F8B\uFF1A\u91CE\u7530 \u592A\u90CE\uFF09",
+    className: "text-sm px-2 py-1 rounded-md border border-slate-300",
+    style: {
+      width: 170
+    }
+  }), /*#__PURE__*/React.createElement("select", {
+    value: newRole,
+    onChange: e => setNewRole(e.target.value),
+    className: "text-sm px-2 py-1 rounded-md border border-slate-300 bg-white"
+  }, (staff && staff.roles || ["事務", "出荷", "現場", "管理"]).map(r => /*#__PURE__*/React.createElement("option", {
+    key: r,
+    value: r
+  }, r))), /*#__PURE__*/React.createElement("button", {
+    disabled: !newName.trim() || busy,
+    onClick: () => onAddStaff(newName.trim(), newRole, () => {
+      onWorker(newName.trim().replace(/[\s　]+/g, " "));
+      setNewName("");
+      setAdding(false);
+    }),
+    className: "text-xs px-3 py-1 rounded-md font-semibold text-white",
+    style: {
+      background: NAVY,
+      opacity: !newName.trim() || busy ? 0.5 : 1
+    }
+  }, "\u8DB3\u3059"))), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 flex-wrap"
+  }, [["すべて", false], ["まだ出荷済でないもの", true]].map(([lab, v]) => /*#__PURE__*/React.createElement("button", {
+    key: lab,
+    onClick: () => setOnlyTodo(v),
+    className: "px-2.5 py-1 rounded-md text-[11px] font-semibold",
+    style: {
+      background: onlyTodo === v ? NAVY : "#f1f5f9",
+      color: onlyTodo === v ? "#fff" : VIZ.ink2,
+      border: "none"
+    }
+  }, lab)), pastLeft > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] font-semibold px-2 py-1 rounded-md",
+    style: {
+      background: "#fef3c7",
+      color: "#b45309"
+    }
+  }, "\u904E\u304E\u305F\u65E5\u306B\u51FA\u8377\u6E08\u304C\u4ED8\u3044\u3066\u3044\u306A\u3044\u6307\u56F3\u66F8 ", pastLeft, "\u679A"), /*#__PURE__*/React.createElement("button", {
+    onClick: onRefresh,
+    className: "ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1"
+  }, /*#__PURE__*/React.createElement(RefreshCw, {
+    size: 12,
+    className: busy ? "animate-spin" : ""
+  }), "\u8AAD\u307F\u76F4\u3059")), days.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "\u3053\u306E\u671F\u9593\u306E\u6307\u56F3\u66F8\u306F\u3042\u308A\u307E\u305B\u3093\u3002"), days.map(d => {
+    const items = onlyTodo ? d.items.filter(o => !o.shipped) : d.items;
+    if (onlyTodo && items.length === 0) return null;
+    const all = d.shippedN >= d.count;
+    return /*#__PURE__*/React.createElement(Card, {
+      key: d.date,
+      className: "p-0 overflow-hidden"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-baseline gap-2 px-3 py-2 border-b border-slate-100",
+      style: {
+        background: d.today ? "#eff6ff" : undefined
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-sm font-bold tabular-nums",
+      style: {
+        color: NAVY
+      }
+    }, d.label), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] text-slate-400"
+    }, "(", d.weekday, ")", d.today ? " 今日" : ""), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] text-slate-500 tabular-nums"
+    }, d.count, "\u679A\u30FB", Number(d.qty).toLocaleString(), "\u672C"), /*#__PURE__*/React.createElement("span", {
+      className: "ml-auto text-[11px] font-semibold tabular-nums px-1.5 rounded",
+      style: {
+        background: all ? "#dcfce7" : d.past ? "#fef3c7" : "#f1f5f9",
+        color: all ? "#15803d" : d.past ? "#b45309" : VIZ.ink2
+      }
+    }, "\u51FA\u8377\u6E08 ", d.shippedN, "/", d.count)), /*#__PURE__*/React.createElement("div", {
+      className: "divide-y divide-slate-100"
+    }, items.map(o => /*#__PURE__*/React.createElement("div", {
+      key: o.key,
+      "data-ship-row": o.key,
+      className: "flex items-center gap-2 px-3 py-2",
+      style: {
+        background: o.shipped ? "#f8fafc" : undefined
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "min-w-0 flex-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex items-baseline flex-wrap",
+      style: {
+        columnGap: 6,
+        rowGap: 2
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-sm font-semibold tabular-nums",
+      style: {
+        color: o.shipped ? VIZ.muted : NAVY
+      }
+    }, shipLabel_(o)), o.size && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] px-1 rounded bg-slate-100 text-slate-600"
+    }, o.size), /*#__PURE__*/React.createElement("span", {
+      className: "text-[12px] tabular-nums",
+      style: {
+        color: VIZ.ink2
+      }
+    }, o.qty, "\u672C"), o.check && /*#__PURE__*/React.createElement("span", {
+      className: "px-1 rounded text-[10px] font-semibold",
+      style: o.check === "チェック前" ? {
+        background: "#fef3c7",
+        color: "#b45309"
+      } : {
+        background: "#dcfce7",
+        color: "#047857"
+      }
+    }, o.check === "チェック前" ? "チェック前" : "✓チェック済")), /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] truncate",
+      style: {
+        color: VIZ.muted
+      }
+    }, o.dest)), /*#__PURE__*/React.createElement("span", {
+      className: "flex items-center gap-1.5 shrink-0"
+    }, (o.copyUrl || o.url) && /*#__PURE__*/React.createElement("a", {
+      href: o.copyUrl || o.url,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      onClick: e => openPdfQuick_(e, o.copyUrl || o.url, "指図書 " + shipLabel_(o)),
+      className: "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: "#2563eb"
+      }
+    }, /*#__PURE__*/React.createElement(FileText, {
+      size: 11
+    }), "\u958B\u304F"), o.shipped ? /*#__PURE__*/React.createElement("span", {
+      className: "inline-flex items-center gap-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] font-semibold px-2 py-1 rounded-md",
+      style: {
+        background: "#dcfce7",
+        color: "#15803d"
+      }
+    }, "\u2713\u51FA\u8377\u6E08 ", o.shipped.by, " ", hhmm_(o.shipped.at)), /*#__PURE__*/React.createElement("button", {
+      disabled: busy || !knownWorker,
+      onClick: () => {
+        if (window.confirm(shipLabel_(o) + " の出荷済を取り消しますか？")) onCancel(o.shipped.id);
+      },
+      className: "text-[10px] px-1.5 py-1 rounded text-slate-500 bg-slate-100",
+      style: {
+        opacity: busy || !knownWorker ? 0.5 : 1
+      }
+    }, "\u53D6\u6D88")) : /*#__PURE__*/React.createElement("button", {
+      disabled: busy || !knownWorker,
+      onClick: () => onMark(o),
+      className: "text-xs px-3 py-1.5 rounded-md font-bold text-white",
+      style: {
+        background: "#15803d",
+        opacity: busy || !knownWorker ? 0.45 : 1
+      }
+    }, "\u51FA\u8377\u6E08"))))));
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "text-[10px] text-slate-400"
+  }, "\u6307\u56F3\u66F8\u306F\u53D6\u308A\u8FBC\u3093\u3060\u3082\u306E\uFF081\u6642\u9593\u304A\u304D\uFF09\u304B\u3089\u3001", data.from, "\u301C", data.to, " \u306E\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u3076\u3093\u3002\u30C1\u30A7\u30C3\u30AF\u306E\u72B6\u614B\u306F50kg\u3060\u3051\uFF0820kg\u306F\u30C1\u30A7\u30C3\u30AF\u3092\u307E\u3060\u904B\u7528\u3057\u3066\u3044\u306A\u3044\uFF09\u3002"));
+}
 function ArmTab({
   plan
 }) {
@@ -7475,6 +7715,9 @@ function App() {
     id: "orders",
     label: "受注・指図書"
   }, {
+    id: "ship",
+    label: "出荷の進捗"
+  }, {
     id: "yard",
     label: "ヤード・現場"
   }, {
@@ -7764,6 +8007,88 @@ function App() {
        最初の表示がそのぶん遅くなる。このタブを開いたときに取る。
      ★ キャッシュも付けない。直した直後に古い数字が出ると、
        直したつもりが直っていないように見えて一番困る。 */
+  /* ---- 出荷の進捗（作業記録）。タブを開いたときに取る。押したら返ってきた最新で差し替える ---- */
+  const [worker, setWorker] = useState(workerLoad_);
+  const [shipBusy, setShipBusy] = useState(false);
+  const [shipAt, setShipAt] = useState(0);
+  const chooseWorker = v => {
+    setWorker(v);
+    workerSave_(v);
+  };
+  const fetchShip = force => {
+    if (!isGasEnv) return;
+    setShipAt(Date.now());
+    setShipBusy(true);
+    try {
+      google.script.run.withSuccessHandler(d => {
+        setShipBusy(false);
+        setLive(prev => ({
+          ...prev,
+          shipProg: d
+        }));
+      }).withFailureHandler(err => {
+        setShipBusy(false);
+        setLive(prev => ({
+          ...prev,
+          shipProg: {
+            error: String(err && err.message || err)
+          }
+        }));
+      }).getShipProgress(force === true);
+      google.script.run.withSuccessHandler(d => setLive(prev => ({
+        ...prev,
+        workStaff: d
+      }))).withFailureHandler(() => {}).getWorkStaff();
+    } catch (e) {
+      setShipBusy(false);
+      setLive(prev => ({
+        ...prev,
+        shipProg: {
+          error: String(e)
+        }
+      }));
+    }
+  };
+  /* ★ ハンドラを付けてから呼ぶ（google.script.run は呼ぶたびに別の入れものを返す） */
+  const runShip = invoke => {
+    if (!isGasEnv) return;
+    setShipBusy(true);
+    invoke(google.script.run.withSuccessHandler(d => {
+      setShipBusy(false);
+      if (d && d.days) setLive(prev => ({
+        ...prev,
+        shipProg: d
+      }));
+      if (d && d.dupSkipped) window.alert("もう出荷済になっていました（ほかの端末で押されています）");
+    }).withFailureHandler(err => {
+      setShipBusy(false);
+      window.alert("記録できませんでした: " + (err && err.message || err));
+    }));
+  };
+  const markShippedUi = o => runShip(r => r.markShipped({
+    key: o.key,
+    name: worker,
+    qty: o.qty
+  }));
+  const cancelShipUi = id => runShip(r => r.cancelWorkRecord({
+    id,
+    name: worker
+  }));
+  const addStaffUi = (name, role, done) => {
+    if (!isGasEnv) return;
+    setShipBusy(true);
+    google.script.run.withSuccessHandler(d => {
+      setShipBusy(false);
+      setLive(prev => ({
+        ...prev,
+        workStaff: d
+      }));
+      if (done) done();
+    }).withFailureHandler(err => {
+      setShipBusy(false);
+      window.alert("足せませんでした: " + (err && err.message || err));
+    }).addWorkStaff(name, role);
+  };
   const fetchYardTab = () => {
     if (!isGasEnv) return;
     // ★ いつ取ったかと、まだ返ってきていない本数（前回のデータを出したまま裏で取り直すため）
@@ -7885,6 +8210,8 @@ function App() {
      前回のデータは出したままにして、そろったら差し替える。 */
   useEffect(() => {
     if (tab === "yardcap" && (!yardTabAt || Date.now() - yardTabAt > 60 * 1000)) fetchYardTab();
+    // 出荷の進捗はほかの端末でも押されるので、開くたびに30秒以上たっていれば取り直す
+    if (tab === "ship" && (!shipAt || Date.now() - shipAt > 30 * 1000)) fetchShip(false);
   }, [tab]);
   const dateLabel = now.toLocaleDateString("ja-JP", {
     year: "numeric",
@@ -8070,6 +8397,10 @@ function App() {
       title: "野外置場",
       subtitle: dateLabel
     },
+    ship: {
+      title: "出荷の進捗",
+      subtitle: dateLabel
+    },
     // ★ 抜けていて、実績・推移タブの見出しが「受注・指図書」になっていた
     actuals: {
       title: "実績・推移",
@@ -8253,6 +8584,37 @@ function App() {
       icon: Package,
       tone: "neutral"
     }],
+    ship: (() => {
+      const days = live.shipProg && live.shipProg.days || [];
+      const today = days.find(d => d.today);
+      const next = days.find(d => !d.past && !d.today);
+      const pastLeft = days.filter(d => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
+      return [{
+        label: "今日の出荷済",
+        value: today ? today.shippedN + "/" + today.count : "—",
+        unit: "枚",
+        icon: Truck,
+        tone: today && today.shippedN >= today.count ? "ok" : "neutral"
+      }, {
+        label: "今日の本数",
+        value: today ? Number(today.qty).toLocaleString() : "—",
+        unit: "本",
+        icon: Package,
+        tone: "neutral"
+      }, {
+        label: next ? "次の出荷日 " + next.label + "(" + next.weekday + ")" : "次の出荷日",
+        value: next ? String(next.count) : "—",
+        unit: "枚",
+        icon: FileText,
+        tone: "neutral"
+      }, {
+        label: "過ぎた日で出荷済が無い",
+        value: String(pastLeft),
+        unit: "枚",
+        icon: AlertTriangle,
+        tone: pastLeft > 0 ? "warn" : "ok"
+      }];
+    })(),
     yardcap: (() => {
       const y = live.yardCap;
       const n = v => v == null ? "—" : Number(v).toLocaleString();
@@ -8420,6 +8782,16 @@ function App() {
     saving: gridSaving
   }), tab === "arm" && /*#__PURE__*/React.createElement(ArmTab, {
     plan: live.armPlan
+  }), tab === "ship" && /*#__PURE__*/React.createElement(ShipProgressTab, {
+    data: live.shipProg,
+    staff: live.workStaff,
+    worker: worker,
+    onWorker: chooseWorker,
+    onMark: markShippedUi,
+    onCancel: cancelShipUi,
+    onAddStaff: addStaffUi,
+    busy: shipBusy,
+    onRefresh: () => fetchShip(true)
   }), tab === "yardcap" && yardTabPending > 0 && live.yardTab && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-center py-1 rounded-md",
     style: {

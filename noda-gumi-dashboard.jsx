@@ -774,6 +774,146 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
 
 /* ---------- タブ本体 ---------- */
 /* アームは容器とは別の製品なので、配車と混ぜずに独立したタブにしてある。 */
+/* ---------- 出荷の進捗（指図書 → チェック完了 → 出荷済） ----------
+   ★ 業務の基幹として広げる最初の画面（2026/10/26 落合さん）。
+     指図書が来た・チェック完了は自動で分かるので押させない。現場で押すのは「出荷済」だけ。
+     記録は「作業記録」シートに足していくだけ（取消は印を付ける）。誰が押したかは
+     端末で選んだ「記録する人」（全員がGoogleアカウントを持っているわけではないため）。 */
+const WORKER_KEY = "nodaWorker";
+const workerLoad_ = () => { try { return localStorage.getItem(WORKER_KEY) || ""; } catch (e) { return ""; } };
+const workerSave_ = (v) => { try { localStorage.setItem(WORKER_KEY, v); } catch (e) { /* 覚えられなくても動く */ } };
+const shipLabel_ = (o) => o.no + (o.eda ? "-" + o.eda : "") + (o.ver != null ? "(" + o.ver + ")" : "");
+const hhmm_ = (at) => String(at || "").slice(11, 16);
+
+function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAddStaff, busy, onRefresh }) {
+  const [onlyTodo, setOnlyTodo] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState("現場");
+  const names = ((staff && staff.staff) || []).map((x) => x.名前);
+  const knownWorker = worker && names.indexOf(worker) >= 0;
+
+  if (!data) return <p className="text-xs text-slate-500 py-2">読み込み中…</p>;
+  if (data.error) return <p className="text-xs text-amber-700 py-2">{data.error}</p>;
+  const days = data.days || [];
+  const pastLeft = days.filter((d) => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* 記録する人 */}
+      <Card className="p-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold" style={{ color: NAVY }}>記録する人</span>
+          <select value={knownWorker ? worker : ""} onChange={(e) => onWorker(e.target.value)}
+            className="text-sm px-2 py-1 rounded-md border border-slate-300 bg-white" style={{ minWidth: 140 }}>
+            <option value="">— 名前を選ぶ —</option>
+            {names.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <button onClick={() => setAdding(!adding)}
+            className="text-[11px] px-2 py-1 rounded-md bg-slate-100 text-slate-600">{adding ? "やめる" : "名前を足す"}</button>
+          {!knownWorker && <span className="text-[11px] text-amber-700">出荷済を押す前に、名前を選んでください</span>}
+        </div>
+        {adding && (
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="名前（例：野田 太郎）"
+              className="text-sm px-2 py-1 rounded-md border border-slate-300" style={{ width: 170 }} />
+            <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
+              className="text-sm px-2 py-1 rounded-md border border-slate-300 bg-white">
+              {((staff && staff.roles) || ["事務", "出荷", "現場", "管理"]).map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <button disabled={!newName.trim() || busy}
+              onClick={() => onAddStaff(newName.trim(), newRole, () => { onWorker(newName.trim().replace(/[\s　]+/g, " ")); setNewName(""); setAdding(false); })}
+              className="text-xs px-3 py-1 rounded-md font-semibold text-white" style={{ background: NAVY, opacity: !newName.trim() || busy ? 0.5 : 1 }}>足す</button>
+          </div>
+        )}
+      </Card>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {[["すべて", false], ["まだ出荷済でないもの", true]].map(([lab, v]) => (
+          <button key={lab} onClick={() => setOnlyTodo(v)}
+            className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
+            style={{ background: onlyTodo === v ? NAVY : "#f1f5f9", color: onlyTodo === v ? "#fff" : VIZ.ink2, border: "none" }}>{lab}</button>
+        ))}
+        {pastLeft > 0 && (
+          <span className="text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "#fef3c7", color: "#b45309" }}>
+            過ぎた日に出荷済が付いていない指図書 {pastLeft}枚
+          </span>
+        )}
+        <button onClick={onRefresh} className="ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1">
+          <RefreshCw size={12} className={busy ? "animate-spin" : ""} />読み直す
+        </button>
+      </div>
+
+      {days.length === 0 && <p className="text-xs text-slate-500">この期間の指図書はありません。</p>}
+      {days.map((d) => {
+        const items = onlyTodo ? d.items.filter((o) => !o.shipped) : d.items;
+        if (onlyTodo && items.length === 0) return null;
+        const all = d.shippedN >= d.count;
+        return (
+          <Card key={d.date} className="p-0 overflow-hidden">
+            <div className="flex items-baseline gap-2 px-3 py-2 border-b border-slate-100"
+              style={{ background: d.today ? "#eff6ff" : undefined }}>
+              <span className="text-sm font-bold tabular-nums" style={{ color: NAVY }}>{d.label}</span>
+              <span className="text-[11px] text-slate-400">({d.weekday}){d.today ? " 今日" : ""}</span>
+              <span className="text-[11px] text-slate-500 tabular-nums">{d.count}枚・{Number(d.qty).toLocaleString()}本</span>
+              <span className="ml-auto text-[11px] font-semibold tabular-nums px-1.5 rounded"
+                style={{ background: all ? "#dcfce7" : d.past ? "#fef3c7" : "#f1f5f9", color: all ? "#15803d" : d.past ? "#b45309" : VIZ.ink2 }}>
+                出荷済 {d.shippedN}/{d.count}
+              </span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {items.map((o) => (
+                <div key={o.key} data-ship-row={o.key} className="flex items-center gap-2 px-3 py-2"
+                  style={{ background: o.shipped ? "#f8fafc" : undefined }}>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline flex-wrap" style={{ columnGap: 6, rowGap: 2 }}>
+                      <span className="text-sm font-semibold tabular-nums" style={{ color: o.shipped ? VIZ.muted : NAVY }}>{shipLabel_(o)}</span>
+                      {o.size && <span className="text-[10px] px-1 rounded bg-slate-100 text-slate-600">{o.size}</span>}
+                      <span className="text-[12px] tabular-nums" style={{ color: VIZ.ink2 }}>{o.qty}本</span>
+                      {o.check && (
+                        <span className="px-1 rounded text-[10px] font-semibold"
+                          style={o.check === "チェック前" ? { background: "#fef3c7", color: "#b45309" } : { background: "#dcfce7", color: "#047857" }}>
+                          {o.check === "チェック前" ? "チェック前" : "✓チェック済"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="block text-[11px] truncate" style={{ color: VIZ.muted }}>{o.dest}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {(o.copyUrl || o.url) && (
+                      <a href={o.copyUrl || o.url} target="_blank" rel="noopener noreferrer"
+                        onClick={(e) => openPdfQuick_(e, o.copyUrl || o.url, "指図書 " + shipLabel_(o))}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white"
+                        style={{ background: "#2563eb" }}><FileText size={11} />開く</a>
+                    )}
+                    {o.shipped ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "#dcfce7", color: "#15803d" }}>
+                          ✓出荷済 {o.shipped.by} {hhmm_(o.shipped.at)}
+                        </span>
+                        <button disabled={busy || !knownWorker}
+                          onClick={() => { if (window.confirm(shipLabel_(o) + " の出荷済を取り消しますか？")) onCancel(o.shipped.id); }}
+                          className="text-[10px] px-1.5 py-1 rounded text-slate-500 bg-slate-100" style={{ opacity: busy || !knownWorker ? 0.5 : 1 }}>取消</button>
+                      </span>
+                    ) : (
+                      <button disabled={busy || !knownWorker} onClick={() => onMark(o)}
+                        className="text-xs px-3 py-1.5 rounded-md font-bold text-white"
+                        style={{ background: "#15803d", opacity: busy || !knownWorker ? 0.45 : 1 }}>出荷済</button>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        );
+      })}
+      <p className="text-[10px] text-slate-400">
+        指図書は取り込んだもの（1時間おき）から、{data.from}〜{data.to} の出荷希望日のぶん。チェックの状態は50kgだけ（20kgはチェックをまだ運用していない）。
+      </p>
+    </div>
+  );
+}
+
 function ArmTab({ plan }) {
   return (
     <div className="space-y-6">
@@ -3943,6 +4083,7 @@ export default function App() {
 
   const tabs = [
     { id: "orders", label: "受注・指図書" },
+    { id: "ship", label: "出荷の進捗" },
     { id: "yard",   label: "ヤード・現場" },
     { id: "yardcap", label: "野外置場" },
     { id: "dispatch", label: "配車・当日出荷" },
@@ -4115,6 +4256,49 @@ export default function App() {
        最初の表示がそのぶん遅くなる。このタブを開いたときに取る。
      ★ キャッシュも付けない。直した直後に古い数字が出ると、
        直したつもりが直っていないように見えて一番困る。 */
+  /* ---- 出荷の進捗（作業記録）。タブを開いたときに取る。押したら返ってきた最新で差し替える ---- */
+  const [worker, setWorker] = useState(workerLoad_);
+  const [shipBusy, setShipBusy] = useState(false);
+  const [shipAt, setShipAt] = useState(0);
+  const chooseWorker = (v) => { setWorker(v); workerSave_(v); };
+  const fetchShip = (force) => {
+    if (!isGasEnv) return;
+    setShipAt(Date.now());
+    setShipBusy(true);
+    try {
+      google.script.run
+        .withSuccessHandler((d) => { setShipBusy(false); setLive((prev) => ({ ...prev, shipProg: d })); })
+        .withFailureHandler((err) => { setShipBusy(false); setLive((prev) => ({ ...prev, shipProg: { error: String(err && err.message || err) } })); })
+        .getShipProgress(force === true);
+      google.script.run
+        .withSuccessHandler((d) => setLive((prev) => ({ ...prev, workStaff: d })))
+        .withFailureHandler(() => {})
+        .getWorkStaff();
+    } catch (e) { setShipBusy(false); setLive((prev) => ({ ...prev, shipProg: { error: String(e) } })); }
+  };
+  /* ★ ハンドラを付けてから呼ぶ（google.script.run は呼ぶたびに別の入れものを返す） */
+  const runShip = (invoke) => {
+    if (!isGasEnv) return;
+    setShipBusy(true);
+    invoke(google.script.run
+      .withSuccessHandler((d) => {
+        setShipBusy(false);
+        if (d && d.days) setLive((prev) => ({ ...prev, shipProg: d }));
+        if (d && d.dupSkipped) window.alert("もう出荷済になっていました（ほかの端末で押されています）");
+      })
+      .withFailureHandler((err) => { setShipBusy(false); window.alert("記録できませんでした: " + (err && err.message || err)); }));
+  };
+  const markShippedUi = (o) => runShip((r) => r.markShipped({ key: o.key, name: worker, qty: o.qty }));
+  const cancelShipUi = (id) => runShip((r) => r.cancelWorkRecord({ id, name: worker }));
+  const addStaffUi = (name, role, done) => {
+    if (!isGasEnv) return;
+    setShipBusy(true);
+    google.script.run
+      .withSuccessHandler((d) => { setShipBusy(false); setLive((prev) => ({ ...prev, workStaff: d })); if (done) done(); })
+      .withFailureHandler((err) => { setShipBusy(false); window.alert("足せませんでした: " + (err && err.message || err)); })
+      .addWorkStaff(name, role);
+  };
+
   const fetchYardTab = () => {
     if (!isGasEnv) return;
     // ★ いつ取ったかと、まだ返ってきていない本数（前回のデータを出したまま裏で取り直すため）
@@ -4214,6 +4398,8 @@ export default function App() {
      前回のデータは出したままにして、そろったら差し替える。 */
   useEffect(() => {
     if (tab === "yardcap" && (!yardTabAt || Date.now() - yardTabAt > 60 * 1000)) fetchYardTab();
+    // 出荷の進捗はほかの端末でも押されるので、開くたびに30秒以上たっていれば取り直す
+    if (tab === "ship" && (!shipAt || Date.now() - shipAt > 30 * 1000)) fetchShip(false);
   }, [tab]);
 
   const dateLabel = now.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
@@ -4366,6 +4552,7 @@ export default function App() {
     dispatch: { title: "配車・当日出荷", subtitle: dispatchWeekLabel ? dispatchWeekLabel + " の週" : dispatchDateLabel + " 時点" },
     arm: { title: "アーム出荷予定", subtitle: armNext ? "次の出荷 " + armNext.label + "(" + armNext.weekday + ")" : "直近1か月" },
     yardcap: { title: "野外置場", subtitle: dateLabel },
+    ship: { title: "出荷の進捗", subtitle: dateLabel },
     // ★ 抜けていて、実績・推移タブの見出しが「受注・指図書」になっていた
     actuals: { title: "実績・推移", subtitle: dateLabel },
   };
@@ -4467,6 +4654,18 @@ export default function App() {
       { label: armCurLabel + " 予定こみ 合計", value: armCurAll ? String(armCurAll.台数) : "—",
         unit: "台", icon: Package, tone: "neutral" },
     ],
+    ship: (() => {
+      const days = (live.shipProg && live.shipProg.days) || [];
+      const today = days.find((d) => d.today);
+      const next = days.find((d) => !d.past && !d.today);
+      const pastLeft = days.filter((d) => d.past).reduce((a, d) => a + (d.count - d.shippedN), 0);
+      return [
+        { label: "今日の出荷済", value: today ? today.shippedN + "/" + today.count : "—", unit: "枚", icon: Truck, tone: today && today.shippedN >= today.count ? "ok" : "neutral" },
+        { label: "今日の本数", value: today ? Number(today.qty).toLocaleString() : "—", unit: "本", icon: Package, tone: "neutral" },
+        { label: next ? "次の出荷日 " + next.label + "(" + next.weekday + ")" : "次の出荷日", value: next ? String(next.count) : "—", unit: "枚", icon: FileText, tone: "neutral" },
+        { label: "過ぎた日で出荷済が無い", value: String(pastLeft), unit: "枚", icon: AlertTriangle, tone: pastLeft > 0 ? "warn" : "ok" },
+      ];
+    })(),
     yardcap: (() => {
       const y = live.yardCap;
       const n = (v) => (v == null ? "—" : Number(v).toLocaleString());
@@ -4578,6 +4777,9 @@ export default function App() {
           {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
+          {tab === "ship" && <ShipProgressTab data={live.shipProg} staff={live.workStaff} worker={worker}
+            onWorker={chooseWorker} onMark={markShippedUi} onCancel={cancelShipUi} onAddStaff={addStaffUi}
+            busy={shipBusy} onRefresh={() => fetchShip(true)} />}
           {/* ★ 前回のデータを出したまま取り直しているあいだは、そうと書く */}
           {tab === "yardcap" && yardTabPending > 0 && live.yardTab && (
             <p className="text-[11px] text-center py-1 rounded-md" style={{ background: "#fef3c7", color: "#92400e" }}>

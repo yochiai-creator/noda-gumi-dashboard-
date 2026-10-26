@@ -56,7 +56,8 @@ function warm_jobs_() {
         var q = warm_yardQueries_();
         return getYardMapUpdatesBothWithOrderText(q['50k'], q['20k'], true);
       } },
-    { name: '生産計画',       slow: true,  run: function () { return getProdPlanData(true); } }
+    { name: '生産計画',       slow: true,  run: function () { return getProdPlanData(true); } },
+    { name: '出荷の進捗',     slow: false, run: function () { return getShipProgressBase(true); } }
   ];
 }
 
