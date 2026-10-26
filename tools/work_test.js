@@ -173,6 +173,61 @@ console.log('■ 出荷済を押す・取り消す');
   chk('当日の指図書も押せば押した人が出る（記録が自動より優先）', it(d, '26-60846-0(1)').shipped.by === '野田 太郎' && !it(d, '26-60846-0(1)').shipped.auto);
 }
 
+console.log('■ マーク → ダブルチェック');
+{
+  const s = sb({ actRows: ROWS, entries: ENTRIES, pastDays: 0 });
+  s.addWorkStaff('野田 太郎', '出荷');
+  s.addWorkStaff('森 花子', '出荷');
+  const K = '26-60846-0(1)';
+  const it = (dd, k) => dd.days.reduce((a, g) => a.concat(g.items), []).find((o) => o.key === k);
+  let d = s.getShipProgress();
+  chk('★はじめはマーク・ダブルチェックがまだ（まだの印）', it(d, K).mark === null && it(d, K).dcheck === null && it(d, K).pending === true);
+  let threw = null; try { s.recordShipStep({ key: K, step: 'ダブルチェック', name: '森 花子' }); } catch (e) { threw = e.message; }
+  chk('★ダブルチェックはマークが済んでから', /先にマーク/.test(threw || ''), threw);
+  threw = null; try { s.recordShipStep({ key: K, step: '積込', name: '森 花子' }); } catch (e) { threw = e.message; }
+  chk('知らない段階は押せない', /段階/.test(threw || ''), threw);
+  d = s.recordShipStep({ key: K, step: 'マーク', name: '野田 太郎', qty: 2 });
+  chk('★マークを押すと押した人が付く', it(d, K).mark && it(d, K).mark.by === '野田 太郎' && it(d, K).dcheck === null);
+  chk('日のマークの本数', d.days[0].markQty === 2 && d.days[0].dcheckQty === 0);
+  d = s.recordShipStep({ key: K, step: 'ダブルチェック', name: '森 花子', qty: 2 });
+  chk('★ダブルチェックを押すと押した人が付く', it(d, K).dcheck && it(d, K).dcheck.by === '森 花子');
+  chk('★チェック前が残っていれば、まだの印は消えない（チェック完了がまだ）', it(d, K).pending === true && d.days[0].pendingQty === 2);
+  d = s.recordShipStep({ key: K, step: 'マーク', name: '森 花子' });
+  chk('★マークの二度押しは足さない', d.dupSkipped === true && s.__yard.sheets['作業記録'].rows.length === 3);
+  const kinds = s.__yard.sheets['作業記録'].rows.slice(1).map((r) => r[3]);
+  chk('作業記録の種類', kinds.join(',') === 'マーク,ダブルチェック', kinds);
+  threw = null; try { s.cancelWorkRecord({ id: it(d, K).mark.id, name: '野田 太郎' }); } catch (e) { threw = e.message; }
+  chk('★ダブルチェックが付いたままマークは取り消せない', /先にダブルチェック/.test(threw || ''), threw);
+  d = s.cancelWorkRecord({ id: it(d, K).dcheck.id, name: '野田 太郎' });
+  d = s.cancelWorkRecord({ id: it(d, K).mark.id, name: '野田 太郎' });
+  chk('ダブルチェック → マークの順なら取り消せる', it(d, K).mark === null && it(d, K).dcheck === null);
+  // チェック済の指図書は、マーク・ダブルチェックが済めばまだの印が消える
+  const K2 = '26-30575-0(2)';
+  s.recordShipStep({ key: K2, step: 'マーク', name: '野田 太郎' });
+  d = s.recordShipStep({ key: K2, step: 'ダブルチェック', name: '野田 太郎' });
+  chk('★全部済めばまだの印が消える（同じ人でも押せる）', it(d, K2).pending === false && it(d, K2).dcheck.by === '野田 太郎');
+  const K3 = '26-30608-0';
+  s.recordShipStep({ key: K3, step: 'マーク', name: '野田 太郎' });
+  d = s.recordShipStep({ key: K3, step: 'ダブルチェック', name: '森 花子' });
+  chk('20kg（チェックの運用なし）はマーク・ダブルチェックで済み', it(d, K3).pending === false);
+}
+
+console.log('■ チェックの実績（記録の一覧）');
+{
+  const s = sb({ actRows: ROWS, entries: ENTRIES, pastDays: 0 });
+  s.addWorkStaff('野田 太郎', '出荷');
+  s.recordShipStep({ key: '26-60846-0(1)', step: 'マーク', name: '野田 太郎', qty: 2 });
+  let d = s.recordShipStep({ key: '26-60846-0(1)', step: 'ダブルチェック', name: '野田 太郎', qty: 2 });
+  const dc = d.days[0].items[0].dcheck.id;
+  s.cancelWorkRecord({ id: dc, name: '野田 太郎' });
+  const L = s.getWorkLog({});
+  chk('エラーなし・既定は直近7日', !L.error && L.from === '2026-10-22' && L.to === '2026-10-28', [L.error, L.from, L.to]);
+  chk('★押した記録が全部残る（取り消したものも）', L.rows.length === 2 && L.rows.some((r) => r.kind === 'ダブルチェック' && r.canceled && r.canceledBy === '野田 太郎'), L.rows);
+  chk('記録の中身（名前・段階・指図書・本数）', L.rows.some((r) => r.kind === 'マーク' && r.name === '野田 太郎' && r.target === '26-60846-0(1)' && r.qty === 2 && !r.canceled));
+  chk('範囲の外は出さない', s.getWorkLog({ from: '2026-10-01', to: '2026-10-02' }).rows.length === 0);
+  chk('表のURLも返す', /docs\.google\.com/.test(L.sheetUrl));
+}
+
 console.log('■ 出荷済の索引（純関数）');
 {
   const s = sb({});

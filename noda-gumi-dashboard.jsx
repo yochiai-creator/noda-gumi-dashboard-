@@ -785,8 +785,75 @@ const workerSave_ = (v) => { try { localStorage.setItem(WORKER_KEY, v); } catch 
 const shipLabel_ = (o) => o.no + (o.eda ? "-" + o.eda : "") + (o.ver != null ? "(" + o.ver + ")" : "");
 const hhmm_ = (at) => String(at || "").slice(11, 16);
 
-function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAddStaff, busy, onRefresh }) {
+/* 段階の小さな札。済んだら緑で押した人、まだなら灰色 */
+function StepPill({ label, rec, state }) {
+  const done = state === "done" || (!!rec && state !== "todo");
+  const warn = state === "warn";
+  const bg = done ? "#dcfce7" : warn ? "#fef3c7" : "#f1f5f9";
+  const fg = done ? "#15803d" : warn ? "#b45309" : "#94a3b8";
+  return (
+    <span className="inline-flex items-center px-1.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: bg, color: fg }}>
+      {done ? "✓" : ""}{label}{rec && rec.by ? " " + rec.by : ""}
+    </span>
+  );
+}
+
+/* チェックの実績（10/26 落合さん「チェック実績を残したい」）。
+   記録は作業記録シートにずっと残る（消さない・取消も印で残す）。ここは直近7日を見るための一覧と、人ごとの本数。 */
+function WorkLogPanel({ log }) {
+  if (!log) return <p className="text-xs text-slate-500 py-2">読み込み中…</p>;
+  if (log.error) return <p className="text-xs text-amber-700 py-2">{log.error}</p>;
+  const rows = log.rows || [];
+  const steps = ["マーク", "ダブルチェック", "出荷済"];
+  const per = {};
+  rows.filter((r) => !r.canceled).forEach((r) => {
+    const p = per[r.name] = per[r.name] || { マーク: 0, ダブルチェック: 0, 出荷済: 0 };
+    if (p[r.kind] != null) p[r.kind] += r.qty || 0;
+  });
+  const md = (at) => { const s = String(at || ""); return s.length >= 16 ? Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10)) + " " + s.slice(11, 16) : s; };
+  return (
+    <div className="space-y-3">
+      <div className="text-[11px] text-slate-500">
+        {log.from}〜{log.to} の記録（取り消したものも残します）。
+        {log.sheetUrl && <a href={log.sheetUrl} target="_blank" rel="noopener noreferrer" className="ml-1 underline" style={{ color: "#2563eb" }}>全部を表で見る（作業記録）</a>}
+      </div>
+      {Object.keys(per).length > 0 && (
+        <div className="rounded-md border border-slate-200 divide-y divide-slate-100">
+          {Object.keys(per).map((nm) => (
+            <div key={nm} className="flex items-baseline flex-wrap px-2.5 py-1.5" style={{ columnGap: 10, rowGap: 2 }}>
+              <span className="text-sm font-semibold" style={{ color: NAVY }}>{nm}</span>
+              {steps.map((k) => per[nm][k] > 0 && (
+                <span key={k} className="text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>{k} {Number(per[nm][k]).toLocaleString()}本</span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+      {rows.length === 0 && <p className="text-xs text-slate-500">この期間の記録はありません。</p>}
+      <div className="rounded-md border border-slate-200 divide-y divide-slate-100">
+        {rows.map((r) => (
+          <div key={r.id} data-log-row="1" className="flex items-baseline flex-wrap px-2.5 py-1.5"
+            style={{ columnGap: 8, rowGap: 2, opacity: r.canceled ? 0.55 : 1 }}>
+            <span className="text-[11px] tabular-nums text-slate-500">{md(r.at)}</span>
+            <span className="text-[12px] font-semibold" style={{ color: NAVY }}>{r.name}</span>
+            <span className="text-[11px] px-1 rounded font-semibold" style={{ background: "#f1f5f9", color: VIZ.ink2 }}>{r.kind}</span>
+            <span className="text-[12px] tabular-nums" style={{ color: VIZ.ink }}>{r.target}</span>
+            {r.qty > 0 && <span className="text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>{r.qty}本</span>}
+            {r.canceled && (
+              <span className="text-[10px] px-1 rounded" style={{ background: "#fee2e2", color: "#b91c1c" }}>
+                取消{r.canceledBy ? "（" + r.canceledBy + " " + md(r.canceledAt) + "）" : ""}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAddStaff, busy, onRefresh, log, onLoadLog }) {
   const [onlyTodo, setOnlyTodo] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("現場");
@@ -796,6 +863,13 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
   if (!data) return <p className="text-xs text-slate-500 py-2">読み込み中…</p>;
   if (data.error) return <p className="text-xs text-amber-700 py-2">{data.error}</p>;
   const days = data.days || [];
+  const n = (v) => Number(v || 0).toLocaleString();
+  /* ★ 段階は「指図書 → マーク → ダブルチェック → チェック完了 → 出荷」（10/26 落合さん）。
+       人が押すのはマーク・ダブルチェック（と、前もって出したときの出荷済）。押すボタンは
+       次にやる段階の1つだけ出す（どれを押せばよいか迷わないように）。 */
+  const nextStep = (o) => !o.mark ? "マーク" : !o.dcheck ? "ダブルチェック" : !o.shipped ? "出荷済" : null;
+  const lastRec = (o) => (o.shipped && !o.shipped.auto) ? ["出荷済", o.shipped] : o.dcheck ? ["ダブルチェック", o.dcheck] : o.mark ? ["マーク", o.mark] : null;
+  const isPending = (o) => o.pending != null ? o.pending : (!o.mark || !o.dcheck || o.check === "チェック前");
 
   return (
     <div className="space-y-4">
@@ -806,11 +880,11 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
           <select value={knownWorker ? worker : ""} onChange={(e) => onWorker(e.target.value)}
             className="text-sm px-2 py-1 rounded-md border border-slate-300 bg-white" style={{ minWidth: 140 }}>
             <option value="">— 名前を選ぶ —</option>
-            {names.map((n) => <option key={n} value={n}>{n}</option>)}
+            {names.map((nm) => <option key={nm} value={nm}>{nm}</option>)}
           </select>
           <button onClick={() => setAdding(!adding)}
             className="text-[11px] px-2 py-1 rounded-md bg-slate-100 text-slate-600">{adding ? "やめる" : "名前を足す"}</button>
-          {!knownWorker && <span className="text-[11px] text-amber-700">出荷済を押す前に、名前を選んでください</span>}
+          {!knownWorker && <span className="text-[11px] text-amber-700">押す前に、名前を選んでください</span>}
         </div>
         {adding && (
           <div className="flex items-center gap-2 flex-wrap mt-2">
@@ -828,88 +902,110 @@ function ShipProgressTab({ data, staff, worker, onWorker, onMark, onCancel, onAd
       </Card>
 
       <div className="flex items-center gap-2 flex-wrap">
-        {[["すべて", false], ["まだ出荷済でないもの", true]].map(([lab, v]) => (
+        {[["すべて", false], ["まだのもの", true]].map(([lab, v]) => (
           <button key={lab} onClick={() => setOnlyTodo(v)}
             className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
             style={{ background: onlyTodo === v ? NAVY : "#f1f5f9", color: onlyTodo === v ? "#fff" : VIZ.ink2, border: "none" }}>{lab}</button>
         ))}
+        <button onClick={() => { const v = !showLog; setShowLog(v); if (v && onLoadLog) onLoadLog(); }}
+          className="px-2.5 py-1 rounded-md text-[11px] font-semibold"
+          style={{ background: showLog ? "#7c3aed" : "#f5f3ff", color: showLog ? "#fff" : "#6d28d9", border: "none" }}>チェックの実績</button>
         <button onClick={onRefresh} className="ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1">
           <RefreshCw size={12} className={busy ? "animate-spin" : ""} />読み直す
         </button>
       </div>
 
+      {showLog && <Card className="p-3"><WorkLogPanel log={log} /></Card>}
+
       {days.length === 0 && <p className="text-xs text-slate-500">この期間の指図書はありません。</p>}
       {days.map((d) => {
-        const items = onlyTodo ? d.items.filter((o) => !o.shipped) : d.items;
+        const items = onlyTodo ? d.items.filter(isPending) : d.items;
         if (onlyTodo && items.length === 0) return null;
-        const all = d.shippedN >= d.count;
-        const sq = d.shippedQty != null ? d.shippedQty : d.items.reduce((a, o) => a + (o.shipped ? o.qty : 0), 0);
+        const sum = (f) => d.items.reduce((a, o) => a + (f(o) ? o.qty : 0), 0);
+        const mq = d.markQty != null ? d.markQty : sum((o) => o.mark);
+        const dq = d.dcheckQty != null ? d.dcheckQty : sum((o) => o.dcheck);
+        const sq = d.shippedQty != null ? d.shippedQty : sum((o) => o.shipped);
+        const head = (label, v) => (
+          <span className="text-[10px] font-semibold tabular-nums px-1.5 rounded whitespace-nowrap"
+            style={{ background: v >= d.qty ? "#dcfce7" : "#f1f5f9", color: v >= d.qty ? "#15803d" : VIZ.ink2 }}>
+            {label} {n(v)}/{n(d.qty)}
+          </span>
+        );
         return (
           <Card key={d.date} className="p-0 overflow-hidden">
-            <div className="flex items-baseline gap-2 px-3 py-2 border-b border-slate-100"
-              style={{ background: d.today ? "#eff6ff" : undefined }}>
+            <div className="flex items-baseline flex-wrap px-3 py-2 border-b border-slate-100"
+              style={{ background: d.today ? "#eff6ff" : undefined, columnGap: 8, rowGap: 4 }}>
               <span className="text-sm font-bold tabular-nums" style={{ color: NAVY }}>{d.label}</span>
               <span className="text-[11px] text-slate-400">({d.weekday}){d.today ? " 今日" : ""}</span>
-              <span className="text-[11px] text-slate-500 tabular-nums">{Number(d.qty).toLocaleString()}本</span>
-              <span className="ml-auto text-[11px] font-semibold tabular-nums px-1.5 rounded"
-                style={{ background: all ? "#dcfce7" : d.past ? "#fef3c7" : "#f1f5f9", color: all ? "#15803d" : d.past ? "#b45309" : VIZ.ink2 }}>
-                出荷済 {Number(sq).toLocaleString()}/{Number(d.qty).toLocaleString()}本
+              <span className="text-[11px] text-slate-500 tabular-nums">{n(d.qty)}本</span>
+              <span className="ml-auto flex flex-wrap" style={{ columnGap: 4, rowGap: 4 }}>
+                {head("マーク", mq)}{head("ダブル", dq)}{head("出荷済", sq)}
               </span>
             </div>
             <div className="divide-y divide-slate-100">
-              {items.map((o) => (
-                <div key={o.key} data-ship-row={o.key} className="flex items-center gap-2 px-3 py-2"
-                  style={{ background: o.shipped ? "#f8fafc" : undefined }}>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline flex-wrap" style={{ columnGap: 6, rowGap: 2 }}>
-                      <span className="text-sm font-semibold tabular-nums" style={{ color: o.shipped ? VIZ.muted : NAVY }}>{shipLabel_(o)}</span>
-                      {o.size && <span className="text-[10px] px-1 rounded bg-slate-100 text-slate-600">{o.size}</span>}
-                      <span className="text-[12px] tabular-nums" style={{ color: VIZ.ink2 }}>{o.qty}本</span>
-                      {o.check && (
-                        <span className="px-1 rounded text-[10px] font-semibold"
-                          style={o.check === "チェック前" ? { background: "#fef3c7", color: "#b45309" } : { background: "#dcfce7", color: "#047857" }}>
-                          {o.check === "チェック前" ? "チェック前" : "✓チェック済"}
+              {items.map((o) => {
+                const step = nextStep(o);
+                const last = lastRec(o);
+                const off = busy || !knownWorker;
+                return (
+                  <div key={o.key} data-ship-row={o.key} className="px-3 py-2"
+                    style={{ background: !isPending(o) ? "#f8fafc" : undefined }}>
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline flex-wrap" style={{ columnGap: 6, rowGap: 2 }}>
+                          <span className="text-sm font-semibold tabular-nums" style={{ color: NAVY }}>{shipLabel_(o)}</span>
+                          {o.size && <span className="text-[10px] px-1 rounded bg-slate-100 text-slate-600">{o.size}</span>}
+                          <span className="text-[12px] tabular-nums" style={{ color: VIZ.ink2 }}>{o.qty}本</span>
                         </span>
+                        <span className="block text-[11px] truncate" style={{ color: VIZ.muted }}>{o.dest}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {(o.copyUrl || o.url) && (
+                          <a href={o.copyUrl || o.url} target="_blank" rel="noopener noreferrer"
+                            onClick={(e) => openPdfQuick_(e, o.copyUrl || o.url, "指図書 " + shipLabel_(o))}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white"
+                            style={{ background: "#2563eb" }}><FileText size={11} />開く</a>
+                        )}
+                        {step && (
+                          <button disabled={off} onClick={() => onStep(o, step)}
+                            className="text-xs px-3 py-1.5 rounded-md font-bold text-white whitespace-nowrap"
+                            style={{ background: step === "出荷済" ? "#15803d" : step === "マーク" ? "#0e7490" : "#7c3aed", opacity: off ? 0.45 : 1 }}>
+                            {step}
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                    {/* 段階：マーク → ダブルチェック → チェック完了 → 出荷 */}
+                    <div className="flex items-center flex-wrap mt-1" style={{ columnGap: 4, rowGap: 4 }}>
+                      <StepPill label="マーク" rec={o.mark} />
+                      <span className="text-[10px] text-slate-300">›</span>
+                      <StepPill label="ダブルチェック" rec={o.dcheck} />
+                      <span className="text-[10px] text-slate-300">›</span>
+                      {o.check
+                        ? <StepPill label={o.check === "チェック前" ? "チェック前" : "チェック完了"} state={o.check === "チェック前" ? "warn" : "done"} />
+                        : <StepPill label="チェック —" state="todo" />}
+                      <span className="text-[10px] text-slate-300">›</span>
+                      {o.shipped && o.shipped.auto
+                        ? <StepPill label="出荷（出荷日）" state="done" />
+                        : <StepPill label="出荷" rec={o.shipped} />}
+                      {last && (
+                        <button disabled={off}
+                          onClick={() => { if (window.confirm(shipLabel_(o) + " の「" + last[0] + "」を取り消しますか？")) onCancel(last[1].id); }}
+                          className="ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100" style={{ opacity: off ? 0.5 : 1 }}>
+                          {last[0]}を取消
+                        </button>
                       )}
-                    </span>
-                    <span className="block text-[11px] truncate" style={{ color: VIZ.muted }}>{o.dest}</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 shrink-0">
-                    {(o.copyUrl || o.url) && (
-                      <a href={o.copyUrl || o.url} target="_blank" rel="noopener noreferrer"
-                        onClick={(e) => openPdfQuick_(e, o.copyUrl || o.url, "指図書 " + shipLabel_(o))}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white"
-                        style={{ background: "#2563eb" }}><FileText size={11} />開く</a>
-                    )}
-                    {o.shipped && o.shipped.auto ? (
-                      /* ★ 出荷希望日の当日・過ぎた日は、押さなくても出荷済（落合さん 10/26） */
-                      <span className="text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "#dcfce7", color: "#15803d" }}>
-                        ✓出荷済（出荷日）
-                      </span>
-                    ) : o.shipped ? (
-                      <span className="inline-flex items-center gap-1">
-                        <span className="text-[11px] font-semibold px-2 py-1 rounded-md" style={{ background: "#dcfce7", color: "#15803d" }}>
-                          ✓出荷済 {o.shipped.by} {hhmm_(o.shipped.at)}
-                        </span>
-                        <button disabled={busy || !knownWorker}
-                          onClick={() => { if (window.confirm(shipLabel_(o) + " の出荷済を取り消しますか？")) onCancel(o.shipped.id); }}
-                          className="text-[10px] px-1.5 py-1 rounded text-slate-500 bg-slate-100" style={{ opacity: busy || !knownWorker ? 0.5 : 1 }}>取消</button>
-                      </span>
-                    ) : (
-                      <button disabled={busy || !knownWorker} onClick={() => onMark(o)}
-                        className="text-xs px-3 py-1.5 rounded-md font-bold text-white"
-                        style={{ background: "#15803d", opacity: busy || !knownWorker ? 0.45 : 1 }}>出荷済</button>
-                    )}
-                  </span>
-                </div>
-              ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </Card>
         );
       })}
       <p className="text-[10px] text-slate-400">
-        指図書は取り込んだもの（1時間おき）から、{data.from}〜{data.to} の出荷希望日のぶん。出荷希望日の当日と過ぎた日は、押さなくても出荷済。
-        「出荷済」を押すのは、出荷希望日より前に出したときだけ。チェックの状態は50kgだけ（20kgはチェックをまだ運用していない）。
+        段階：指図書 → マーク（指図書の商店名・社章などを現品と照らす）→ ダブルチェック（対比表と照らす）→ チェック完了（書き込みアプリ。50kgだけ）→ 出荷。
+        出荷は出荷希望日の当日で自動（前もって出したときだけ押す）。指図書は {data.from}〜{data.to} の出荷希望日のぶん（1時間おきに取り込み）。
       </p>
     </div>
   );
@@ -4285,12 +4381,22 @@ export default function App() {
       .withSuccessHandler((d) => {
         setShipBusy(false);
         if (d && d.days) setLive((prev) => ({ ...prev, shipProg: d }));
-        if (d && d.dupSkipped) window.alert("もう出荷済になっていました（ほかの端末で押されています）");
+        if (d && d.dupSkipped) window.alert("もう済んでいました（ほかの端末で押されています）");
       })
       .withFailureHandler((err) => { setShipBusy(false); window.alert("記録できませんでした: " + (err && err.message || err)); }));
   };
-  const markShippedUi = (o) => runShip((r) => r.markShipped({ key: o.key, name: worker, qty: o.qty }));
+  const stepUi = (o, step) => runShip((r) => r.recordShipStep({ key: o.key, step, name: worker, qty: o.qty }));
   const cancelShipUi = (id) => runShip((r) => r.cancelWorkRecord({ id, name: worker }));
+  const fetchWorkLog = () => {
+    if (!isGasEnv) return;
+    setLive((prev) => ({ ...prev, workLog: null }));
+    try {
+      google.script.run
+        .withSuccessHandler((d) => setLive((prev) => ({ ...prev, workLog: d })))
+        .withFailureHandler((err) => setLive((prev) => ({ ...prev, workLog: { error: String(err && err.message || err) } })))
+        .getWorkLog({});
+    } catch (e) { setLive((prev) => ({ ...prev, workLog: { error: String(e) } })); }
+  };
   const addStaffUi = (name, role, done) => {
     if (!isGasEnv) return;
     setShipBusy(true);
@@ -4660,15 +4766,17 @@ export default function App() {
       const today = days.find((d) => d.today);
       const next = days.find((d) => !d.past && !d.today);
       // ★ 全部本数で出す（10/26 落合さん：枚数ではなく本数）。当日は出荷済とみなすので
-      //   「今日の出荷済」は出さない。今日・次の出荷日・この先の合計と、次の出荷日でチェック前の本数（50kのみ）
+      //   「今日の出荷済」は出さない。今日と次の出荷日の本数と、そのうちまだ済んでいない本数
+      //   （マーク・ダブルチェック・チェック完了のどれかがまだ）
       const n = (v) => Number(v || 0).toLocaleString();
-      const nextTodo = next ? next.items.reduce((a, o) => a + (o.check === "チェック前" ? o.qty : 0), 0) : 0;
-      const ahead = days.filter((d) => !d.today).reduce((a, d) => a + d.qty, 0);
+      const pend = (d) => d ? (d.pendingQty != null ? d.pendingQty
+        : d.items.reduce((a, o) => a + ((!o.mark || !o.dcheck || o.check === "チェック前") ? o.qty : 0), 0)) : 0;
+      const tp = pend(today), np = pend(next);
       return [
         { label: "今日の出荷", value: today ? n(today.qty) : "—", unit: "本", icon: Truck, tone: "neutral" },
+        { label: "今日でまだのもの", value: today ? n(tp) : "—", unit: "本", icon: AlertTriangle, tone: tp > 0 ? "warn" : "ok" },
         { label: next ? "次の出荷日 " + next.label + "(" + next.weekday + ")" : "次の出荷日", value: next ? n(next.qty) : "—", unit: "本", icon: FileText, tone: "neutral" },
-        { label: "次の出荷日でチェック前", value: next ? n(nextTodo) : "—", unit: "本", icon: AlertTriangle, tone: nextTodo > 0 ? "warn" : "ok" },
-        { label: "この先7日の合計", value: n(ahead), unit: "本", icon: Package, tone: "neutral" },
+        { label: "次の出荷日でまだのもの", value: next ? n(np) : "—", unit: "本", icon: AlertTriangle, tone: np > 0 ? "warn" : "ok" },
       ];
     })(),
     yardcap: (() => {
@@ -4783,8 +4891,8 @@ export default function App() {
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
           {tab === "ship" && <ShipProgressTab data={live.shipProg} staff={live.workStaff} worker={worker}
-            onWorker={chooseWorker} onMark={markShippedUi} onCancel={cancelShipUi} onAddStaff={addStaffUi}
-            busy={shipBusy} onRefresh={() => fetchShip(true)} />}
+            onWorker={chooseWorker} onStep={stepUi} onCancel={cancelShipUi} onAddStaff={addStaffUi}
+            busy={shipBusy} onRefresh={() => fetchShip(true)} log={live.workLog} onLoadLog={fetchWorkLog} />}
           {/* ★ 前回のデータを出したまま取り直しているあいだは、そうと書く */}
           {tab === "yardcap" && yardTabPending > 0 && live.yardTab && (
             <p className="text-[11px] text-center py-1 rounded-md" style={{ background: "#fef3c7", color: "#92400e" }}>

@@ -21,7 +21,11 @@
  * ★ 出荷の進捗
  *   指図書（出荷実績データの「実績」シート。1ファイル1行）を出荷希望日ごとに並べ、
  *   チェックの状態（50kのみ。◆チェック完了のコピーから）と、作業記録の「出荷済」を付ける。
- *   段階は「指図書 → チェック完了 → 出荷済」。現場で押すのは出荷済だけ（落合さん：出荷済だけでよい）。
+ *   段階は「指図書 → マーク → ダブルチェック → チェック完了 → 出荷」（10/26 落合さん）。
+ *     マーク        … 指図書の商店名・社章などを現品と照らす（人が押す）
+ *     ダブルチェック … 商店名・社章などを対比表と照らす（人が押す。マークが済んでから）
+ *     チェック完了   … 書き込みアプリでチェック完了を押したもの（自動。50kのみ）
+ *     出荷           … 出荷希望日の当日で自動（前もって出したときだけ押す）
  *   ★ 出荷希望日の当日（と過ぎた日）は、押さなくても出荷済とみなす（10/26 落合さん「当日は出荷済み扱いで良い」）。
  *     押すのは、出荷希望日より前に出したときだけ。押した記録があればそちら（誰が・いつ）を出す。
  *
@@ -34,8 +38,10 @@ var WORK_CONFIG = {
   ROLES: ['事務', '出荷', '現場', '管理'],
   LOG_SHEET: '作業記録',
   LOG_HEADERS: ['記録ID', '日時', '名前', '種類', '対象', '本数', '元', '先', 'メモ', '取消', '取消日時', '取消した人', '端末アカウント'],
-  // 記録の種類。出荷済は指図書ごと、それ以外は在庫の動き（次の段で使う）
-  KINDS: ['出荷済', '入庫', '移動', '持ち出し', '廃棄'],
+  // 記録の種類。マーク・ダブルチェック・出荷済は指図書ごと、それ以外は在庫の動き（次の段で使う）
+  KINDS: ['マーク', 'ダブルチェック', '出荷済', '入庫', '移動', '持ち出し', '廃棄'],
+  // 出荷の進捗で人が押す段階（この順）
+  SHIP_STEPS: ['マーク', 'ダブルチェック', '出荷済'],
   // 出荷の進捗に出す範囲（出荷希望日）。今日から。
   // ★ 過ぎた日は押さなくても出荷済なので出さない（10/26 落合さん「23日になってる」）
   PAST_DAYS: 0,
@@ -149,13 +155,19 @@ function work_live_(rows) {
   return rows.filter(function (r) { return r.記録ID && r.取消 !== '1'; });
 }
 
-/* 指図書ごとの出荷済（対象 → 最新の出荷済の記録）（純関数） */
-function work_shippedIndex_(rows) {
+/* 指図書ごとの段階（種類 → 対象 → 最新の記録）（純関数） */
+function work_stepIndex_(rows) {
   var m = {};
+  WORK_CONFIG.SHIP_STEPS.forEach(function (s) { m[s] = {}; });
   work_live_(rows).forEach(function (r) {
-    if (r.種類 === '出荷済') m[r.対象] = { id: r.記録ID, at: r.日時, by: r.名前 };
+    if (m[r.種類]) m[r.種類][r.対象] = { id: r.記録ID, at: r.日時, by: r.名前 };
   });
   return m;
+}
+
+/* 指図書ごとの出荷済（対象 → 最新の出荷済の記録）（純関数） */
+function work_shippedIndex_(rows) {
+  return work_stepIndex_(rows)['出荷済'];
 }
 
 /* 記録を1行足す（ロックの中で呼ぶ） */
@@ -174,23 +186,36 @@ function work_append_(rec) {
   return id;
 }
 
-/* 出荷済を付ける（画面から）。同じ指図書に取消されていない出荷済があれば足さない（二度押し） */
-function markShipped(req) {
+/* 指図書の段階（マーク・ダブルチェック・出荷済）を付ける（画面から）。
+   同じ指図書・同じ段階に取消されていない記録があれば足さない（二度押し・ほかの端末で押されていた）。
+   ダブルチェックはマークが済んでから。 */
+function recordShipStep(req) {
   req = req || {};
   var key = String(req.key || '').trim();
+  var step = String(req.step || '').trim();
   if (!/^\d{2}-\d+-\d+(\(\d+\))?$/.test(key)) throw new Error('指図書が不明です: ' + key);
+  if (WORK_CONFIG.SHIP_STEPS.indexOf(step) < 0) throw new Error('段階が不明です: ' + step);
   var name = work_requireStaff_(req.name);
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   var dup = false;
   try {
-    var idx = work_shippedIndex_(work_readTable_(WORK_CONFIG.LOG_SHEET, WORK_CONFIG.LOG_HEADERS));
-    if (idx[key]) dup = true;
-    else work_append_({ 名前: name, 種類: '出荷済', 対象: key, 本数: req.qty || '', メモ: req.memo || '' });
+    var idx = work_stepIndex_(work_readTable_(WORK_CONFIG.LOG_SHEET, WORK_CONFIG.LOG_HEADERS));
+    if (step === 'ダブルチェック' && !idx['マーク'][key]) throw new Error('先にマークを済ませてください');
+    if (idx[step][key]) dup = true;
+    else work_append_({ 名前: name, 種類: step, 対象: key, 本数: req.qty || '', メモ: req.memo || '' });
   } finally { lock.releaseLock(); }
   var d = getShipProgress();
   d.dupSkipped = dup;
   return d;
+}
+
+/* 出荷済を付ける（画面から）。前もって出したときだけ押す */
+function markShipped(req) {
+  var r = {};
+  Object.keys(req || {}).forEach(function (k) { r[k] = req[k]; });
+  r.step = '出荷済';
+  return recordShipStep(r);
 }
 
 /* 記録を取り消す（行は消さない） */
@@ -206,6 +231,10 @@ function cancelWorkRecord(req) {
     var rows = work_table_(sh.getDataRange().getValues());
     var r = rows.filter(function (x) { return x.記録ID === id; })[0];
     if (!r) throw new Error('記録が見つかりません');
+    // ダブルチェックが付いたままマークだけ外すと、順番が崩れる
+    if (r.種類 === 'マーク' && r.取消 !== '1' && work_stepIndex_(rows)['ダブルチェック'][r.対象]) {
+      throw new Error('先にダブルチェックを取り消してください');
+    }
     if (r.取消 !== '1') {
       var c = WORK_CONFIG.LOG_HEADERS.indexOf('取消') + 1;
       sh.getRange(r.__row, c, 1, 3).setValues([['1', work_now_(), name]]);
@@ -258,14 +287,18 @@ function work_attachCheck_(orders, entries) {
   return orders;
 }
 
-/* 出荷済を付けて日ごとにまとめる（純関数）。
+/* 段階を付けて日ごとにまとめる（純関数）。steps は work_stepIndex_ の結果。
    出荷希望日が今日か過ぎていれば、押した記録が無くても出荷済（auto）。 */
-function work_progressDays_(orders, shipped, todayKey) {
+function work_progressDays_(orders, steps, todayKey) {
   var byDate = {};
+  var rec = function (s) { return s ? { id: s.id, at: s.at, by: s.by } : null; };
   orders.forEach(function (o) {
-    var s = shipped[o.key];
-    o.shipped = s ? { id: s.id, at: s.at, by: s.by }
-      : (o.date <= todayKey ? { auto: true, at: o.date } : null);
+    var s = steps['出荷済'][o.key];
+    o.mark = rec(steps['マーク'][o.key]);
+    o.dcheck = rec(steps['ダブルチェック'][o.key]);
+    o.shipped = s ? rec(s) : (o.date <= todayKey ? { auto: true, at: o.date } : null);
+    // まだ済んでいないもの（マーク・ダブルチェック・チェック完了のどれか）
+    o.pending = !o.mark || !o.dcheck || o.check === YCHK_CONFIG.STATE_BEFORE;
     (byDate[o.date] = byDate[o.date] || []).push(o);
   });
   return Object.keys(byDate).sort().map(function (date) {
@@ -282,6 +315,9 @@ function work_progressDays_(orders, shipped, todayKey) {
       // ★ 画面は本数で出す（10/26 落合さん：枚数ではなく本数）
       shippedQty: items.reduce(function (a, o) { return a + (o.shipped ? o.qty : 0); }, 0),
       checkBeforeQty: items.reduce(function (a, o) { return a + (o.check === YCHK_CONFIG.STATE_BEFORE ? o.qty : 0); }, 0),
+      markQty: items.reduce(function (a, o) { return a + (o.mark ? o.qty : 0); }, 0),
+      dcheckQty: items.reduce(function (a, o) { return a + (o.dcheck ? o.qty : 0); }, 0),
+      pendingQty: items.reduce(function (a, o) { return a + (o.pending ? o.qty : 0); }, 0),
       items: items
     };
   });
@@ -312,12 +348,41 @@ function getShipProgress(force) {
     var base = getShipProgressBase(force === true);
     if (base.error) { data.error = base.error; return data; }
     var orders = JSON.parse(JSON.stringify(base.orders || []));
-    var shipped = work_shippedIndex_(work_readTable_(WORK_CONFIG.LOG_SHEET, WORK_CONFIG.LOG_HEADERS));
-    data.days = work_progressDays_(orders, shipped, data.today);
+    var steps = work_stepIndex_(work_readTable_(WORK_CONFIG.LOG_SHEET, WORK_CONFIG.LOG_HEADERS));
+    data.days = work_progressDays_(orders, steps, data.today);
     data.from = base.from; data.to = base.to;
   } catch (e) {
     data.error = String(e && e.message || e);
     Logger.log('出荷の進捗でエラー: ' + data.error);
+  }
+  return data;
+}
+
+// ===== チェックの実績（記録の一覧） =====
+
+/* 作業記録 → 画面に出す形（新しい順）（純関数）。from〜to は 'yyyy-MM-dd'（日時の日付で見る）。
+   ★ 取り消した記録も消さずに「取消」として出す（いつ誰が押して、誰が取り消したかを残す）。 */
+function work_logRows_(rows, from, to, kinds) {
+  return rows.filter(function (r) {
+    var day = String(r.日時 || '').slice(0, 10);
+    return r.記録ID && day >= from && day <= to && (!kinds || kinds.indexOf(r.種類) >= 0);
+  }).map(function (r) {
+    return { id: r.記録ID, at: r.日時, name: r.名前, kind: r.種類, target: r.対象, qty: Number(r.本数) || 0,
+             canceled: r.取消 === '1', canceledAt: r.取消日時 || '', canceledBy: r.取消した人 || '' };
+  }).sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : 0; });
+}
+
+/* 画面用：チェックの実績（10/26 落合さん「チェック実績を残したい」）。
+   記録は作業記録シートにずっと残る（消さない）。ここは見るための一覧。既定は直近7日。 */
+function getWorkLog(q) {
+  q = q || {};
+  var data = { from: q.from || work_dayKey_(-6), to: q.to || work_dayKey_(0), rows: [], sheetUrl: null, error: null };
+  try {
+    var rows = work_readTable_(WORK_CONFIG.LOG_SHEET, WORK_CONFIG.LOG_HEADERS);
+    data.rows = work_logRows_(rows, data.from, data.to, q.all ? null : WORK_CONFIG.SHIP_STEPS);
+    data.sheetUrl = yardGetSpreadsheet_().getUrl();
+  } catch (e) {
+    data.error = String(e && e.message || e);
   }
   return data;
 }

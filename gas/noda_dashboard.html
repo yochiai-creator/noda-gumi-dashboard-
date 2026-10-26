@@ -1719,18 +1719,143 @@ const workerSave_ = v => {
 };
 const shipLabel_ = o => o.no + (o.eda ? "-" + o.eda : "") + (o.ver != null ? "(" + o.ver + ")" : "");
 const hhmm_ = at => String(at || "").slice(11, 16);
+
+/* 段階の小さな札。済んだら緑で押した人、まだなら灰色 */
+function StepPill({
+  label,
+  rec,
+  state
+}) {
+  const done = state === "done" || !!rec && state !== "todo";
+  const warn = state === "warn";
+  const bg = done ? "#dcfce7" : warn ? "#fef3c7" : "#f1f5f9";
+  const fg = done ? "#15803d" : warn ? "#b45309" : "#94a3b8";
+  return /*#__PURE__*/React.createElement("span", {
+    className: "inline-flex items-center px-1.5 rounded text-[10px] font-semibold whitespace-nowrap",
+    style: {
+      background: bg,
+      color: fg
+    }
+  }, done ? "✓" : "", label, rec && rec.by ? " " + rec.by : "");
+}
+
+/* チェックの実績（10/26 落合さん「チェック実績を残したい」）。
+   記録は作業記録シートにずっと残る（消さない・取消も印で残す）。ここは直近7日を見るための一覧と、人ごとの本数。 */
+function WorkLogPanel({
+  log
+}) {
+  if (!log) return /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 py-2"
+  }, "\u8AAD\u307F\u8FBC\u307F\u4E2D\u2026");
+  if (log.error) return /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-amber-700 py-2"
+  }, log.error);
+  const rows = log.rows || [];
+  const steps = ["マーク", "ダブルチェック", "出荷済"];
+  const per = {};
+  rows.filter(r => !r.canceled).forEach(r => {
+    const p = per[r.name] = per[r.name] || {
+      マーク: 0,
+      ダブルチェック: 0,
+      出荷済: 0
+    };
+    if (p[r.kind] != null) p[r.kind] += r.qty || 0;
+  });
+  const md = at => {
+    const s = String(at || "");
+    return s.length >= 16 ? Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10)) + " " + s.slice(11, 16) : s;
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] text-slate-500"
+  }, log.from, "\u301C", log.to, " \u306E\u8A18\u9332\uFF08\u53D6\u308A\u6D88\u3057\u305F\u3082\u306E\u3082\u6B8B\u3057\u307E\u3059\uFF09\u3002", log.sheetUrl && /*#__PURE__*/React.createElement("a", {
+    href: log.sheetUrl,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    className: "ml-1 underline",
+    style: {
+      color: "#2563eb"
+    }
+  }, "\u5168\u90E8\u3092\u8868\u3067\u898B\u308B\uFF08\u4F5C\u696D\u8A18\u9332\uFF09")), Object.keys(per).length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-md border border-slate-200 divide-y divide-slate-100"
+  }, Object.keys(per).map(nm => /*#__PURE__*/React.createElement("div", {
+    key: nm,
+    className: "flex items-baseline flex-wrap px-2.5 py-1.5",
+    style: {
+      columnGap: 10,
+      rowGap: 2
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-semibold",
+    style: {
+      color: NAVY
+    }
+  }, nm), steps.map(k => per[nm][k] > 0 && /*#__PURE__*/React.createElement("span", {
+    key: k,
+    className: "text-[11px] tabular-nums",
+    style: {
+      color: VIZ.ink2
+    }
+  }, k, " ", Number(per[nm][k]).toLocaleString(), "\u672C"))))), rows.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "\u3053\u306E\u671F\u9593\u306E\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093\u3002"), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-md border border-slate-200 divide-y divide-slate-100"
+  }, rows.map(r => /*#__PURE__*/React.createElement("div", {
+    key: r.id,
+    "data-log-row": "1",
+    className: "flex items-baseline flex-wrap px-2.5 py-1.5",
+    style: {
+      columnGap: 8,
+      rowGap: 2,
+      opacity: r.canceled ? 0.55 : 1
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] tabular-nums text-slate-500"
+  }, md(r.at)), /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] font-semibold",
+    style: {
+      color: NAVY
+    }
+  }, r.name), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] px-1 rounded font-semibold",
+    style: {
+      background: "#f1f5f9",
+      color: VIZ.ink2
+    }
+  }, r.kind), /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] tabular-nums",
+    style: {
+      color: VIZ.ink
+    }
+  }, r.target), r.qty > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] tabular-nums",
+    style: {
+      color: VIZ.ink2
+    }
+  }, r.qty, "\u672C"), r.canceled && /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] px-1 rounded",
+    style: {
+      background: "#fee2e2",
+      color: "#b91c1c"
+    }
+  }, "\u53D6\u6D88", r.canceledBy ? "（" + r.canceledBy + " " + md(r.canceledAt) + "）" : "")))));
+}
 function ShipProgressTab({
   data,
   staff,
   worker,
   onWorker,
-  onMark,
+  onStep,
   onCancel,
   onAddStaff,
   busy,
-  onRefresh
+  onRefresh,
+  log,
+  onLoadLog
 }) {
   const [onlyTodo, setOnlyTodo] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("現場");
@@ -1743,6 +1868,13 @@ function ShipProgressTab({
     className: "text-xs text-amber-700 py-2"
   }, data.error);
   const days = data.days || [];
+  const n = v => Number(v || 0).toLocaleString();
+  /* ★ 段階は「指図書 → マーク → ダブルチェック → チェック完了 → 出荷」（10/26 落合さん）。
+       人が押すのはマーク・ダブルチェック（と、前もって出したときの出荷済）。押すボタンは
+       次にやる段階の1つだけ出す（どれを押せばよいか迷わないように）。 */
+  const nextStep = o => !o.mark ? "マーク" : !o.dcheck ? "ダブルチェック" : !o.shipped ? "出荷済" : null;
+  const lastRec = o => o.shipped && !o.shipped.auto ? ["出荷済", o.shipped] : o.dcheck ? ["ダブルチェック", o.dcheck] : o.mark ? ["マーク", o.mark] : null;
+  const isPending = o => o.pending != null ? o.pending : !o.mark || !o.dcheck || o.check === "チェック前";
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
   }, /*#__PURE__*/React.createElement(Card, {
@@ -1763,15 +1895,15 @@ function ShipProgressTab({
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "\u2014 \u540D\u524D\u3092\u9078\u3076 \u2014"), names.map(n => /*#__PURE__*/React.createElement("option", {
-    key: n,
-    value: n
-  }, n))), /*#__PURE__*/React.createElement("button", {
+  }, "\u2014 \u540D\u524D\u3092\u9078\u3076 \u2014"), names.map(nm => /*#__PURE__*/React.createElement("option", {
+    key: nm,
+    value: nm
+  }, nm))), /*#__PURE__*/React.createElement("button", {
     onClick: () => setAdding(!adding),
     className: "text-[11px] px-2 py-1 rounded-md bg-slate-100 text-slate-600"
   }, adding ? "やめる" : "名前を足す"), !knownWorker && /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] text-amber-700"
-  }, "\u51FA\u8377\u6E08\u3092\u62BC\u3059\u524D\u306B\u3001\u540D\u524D\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044")), adding && /*#__PURE__*/React.createElement("div", {
+  }, "\u62BC\u3059\u524D\u306B\u3001\u540D\u524D\u3092\u9078\u3093\u3067\u304F\u3060\u3055\u3044")), adding && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 flex-wrap mt-2"
   }, /*#__PURE__*/React.createElement("input", {
     value: newName,
@@ -1802,7 +1934,7 @@ function ShipProgressTab({
     }
   }, "\u8DB3\u3059"))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 flex-wrap"
-  }, [["すべて", false], ["まだ出荷済でないもの", true]].map(([lab, v]) => /*#__PURE__*/React.createElement("button", {
+  }, [["すべて", false], ["まだのもの", true]].map(([lab, v]) => /*#__PURE__*/React.createElement("button", {
     key: lab,
     onClick: () => setOnlyTodo(v),
     className: "px-2.5 py-1 rounded-md text-[11px] font-semibold",
@@ -1812,25 +1944,52 @@ function ShipProgressTab({
       border: "none"
     }
   }, lab)), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      const v = !showLog;
+      setShowLog(v);
+      if (v && onLoadLog) onLoadLog();
+    },
+    className: "px-2.5 py-1 rounded-md text-[11px] font-semibold",
+    style: {
+      background: showLog ? "#7c3aed" : "#f5f3ff",
+      color: showLog ? "#fff" : "#6d28d9",
+      border: "none"
+    }
+  }, "\u30C1\u30A7\u30C3\u30AF\u306E\u5B9F\u7E3E"), /*#__PURE__*/React.createElement("button", {
     onClick: onRefresh,
     className: "ml-auto text-[11px] text-slate-500 inline-flex items-center gap-1"
   }, /*#__PURE__*/React.createElement(RefreshCw, {
     size: 12,
     className: busy ? "animate-spin" : ""
-  }), "\u8AAD\u307F\u76F4\u3059")), days.length === 0 && /*#__PURE__*/React.createElement("p", {
+  }), "\u8AAD\u307F\u76F4\u3059")), showLog && /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement(WorkLogPanel, {
+    log: log
+  })), days.length === 0 && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-500"
   }, "\u3053\u306E\u671F\u9593\u306E\u6307\u56F3\u66F8\u306F\u3042\u308A\u307E\u305B\u3093\u3002"), days.map(d => {
-    const items = onlyTodo ? d.items.filter(o => !o.shipped) : d.items;
+    const items = onlyTodo ? d.items.filter(isPending) : d.items;
     if (onlyTodo && items.length === 0) return null;
-    const all = d.shippedN >= d.count;
-    const sq = d.shippedQty != null ? d.shippedQty : d.items.reduce((a, o) => a + (o.shipped ? o.qty : 0), 0);
+    const sum = f => d.items.reduce((a, o) => a + (f(o) ? o.qty : 0), 0);
+    const mq = d.markQty != null ? d.markQty : sum(o => o.mark);
+    const dq = d.dcheckQty != null ? d.dcheckQty : sum(o => o.dcheck);
+    const sq = d.shippedQty != null ? d.shippedQty : sum(o => o.shipped);
+    const head = (label, v) => /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] font-semibold tabular-nums px-1.5 rounded whitespace-nowrap",
+      style: {
+        background: v >= d.qty ? "#dcfce7" : "#f1f5f9",
+        color: v >= d.qty ? "#15803d" : VIZ.ink2
+      }
+    }, label, " ", n(v), "/", n(d.qty));
     return /*#__PURE__*/React.createElement(Card, {
       key: d.date,
       className: "p-0 overflow-hidden"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "flex items-baseline gap-2 px-3 py-2 border-b border-slate-100",
+      className: "flex items-baseline flex-wrap px-3 py-2 border-b border-slate-100",
       style: {
-        background: d.today ? "#eff6ff" : undefined
+        background: d.today ? "#eff6ff" : undefined,
+        columnGap: 8,
+        rowGap: 4
       }
     }, /*#__PURE__*/React.createElement("span", {
       className: "text-sm font-bold tabular-nums",
@@ -1841,106 +2000,117 @@ function ShipProgressTab({
       className: "text-[11px] text-slate-400"
     }, "(", d.weekday, ")", d.today ? " 今日" : ""), /*#__PURE__*/React.createElement("span", {
       className: "text-[11px] text-slate-500 tabular-nums"
-    }, Number(d.qty).toLocaleString(), "\u672C"), /*#__PURE__*/React.createElement("span", {
-      className: "ml-auto text-[11px] font-semibold tabular-nums px-1.5 rounded",
+    }, n(d.qty), "\u672C"), /*#__PURE__*/React.createElement("span", {
+      className: "ml-auto flex flex-wrap",
       style: {
-        background: all ? "#dcfce7" : d.past ? "#fef3c7" : "#f1f5f9",
-        color: all ? "#15803d" : d.past ? "#b45309" : VIZ.ink2
+        columnGap: 4,
+        rowGap: 4
       }
-    }, "\u51FA\u8377\u6E08 ", Number(sq).toLocaleString(), "/", Number(d.qty).toLocaleString(), "\u672C")), /*#__PURE__*/React.createElement("div", {
+    }, head("マーク", mq), head("ダブル", dq), head("出荷済", sq))), /*#__PURE__*/React.createElement("div", {
       className: "divide-y divide-slate-100"
-    }, items.map(o => /*#__PURE__*/React.createElement("div", {
-      key: o.key,
-      "data-ship-row": o.key,
-      className: "flex items-center gap-2 px-3 py-2",
-      style: {
-        background: o.shipped ? "#f8fafc" : undefined
-      }
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "min-w-0 flex-1"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "flex items-baseline flex-wrap",
-      style: {
-        columnGap: 6,
-        rowGap: 2
-      }
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "text-sm font-semibold tabular-nums",
-      style: {
-        color: o.shipped ? VIZ.muted : NAVY
-      }
-    }, shipLabel_(o)), o.size && /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] px-1 rounded bg-slate-100 text-slate-600"
-    }, o.size), /*#__PURE__*/React.createElement("span", {
-      className: "text-[12px] tabular-nums",
-      style: {
-        color: VIZ.ink2
-      }
-    }, o.qty, "\u672C"), o.check && /*#__PURE__*/React.createElement("span", {
-      className: "px-1 rounded text-[10px] font-semibold",
-      style: o.check === "チェック前" ? {
-        background: "#fef3c7",
-        color: "#b45309"
-      } : {
-        background: "#dcfce7",
-        color: "#047857"
-      }
-    }, o.check === "チェック前" ? "チェック前" : "✓チェック済")), /*#__PURE__*/React.createElement("span", {
-      className: "block text-[11px] truncate",
-      style: {
-        color: VIZ.muted
-      }
-    }, o.dest)), /*#__PURE__*/React.createElement("span", {
-      className: "flex items-center gap-1.5 shrink-0"
-    }, (o.copyUrl || o.url) && /*#__PURE__*/React.createElement("a", {
-      href: o.copyUrl || o.url,
-      target: "_blank",
-      rel: "noopener noreferrer",
-      onClick: e => openPdfQuick_(e, o.copyUrl || o.url, "指図書 " + shipLabel_(o)),
-      className: "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white",
-      style: {
-        background: "#2563eb"
-      }
-    }, /*#__PURE__*/React.createElement(FileText, {
-      size: 11
-    }), "\u958B\u304F"), o.shipped && o.shipped.auto ?
-    /*#__PURE__*/
-    /* ★ 出荷希望日の当日・過ぎた日は、押さなくても出荷済（落合さん 10/26） */
-    React.createElement("span", {
-      className: "text-[11px] font-semibold px-2 py-1 rounded-md",
-      style: {
-        background: "#dcfce7",
-        color: "#15803d"
-      }
-    }, "\u2713\u51FA\u8377\u6E08\uFF08\u51FA\u8377\u65E5\uFF09") : o.shipped ? /*#__PURE__*/React.createElement("span", {
-      className: "inline-flex items-center gap-1"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "text-[11px] font-semibold px-2 py-1 rounded-md",
-      style: {
-        background: "#dcfce7",
-        color: "#15803d"
-      }
-    }, "\u2713\u51FA\u8377\u6E08 ", o.shipped.by, " ", hhmm_(o.shipped.at)), /*#__PURE__*/React.createElement("button", {
-      disabled: busy || !knownWorker,
-      onClick: () => {
-        if (window.confirm(shipLabel_(o) + " の出荷済を取り消しますか？")) onCancel(o.shipped.id);
-      },
-      className: "text-[10px] px-1.5 py-1 rounded text-slate-500 bg-slate-100",
-      style: {
-        opacity: busy || !knownWorker ? 0.5 : 1
-      }
-    }, "\u53D6\u6D88")) : /*#__PURE__*/React.createElement("button", {
-      disabled: busy || !knownWorker,
-      onClick: () => onMark(o),
-      className: "text-xs px-3 py-1.5 rounded-md font-bold text-white",
-      style: {
-        background: "#15803d",
-        opacity: busy || !knownWorker ? 0.45 : 1
-      }
-    }, "\u51FA\u8377\u6E08"))))));
+    }, items.map(o => {
+      const step = nextStep(o);
+      const last = lastRec(o);
+      const off = busy || !knownWorker;
+      return /*#__PURE__*/React.createElement("div", {
+        key: o.key,
+        "data-ship-row": o.key,
+        className: "px-3 py-2",
+        style: {
+          background: !isPending(o) ? "#f8fafc" : undefined
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-2"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "min-w-0 flex-1"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "flex items-baseline flex-wrap",
+        style: {
+          columnGap: 6,
+          rowGap: 2
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-sm font-semibold tabular-nums",
+        style: {
+          color: NAVY
+        }
+      }, shipLabel_(o)), o.size && /*#__PURE__*/React.createElement("span", {
+        className: "text-[10px] px-1 rounded bg-slate-100 text-slate-600"
+      }, o.size), /*#__PURE__*/React.createElement("span", {
+        className: "text-[12px] tabular-nums",
+        style: {
+          color: VIZ.ink2
+        }
+      }, o.qty, "\u672C")), /*#__PURE__*/React.createElement("span", {
+        className: "block text-[11px] truncate",
+        style: {
+          color: VIZ.muted
+        }
+      }, o.dest)), /*#__PURE__*/React.createElement("span", {
+        className: "flex items-center gap-1.5 shrink-0"
+      }, (o.copyUrl || o.url) && /*#__PURE__*/React.createElement("a", {
+        href: o.copyUrl || o.url,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        onClick: e => openPdfQuick_(e, o.copyUrl || o.url, "指図書 " + shipLabel_(o)),
+        className: "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white",
+        style: {
+          background: "#2563eb"
+        }
+      }, /*#__PURE__*/React.createElement(FileText, {
+        size: 11
+      }), "\u958B\u304F"), step && /*#__PURE__*/React.createElement("button", {
+        disabled: off,
+        onClick: () => onStep(o, step),
+        className: "text-xs px-3 py-1.5 rounded-md font-bold text-white whitespace-nowrap",
+        style: {
+          background: step === "出荷済" ? "#15803d" : step === "マーク" ? "#0e7490" : "#7c3aed",
+          opacity: off ? 0.45 : 1
+        }
+      }, step))), /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center flex-wrap mt-1",
+        style: {
+          columnGap: 4,
+          rowGap: 4
+        }
+      }, /*#__PURE__*/React.createElement(StepPill, {
+        label: "\u30DE\u30FC\u30AF",
+        rec: o.mark
+      }), /*#__PURE__*/React.createElement("span", {
+        className: "text-[10px] text-slate-300"
+      }, "\u203A"), /*#__PURE__*/React.createElement(StepPill, {
+        label: "\u30C0\u30D6\u30EB\u30C1\u30A7\u30C3\u30AF",
+        rec: o.dcheck
+      }), /*#__PURE__*/React.createElement("span", {
+        className: "text-[10px] text-slate-300"
+      }, "\u203A"), o.check ? /*#__PURE__*/React.createElement(StepPill, {
+        label: o.check === "チェック前" ? "チェック前" : "チェック完了",
+        state: o.check === "チェック前" ? "warn" : "done"
+      }) : /*#__PURE__*/React.createElement(StepPill, {
+        label: "\u30C1\u30A7\u30C3\u30AF \u2014",
+        state: "todo"
+      }), /*#__PURE__*/React.createElement("span", {
+        className: "text-[10px] text-slate-300"
+      }, "\u203A"), o.shipped && o.shipped.auto ? /*#__PURE__*/React.createElement(StepPill, {
+        label: "\u51FA\u8377\uFF08\u51FA\u8377\u65E5\uFF09",
+        state: "done"
+      }) : /*#__PURE__*/React.createElement(StepPill, {
+        label: "\u51FA\u8377",
+        rec: o.shipped
+      }), last && /*#__PURE__*/React.createElement("button", {
+        disabled: off,
+        onClick: () => {
+          if (window.confirm(shipLabel_(o) + " の「" + last[0] + "」を取り消しますか？")) onCancel(last[1].id);
+        },
+        className: "ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100",
+        style: {
+          opacity: off ? 0.5 : 1
+        }
+      }, last[0], "\u3092\u53D6\u6D88")));
+    })));
   }), /*#__PURE__*/React.createElement("p", {
     className: "text-[10px] text-slate-400"
-  }, "\u6307\u56F3\u66F8\u306F\u53D6\u308A\u8FBC\u3093\u3060\u3082\u306E\uFF081\u6642\u9593\u304A\u304D\uFF09\u304B\u3089\u3001", data.from, "\u301C", data.to, " \u306E\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u3076\u3093\u3002\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u5F53\u65E5\u3068\u904E\u304E\u305F\u65E5\u306F\u3001\u62BC\u3055\u306A\u304F\u3066\u3082\u51FA\u8377\u6E08\u3002 \u300C\u51FA\u8377\u6E08\u300D\u3092\u62BC\u3059\u306E\u306F\u3001\u51FA\u8377\u5E0C\u671B\u65E5\u3088\u308A\u524D\u306B\u51FA\u3057\u305F\u3068\u304D\u3060\u3051\u3002\u30C1\u30A7\u30C3\u30AF\u306E\u72B6\u614B\u306F50kg\u3060\u3051\uFF0820kg\u306F\u30C1\u30A7\u30C3\u30AF\u3092\u307E\u3060\u904B\u7528\u3057\u3066\u3044\u306A\u3044\uFF09\u3002"));
+  }, "\u6BB5\u968E\uFF1A\u6307\u56F3\u66F8 \u2192 \u30DE\u30FC\u30AF\uFF08\u6307\u56F3\u66F8\u306E\u5546\u5E97\u540D\u30FB\u793E\u7AE0\u306A\u3069\u3092\u73FE\u54C1\u3068\u7167\u3089\u3059\uFF09\u2192 \u30C0\u30D6\u30EB\u30C1\u30A7\u30C3\u30AF\uFF08\u5BFE\u6BD4\u8868\u3068\u7167\u3089\u3059\uFF09\u2192 \u30C1\u30A7\u30C3\u30AF\u5B8C\u4E86\uFF08\u66F8\u304D\u8FBC\u307F\u30A2\u30D7\u30EA\u300250kg\u3060\u3051\uFF09\u2192 \u51FA\u8377\u3002 \u51FA\u8377\u306F\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u5F53\u65E5\u3067\u81EA\u52D5\uFF08\u524D\u3082\u3063\u3066\u51FA\u3057\u305F\u3068\u304D\u3060\u3051\u62BC\u3059\uFF09\u3002\u6307\u56F3\u66F8\u306F ", data.from, "\u301C", data.to, " \u306E\u51FA\u8377\u5E0C\u671B\u65E5\u306E\u3076\u3093\uFF081\u6642\u9593\u304A\u304D\u306B\u53D6\u308A\u8FBC\u307F\uFF09\u3002"));
 }
 function ArmTab({
   plan
@@ -8062,14 +8232,15 @@ function App() {
         ...prev,
         shipProg: d
       }));
-      if (d && d.dupSkipped) window.alert("もう出荷済になっていました（ほかの端末で押されています）");
+      if (d && d.dupSkipped) window.alert("もう済んでいました（ほかの端末で押されています）");
     }).withFailureHandler(err => {
       setShipBusy(false);
       window.alert("記録できませんでした: " + (err && err.message || err));
     }));
   };
-  const markShippedUi = o => runShip(r => r.markShipped({
+  const stepUi = (o, step) => runShip(r => r.recordShipStep({
     key: o.key,
+    step,
     name: worker,
     qty: o.qty
   }));
@@ -8077,6 +8248,31 @@ function App() {
     id,
     name: worker
   }));
+  const fetchWorkLog = () => {
+    if (!isGasEnv) return;
+    setLive(prev => ({
+      ...prev,
+      workLog: null
+    }));
+    try {
+      google.script.run.withSuccessHandler(d => setLive(prev => ({
+        ...prev,
+        workLog: d
+      }))).withFailureHandler(err => setLive(prev => ({
+        ...prev,
+        workLog: {
+          error: String(err && err.message || err)
+        }
+      }))).getWorkLog({});
+    } catch (e) {
+      setLive(prev => ({
+        ...prev,
+        workLog: {
+          error: String(e)
+        }
+      }));
+    }
+  };
   const addStaffUi = (name, role, done) => {
     if (!isGasEnv) return;
     setShipBusy(true);
@@ -8592,10 +8788,12 @@ function App() {
       const today = days.find(d => d.today);
       const next = days.find(d => !d.past && !d.today);
       // ★ 全部本数で出す（10/26 落合さん：枚数ではなく本数）。当日は出荷済とみなすので
-      //   「今日の出荷済」は出さない。今日・次の出荷日・この先の合計と、次の出荷日でチェック前の本数（50kのみ）
+      //   「今日の出荷済」は出さない。今日と次の出荷日の本数と、そのうちまだ済んでいない本数
+      //   （マーク・ダブルチェック・チェック完了のどれかがまだ）
       const n = v => Number(v || 0).toLocaleString();
-      const nextTodo = next ? next.items.reduce((a, o) => a + (o.check === "チェック前" ? o.qty : 0), 0) : 0;
-      const ahead = days.filter(d => !d.today).reduce((a, d) => a + d.qty, 0);
+      const pend = d => d ? d.pendingQty != null ? d.pendingQty : d.items.reduce((a, o) => a + (!o.mark || !o.dcheck || o.check === "チェック前" ? o.qty : 0), 0) : 0;
+      const tp = pend(today),
+        np = pend(next);
       return [{
         label: "今日の出荷",
         value: today ? n(today.qty) : "—",
@@ -8603,23 +8801,23 @@ function App() {
         icon: Truck,
         tone: "neutral"
       }, {
+        label: "今日でまだのもの",
+        value: today ? n(tp) : "—",
+        unit: "本",
+        icon: AlertTriangle,
+        tone: tp > 0 ? "warn" : "ok"
+      }, {
         label: next ? "次の出荷日 " + next.label + "(" + next.weekday + ")" : "次の出荷日",
         value: next ? n(next.qty) : "—",
         unit: "本",
         icon: FileText,
         tone: "neutral"
       }, {
-        label: "次の出荷日でチェック前",
-        value: next ? n(nextTodo) : "—",
+        label: "次の出荷日でまだのもの",
+        value: next ? n(np) : "—",
         unit: "本",
         icon: AlertTriangle,
-        tone: nextTodo > 0 ? "warn" : "ok"
-      }, {
-        label: "この先7日の合計",
-        value: n(ahead),
-        unit: "本",
-        icon: Package,
-        tone: "neutral"
+        tone: np > 0 ? "warn" : "ok"
       }];
     })(),
     yardcap: (() => {
@@ -8794,11 +8992,13 @@ function App() {
     staff: live.workStaff,
     worker: worker,
     onWorker: chooseWorker,
-    onMark: markShippedUi,
+    onStep: stepUi,
     onCancel: cancelShipUi,
     onAddStaff: addStaffUi,
     busy: shipBusy,
-    onRefresh: () => fetchShip(true)
+    onRefresh: () => fetchShip(true),
+    log: live.workLog,
+    onLoadLog: fetchWorkLog
   }), tab === "yardcap" && yardTabPending > 0 && live.yardTab && /*#__PURE__*/React.createElement("p", {
     className: "text-[11px] text-center py-1 rounded-md",
     style: {
