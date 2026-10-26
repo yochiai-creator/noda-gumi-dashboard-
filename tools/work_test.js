@@ -79,6 +79,8 @@ const ROWS = [
   // 範囲の外（古い・先すぎる）は出さない
   act({ fileId: 'F4', 依頼No: '26-10001', 枝番: '0', バージョン: '1', 出荷希望日: '2026-10-01', サイズ: '20kg', 数量: '5', 取込日時: '2026-09-30 1:00' }),
   act({ fileId: 'F5', 依頼No: '26-10002', 枝番: '0', バージョン: '1', 出荷希望日: '2026-12-01', サイズ: '20kg', 数量: '5', 取込日時: '2026-10-20 1:00' }),
+  // ファイル名に (N) が無い指図書（版が 0 で入っている）
+  act({ fileId: 'F6', 依頼No: '26-30608', 枝番: '0', バージョン: '0', 出荷希望日: '2026-10-30', サイズ: '20kg', 数量: '200', 取込日時: '2026-10-24 1:00' }),
   // 同じ指図書を取り込み直した行（新しいほうを採る）
   act({ fileId: 'F2b', 依頼No: '26-30575', 枝番: '0', バージョン: '2', 出荷希望日: '2026-10-30', サイズ: '50kg', 数量: '3', 出荷先名: 'ミツウロコ東関東', 取込日時: '2026-10-24 1:00' }),
 ];
@@ -87,13 +89,15 @@ const ENTRIES = [
   { orderNo: '26-30575', eda: 0, ver: 2, state: 'チェック済', url: 'https://done/30575', fileId: 'DONE2' },
 ];
 
+const it0 = (dd, k) => dd.days.reduce((a, g) => a.concat(g.items), []).find((o) => o.key === k);
 console.log('■ 指図書の一覧（実績シートから）');
 {
   const s = sb({ actRows: ROWS, entries: ENTRIES });
   const d = s.getShipProgress();
   chk('エラーなし', !d.error, d.error);
   const keys = d.days.map((g) => g.date + ':' + g.items.map((o) => o.key).join(','));
-  chk('★出荷希望日ごと（範囲の外は出さない）', JSON.stringify(keys) === JSON.stringify(['2026-10-27:26-10335-0(1)', '2026-10-28:26-60846-0(1)', '2026-10-30:26-30575-0(2)']), keys);
+  chk('★出荷希望日ごと（範囲の外は出さない）', JSON.stringify(keys) === JSON.stringify(['2026-10-27:26-10335-0(1)', '2026-10-28:26-60846-0(1)', '2026-10-30:26-30608-0,26-30575-0(2)']), keys);
+  chk('★版が 0 の指図書は「(0)」を付けない', it0(d, '26-30608-0') && it0(d, '26-30608-0').ver === null, keys);
   const it = (k) => d.days.reduce((a, g) => a.concat(g.items), []).find((o) => o.key === k);
   chk('★取り込み直した行は新しいほう（出荷先名）', it('26-30575-0(2)').dest === 'ミツウロコ東関東', it('26-30575-0(2)'));
   chk('★チェック前・チェック済を付ける', it('26-60846-0(1)').check === 'チェック前' && it('26-30575-0(2)').check === 'チェック済');
@@ -137,7 +141,7 @@ console.log('■ 出荷済を押す・取り消す');
   let d = s.markShipped({ key: K, name: '野田 太郎', qty: 3 });
   const it = (dd, k) => dd.days.reduce((a, g) => a.concat(g.items), []).find((o) => o.key === k);
   chk('★押すと出荷済（誰が・いつ）', it(d, K).shipped && it(d, K).shipped.by === '野田 太郎' && !it(d, K).shipped.auto, it(d, K));
-  chk('日の出荷済の数が増える', d.days[2].shippedN === 1);
+  chk('日の出荷済の数が増える', d.days[2].shippedN === 1 && d.days[2].count === 2);
   const log = s.__yard.sheets['作業記録'].rows;
   chk('★作業記録に1行（種類・対象・本数・端末アカウント）', log.length === 2 && log[1][3] === '出荷済' && log[1][4] === K && log[1][5] === '3' && log[1][12] === 'genba@nodagumi40.com', log[1]);
 

@@ -225,11 +225,14 @@ function work_orders_(values, from, to) {
     var date = String(r.出荷希望日 || '').slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < from || date > to) return;
     if (!r.依頼No) return;
-    var key = r.依頼No + '-' + (r.枝番 || '0') + (r.バージョン ? '(' + r.バージョン + ')' : '');
+    // ★ ファイル名に「(N)」が無い指図書は、版が 0 で入っている。名前と同じく「(0)」は付けない
+    //   （付けるとチェックのコピーの名前「…-0_出荷先.pdf」と突き合わなくなる）
+    var ver = Number(r.バージョン) || null;
+    var key = r.依頼No + '-' + (r.枝番 || '0') + (ver ? '(' + ver + ')' : '');
     var cur = by[key];
     if (cur && String(cur.取込日時) > String(r.取込日時)) return;
     by[key] = {
-      key: key, no: r.依頼No, eda: Number(r.枝番) || 0, ver: r.バージョン ? Number(r.バージョン) : null,
+      key: key, no: r.依頼No, eda: Number(r.枝番) || 0, ver: ver,
       date: date, size: r.サイズ || '', qty: Number(r.数量) || 0,
       dest: r.出荷先名 || '', destCode: r.出荷先コード || '',
       url: r.fileId ? 'https://drive.google.com/file/d/' + r.fileId + '/view' : null,
