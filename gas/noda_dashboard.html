@@ -1720,6 +1720,89 @@ const workerSave_ = v => {
 const shipLabel_ = o => o.no + (o.eda ? "-" + o.eda : "") + (o.ver != null ? "(" + o.ver + ")" : "");
 const hhmm_ = at => String(at || "").slice(11, 16);
 
+/* 撮った写真を長辺1600pxのJPEGに縮める（送る量を減らす。iPhoneの写真は数MBある） */
+const shrinkPhoto_ = file => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * k);
+    c.height = Math.round(img.height * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    resolve(c.toDataURL("image/jpeg", 0.85));
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    reject(new Error("写真を読めませんでした"));
+  };
+  img.src = url;
+});
+const VERDICT_TONE = {
+  一致: ["#dcfce7", "#15803d"],
+  違う: ["#fee2e2", "#b91c1c"],
+  読めない: ["#fef3c7", "#b45309"]
+};
+
+/* マークの写真照合の結果（その行の下に出す） */
+function MarkVerdict({
+  r,
+  onForce,
+  onRetry,
+  onClose
+}) {
+  const v = r.verdict || {};
+  const t = VERDICT_TONE[v.result] || VERDICT_TONE.読めない;
+  return /*#__PURE__*/React.createElement("div", {
+    "data-mark-verdict": "1",
+    className: "mt-1.5 rounded-md px-2.5 py-2 text-[11px]",
+    style: {
+      background: t[0],
+      color: "#334155"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-bold",
+    style: {
+      color: t[1]
+    }
+  }, "\u5199\u771F\u7167\u5408\uFF1A", v.result, r.recorded ? "（マークを記録しました）" : ""), r.photoUrl && /*#__PURE__*/React.createElement("a", {
+    href: r.photoUrl,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    className: "underline",
+    style: {
+      color: "#2563eb"
+    }
+  }, "\u5199\u771F"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    className: "ml-auto text-[10px] text-slate-500"
+  }, "\u9589\u3058\u308B")), /*#__PURE__*/React.createElement("div", {
+    className: "mt-1 tabular-nums"
+  }, "\u5199\u771F\uFF1A", v.photoShop || "—", v.photoTel ? "　" + v.photoTel : ""), /*#__PURE__*/React.createElement("div", {
+    className: "tabular-nums"
+  }, "\u6307\u56F3\u66F8\uFF1A", v.docShop || "—", v.docTel ? "　" + v.docTel : ""), /*#__PURE__*/React.createElement("div", null, "\u30ED\u30B4\u30FB\u793E\u7AE0\uFF1A", v.logo || "—"), v.reason && /*#__PURE__*/React.createElement("div", {
+    className: "mt-0.5"
+  }, v.reason), !r.recorded && /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mt-1.5"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onRetry,
+    className: "text-[11px] px-2 py-1 rounded-md font-semibold text-white",
+    style: {
+      background: "#0e7490"
+    }
+  }, "\u64AE\u308A\u76F4\u3059"), /*#__PURE__*/React.createElement("button", {
+    onClick: onForce,
+    className: "text-[11px] px-2 py-1 rounded-md font-semibold bg-white",
+    style: {
+      color: "#0e7490",
+      border: "1px solid #0e7490"
+    }
+  }, "\u898B\u3066\u78BA\u304B\u3081\u305F\u306E\u3067\u30DE\u30FC\u30AF\u306B\u3059\u308B")));
+}
+
 /* 段階の小さな札。済んだら緑で押した人、まだなら灰色 */
 function StepPill({
   label,
@@ -1855,8 +1938,31 @@ function ShipProgressTab({
   onLoadLog,
   saving,
   msg,
-  onMsg
+  onMsg,
+  markAi,
+  onPhoto,
+  markResults,
+  onCloseResult,
+  onSetKey
 }) {
+  const [keyInput, setKeyInput] = useState("");
+  const camRef = React.useRef(null);
+  const camKey = React.useRef(null);
+  const canPhoto = !!(markAi && markAi.hasKey);
+  // 撮る：ファイルの入力を1つだけ持ち、どの指図書の写真かを覚えておいて開く
+  const openCamera = o => {
+    camKey.current = o;
+    if (camRef.current) {
+      camRef.current.value = "";
+      camRef.current.click();
+    }
+  };
+  const onCamChange = e => {
+    const f = e.target.files && e.target.files[0];
+    const o = camKey.current;
+    if (!f || !o) return;
+    shrinkPhoto_(f).then(dataUrl => onPhoto(o, dataUrl)).catch(err => onMsg && onMsg(String(err.message || err), "error"));
+  };
   const [onlyTodo, setOnlyTodo] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -1897,7 +2003,45 @@ function ShipProgressTab({
       color: MSG_TONE[msg.tone][1],
       boxShadow: "0 1px 4px rgba(0,0,0,.12)"
     }
-  }, msg.text), /*#__PURE__*/React.createElement(Card, {
+  }, msg.text), /*#__PURE__*/React.createElement("input", {
+    ref: camRef,
+    type: "file",
+    accept: "image/*",
+    capture: "environment",
+    onChange: onCamChange,
+    style: {
+      display: "none"
+    },
+    "data-mark-camera": "1"
+  }), markAi && !markAi.hasKey && markAi.canSetKey && /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs font-semibold mb-1",
+    style: {
+      color: NAVY
+    }
+  }, "\u30DE\u30FC\u30AF\u306E\u5199\u771F\u7167\u5408\u3092\u4F7F\u3046\u306B\u306F\u3001AI\uFF08Gemini\uFF09\u306E\u30AD\u30FC\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement("input", {
+    value: keyInput,
+    onChange: e => setKeyInput(e.target.value),
+    placeholder: "AIza\u2026",
+    type: "password",
+    className: "text-sm px-2 py-1 rounded-md border border-slate-300",
+    style: {
+      width: 220
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSetKey(keyInput.trim(), () => setKeyInput("")),
+    disabled: !keyInput.trim(),
+    className: "text-xs px-3 py-1 rounded-md font-semibold text-white",
+    style: {
+      background: NAVY,
+      opacity: keyInput.trim() ? 1 : 0.5
+    }
+  }, "\u5165\u308C\u308B")), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-400 mt-1"
+  }, "\u30AD\u30FC\u306F\u30B9\u30AF\u30EA\u30D7\u30C8\u306E\u8A2D\u5B9A\u306B\u3057\u307E\u3044\u3001\u753B\u9762\u306B\u306F\u51FA\u3057\u307E\u305B\u3093\u3002\u5165\u308C\u3089\u308C\u308B\u306E\u306F\u30B9\u30AF\u30EA\u30D7\u30C8\u306E\u6301\u3061\u4E3B\u3060\u3051\u3067\u3059\u3002")), /*#__PURE__*/React.createElement(Card, {
     className: "p-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 flex-wrap"
@@ -2100,14 +2244,31 @@ function ShipProgressTab({
         }
       }, /*#__PURE__*/React.createElement(FileText, {
         size: 11
-      }), "\u958B\u304F"), step && /*#__PURE__*/React.createElement("button", {
+      }), "\u958B\u304F"), step === "マーク" && canPhoto && /*#__PURE__*/React.createElement("button", {
+        onClick: () => press(() => openCamera(o)),
+        className: "text-xs px-3 py-1.5 rounded-md font-bold text-white whitespace-nowrap",
+        style: {
+          background: "#0e7490",
+          opacity: mine ? 0.6 : 1
+        }
+      }, mine ? "照合中…" : "📷 マーク"), step && !(step === "マーク" && canPhoto) && /*#__PURE__*/React.createElement("button", {
         onClick: () => press(() => onStep(o, step)),
         className: "text-xs px-3 py-1.5 rounded-md font-bold text-white whitespace-nowrap",
         style: {
           background: step === "出荷済" ? "#15803d" : step === "マーク" ? "#0e7490" : "#7c3aed",
           opacity: mine ? 0.6 : 1
         }
-      }, mine ? "記録中…" : step))), /*#__PURE__*/React.createElement("div", {
+      }, mine ? "記録中…" : step))), step === "マーク" && canPhoto && !mine && /*#__PURE__*/React.createElement("div", {
+        className: "text-right -mt-0.5"
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: () => press(() => onStep(o, "マーク")),
+        className: "text-[10px] text-slate-500 underline"
+      }, "\u5199\u771F\u306A\u3057\u3067\u30DE\u30FC\u30AF\u306B\u3059\u308B")), markResults && markResults[o.key] && /*#__PURE__*/React.createElement(MarkVerdict, {
+        r: markResults[o.key],
+        onClose: () => onCloseResult(o.key),
+        onRetry: () => press(() => openCamera(o)),
+        onForce: () => press(() => onStep(o, "マーク", "写真照合:" + (markResults[o.key].verdict || {}).result + "→人が確認 写真:" + (markResults[o.key].photoId || "")))
+      }), /*#__PURE__*/React.createElement("div", {
         className: "flex items-center flex-wrap mt-1",
         style: {
           columnGap: 4,
@@ -8258,6 +8419,7 @@ function App() {
         ...prev,
         workStaff: d
       }))).withFailureHandler(() => {}).getWorkStaff();
+      google.script.run.withSuccessHandler(d => setMarkAi(d)).withFailureHandler(() => setMarkAi(null)).getMarkAiStatus();
     } catch (e) {
       setShipBusy(false);
       setLive(prev => ({
@@ -8292,12 +8454,55 @@ function App() {
       flashShip("記録できませんでした：" + String(e), "error");
     }
   };
-  const stepUi = (o, step) => runShip(r => r.recordShipStep({
+  const stepUi = (o, step, memo) => runShip(r => r.recordShipStep({
     key: o.key,
     step,
     name: worker,
-    qty: o.qty
+    qty: o.qty,
+    memo: memo || ""
   }), o.key, shipLabel_(o) + " の" + step);
+  /* マークの写真照合。AIの判定は10〜20秒かかるので、その行は「照合中…」にしておく */
+  const [markAi, setMarkAi] = useState(null);
+  const [markResults, setMarkResults] = useState({});
+  const photoUi = (o, dataUrl) => {
+    if (!isGasEnv) return;
+    setShipSaving(o.key);
+    flashShip(shipLabel_(o) + " のマークを写真で照合しています…（10〜20秒）", "info");
+    try {
+      google.script.run.withSuccessHandler(r => {
+        setShipSaving(null);
+        if (r && r.progress && r.progress.days) setLive(prev => ({
+          ...prev,
+          shipProg: r.progress
+        }));
+        setMarkResults(m => ({
+          ...m,
+          [o.key]: r
+        }));
+        const v = r && r.verdict || {};
+        flashShip(v.result === "一致" ? "✓ " + shipLabel_(o) + " のマークは一致。記録しました" : shipLabel_(o) + " のマークは「" + v.result + "」。下の理由を見てください", v.result === "一致" ? "ok" : v.result === "違う" ? "error" : "warn");
+      }).withFailureHandler(err => {
+        setShipSaving(null);
+        flashShip("照合できませんでした：" + (err && err.message || err), "error");
+      }).checkMarkPhoto({
+        key: o.key,
+        name: worker,
+        image: dataUrl,
+        mime: "image/jpeg"
+      });
+    } catch (e) {
+      setShipSaving(null);
+      flashShip("照合できませんでした：" + String(e), "error");
+    }
+  };
+  const setKeyUi = (key, done) => {
+    if (!isGasEnv) return;
+    google.script.run.withSuccessHandler(st => {
+      setMarkAi(st);
+      if (done) done();
+      flashShip(st && st.hasKey ? "✓ AIのキーを入れました" : "キーを消しました", "ok");
+    }).withFailureHandler(err => flashShip("キーを入れられませんでした：" + (err && err.message || err), "error")).setMarkAiKey(key);
+  };
   const cancelShipUi = (id, o, step) => runShip(r => r.cancelWorkRecord({
     id,
     name: worker
@@ -9052,6 +9257,17 @@ function App() {
     saving: shipSaving,
     msg: shipMsg,
     onMsg: flashShip,
+    markAi: markAi,
+    onPhoto: photoUi,
+    markResults: markResults,
+    onSetKey: setKeyUi,
+    onCloseResult: k => setMarkResults(m => {
+      const n = {
+        ...m
+      };
+      delete n[k];
+      return n;
+    }),
     busy: shipBusy,
     onRefresh: () => fetchShip(true),
     log: live.workLog,

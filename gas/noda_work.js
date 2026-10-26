@@ -46,7 +46,7 @@ var WORK_CONFIG = {
   // ★ 過ぎた日は押さなくても出荷済なので出さない（10/26 落合さん「23日になってる」）
   PAST_DAYS: 0,
   NEXT_DAYS: 7,
-  BASE_CACHE: 'shipProgBase2',   // 指図書とチェックの状態（重い）。作業記録は毎回読み直す
+  BASE_CACHE: 'shipProgBase3',   // 指図書とチェックの状態（重い）。作業記録は毎回読み直す
   BASE_TTL: 600
 };
 
@@ -266,6 +266,7 @@ function work_orders_(values, from, to) {
       date: date, size: r.サイズ || '', qty: Number(r.数量) || 0,
       dest: r.出荷先名 || '', destCode: r.出荷先コード || '',
       url: r.fileId ? 'https://drive.google.com/file/d/' + r.fileId + '/view' : null,
+      pdfId: r.fileId || null,   // 元の指図書PDF（マークの写真照合の見本に使う）
       取込日時: r.取込日時
     };
   });

@@ -785,6 +785,48 @@ const workerSave_ = (v) => { try { localStorage.setItem(WORKER_KEY, v); } catch 
 const shipLabel_ = (o) => o.no + (o.eda ? "-" + o.eda : "") + (o.ver != null ? "(" + o.ver + ")" : "");
 const hhmm_ = (at) => String(at || "").slice(11, 16);
 
+/* 撮った写真を長辺1600pxのJPEGに縮める（送る量を減らす。iPhoneの写真は数MBある） */
+const shrinkPhoto_ = (file) => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    resolve(c.toDataURL("image/jpeg", 0.85));
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("写真を読めませんでした")); };
+  img.src = url;
+});
+const VERDICT_TONE = { 一致: ["#dcfce7", "#15803d"], 違う: ["#fee2e2", "#b91c1c"], 読めない: ["#fef3c7", "#b45309"] };
+
+/* マークの写真照合の結果（その行の下に出す） */
+function MarkVerdict({ r, onForce, onRetry, onClose }) {
+  const v = r.verdict || {};
+  const t = VERDICT_TONE[v.result] || VERDICT_TONE.読めない;
+  return (
+    <div data-mark-verdict="1" className="mt-1.5 rounded-md px-2.5 py-2 text-[11px]" style={{ background: t[0], color: "#334155" }}>
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold" style={{ color: t[1] }}>写真照合：{v.result}{r.recorded ? "（マークを記録しました）" : ""}</span>
+        {r.photoUrl && <a href={r.photoUrl} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: "#2563eb" }}>写真</a>}
+        <button onClick={onClose} className="ml-auto text-[10px] text-slate-500">閉じる</button>
+      </div>
+      <div className="mt-1 tabular-nums">写真：{v.photoShop || "—"}{v.photoTel ? "　" + v.photoTel : ""}</div>
+      <div className="tabular-nums">指図書：{v.docShop || "—"}{v.docTel ? "　" + v.docTel : ""}</div>
+      <div>ロゴ・社章：{v.logo || "—"}</div>
+      {v.reason && <div className="mt-0.5">{v.reason}</div>}
+      {!r.recorded && (
+        <div className="flex gap-2 mt-1.5">
+          <button onClick={onRetry} className="text-[11px] px-2 py-1 rounded-md font-semibold text-white" style={{ background: "#0e7490" }}>撮り直す</button>
+          <button onClick={onForce} className="text-[11px] px-2 py-1 rounded-md font-semibold bg-white" style={{ color: "#0e7490", border: "1px solid #0e7490" }}>見て確かめたのでマークにする</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* 段階の小さな札。済んだら緑で押した人、まだなら灰色 */
 function StepPill({ label, rec, state }) {
   const done = state === "done" || (!!rec && state !== "todo");
@@ -851,7 +893,20 @@ function WorkLogPanel({ log }) {
   );
 }
 
-function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAddStaff, busy, onRefresh, log, onLoadLog, saving, msg, onMsg }) {
+function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAddStaff, busy, onRefresh, log, onLoadLog, saving, msg, onMsg,
+  markAi, onPhoto, markResults, onCloseResult, onSetKey }) {
+  const [keyInput, setKeyInput] = useState("");
+  const camRef = React.useRef(null);
+  const camKey = React.useRef(null);
+  const canPhoto = !!(markAi && markAi.hasKey);
+  // 撮る：ファイルの入力を1つだけ持ち、どの指図書の写真かを覚えておいて開く
+  const openCamera = (o) => { camKey.current = o; if (camRef.current) { camRef.current.value = ""; camRef.current.click(); } };
+  const onCamChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    const o = camKey.current;
+    if (!f || !o) return;
+    shrinkPhoto_(f).then((dataUrl) => onPhoto(o, dataUrl)).catch((err) => onMsg && onMsg(String(err.message || err), "error"));
+  };
   const [onlyTodo, setOnlyTodo] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -879,6 +934,20 @@ function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAd
           style={{ position: "sticky", top: 4, zIndex: 20, background: MSG_TONE[msg.tone][0], color: MSG_TONE[msg.tone][1], boxShadow: "0 1px 4px rgba(0,0,0,.12)" }}>
           {msg.text}
         </div>
+      )}
+      <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={onCamChange} style={{ display: "none" }} data-mark-camera="1" />
+      {/* AIのキー（持ち主だけに出す。入っていなければマークの写真照合は出さない） */}
+      {markAi && !markAi.hasKey && markAi.canSetKey && (
+        <Card className="p-3">
+          <div className="text-xs font-semibold mb-1" style={{ color: NAVY }}>マークの写真照合を使うには、AI（Gemini）のキーを入れてください</div>
+          <div className="flex gap-2 flex-wrap">
+            <input value={keyInput} onChange={(e) => setKeyInput(e.target.value)} placeholder="AIza…" type="password"
+              className="text-sm px-2 py-1 rounded-md border border-slate-300" style={{ width: 220 }} />
+            <button onClick={() => onSetKey(keyInput.trim(), () => setKeyInput(""))} disabled={!keyInput.trim()}
+              className="text-xs px-3 py-1 rounded-md font-semibold text-white" style={{ background: NAVY, opacity: keyInput.trim() ? 1 : 0.5 }}>入れる</button>
+          </div>
+          <div className="text-[10px] text-slate-400 mt-1">キーはスクリプトの設定にしまい、画面には出しません。入れられるのはスクリプトの持ち主だけです。</div>
+        </Card>
       )}
       {/* 記録する人 */}
       <Card className="p-3">
@@ -986,7 +1055,15 @@ function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAd
                             className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold text-white"
                             style={{ background: "#2563eb" }}><FileText size={11} />開く</a>
                         )}
-                        {step && (
+                        {/* ★ マークは写真で照合できる（AIのキーが入っていれば）。写真なしで押すこともできる */}
+                        {step === "マーク" && canPhoto && (
+                          <button onClick={() => press(() => openCamera(o))}
+                            className="text-xs px-3 py-1.5 rounded-md font-bold text-white whitespace-nowrap"
+                            style={{ background: "#0e7490", opacity: mine ? 0.6 : 1 }}>
+                            {mine ? "照合中…" : "📷 マーク"}
+                          </button>
+                        )}
+                        {step && !(step === "マーク" && canPhoto) && (
                           <button onClick={() => press(() => onStep(o, step))}
                             className="text-xs px-3 py-1.5 rounded-md font-bold text-white whitespace-nowrap"
                             style={{ background: step === "出荷済" ? "#15803d" : step === "マーク" ? "#0e7490" : "#7c3aed", opacity: mine ? 0.6 : 1 }}>
@@ -995,6 +1072,16 @@ function ShipProgressTab({ data, staff, worker, onWorker, onStep, onCancel, onAd
                         )}
                       </span>
                     </div>
+                    {step === "マーク" && canPhoto && !mine && (
+                      <div className="text-right -mt-0.5">
+                        <button onClick={() => press(() => onStep(o, "マーク"))} className="text-[10px] text-slate-500 underline">写真なしでマークにする</button>
+                      </div>
+                    )}
+                    {markResults && markResults[o.key] && (
+                      <MarkVerdict r={markResults[o.key]} onClose={() => onCloseResult(o.key)}
+                        onRetry={() => press(() => openCamera(o))}
+                        onForce={() => press(() => onStep(o, "マーク", "写真照合:" + (markResults[o.key].verdict || {}).result + "→人が確認 写真:" + (markResults[o.key].photoId || "")))} />
+                    )}
                     {/* 段階：マーク → ダブルチェック → チェック完了 → 出荷 */}
                     <div className="flex items-center flex-wrap mt-1" style={{ columnGap: 4, rowGap: 4 }}>
                       <StepPill label="マーク" rec={o.mark} />
@@ -4397,6 +4484,10 @@ export default function App() {
         .withSuccessHandler((d) => setLive((prev) => ({ ...prev, workStaff: d })))
         .withFailureHandler(() => {})
         .getWorkStaff();
+      google.script.run
+        .withSuccessHandler((d) => setMarkAi(d))
+        .withFailureHandler(() => setMarkAi(null))
+        .getMarkAiStatus();
     } catch (e) { setShipBusy(false); setLive((prev) => ({ ...prev, shipProg: { error: String(e) } })); }
   };
   /* ★ ハンドラを付けてから呼ぶ（google.script.run は呼ぶたびに別の入れものを返す）。
@@ -4419,7 +4510,34 @@ export default function App() {
         }));
     } catch (e) { setShipSaving(null); flashShip("記録できませんでした：" + String(e), "error"); }
   };
-  const stepUi = (o, step) => runShip((r) => r.recordShipStep({ key: o.key, step, name: worker, qty: o.qty }), o.key, shipLabel_(o) + " の" + step);
+  const stepUi = (o, step, memo) => runShip((r) => r.recordShipStep({ key: o.key, step, name: worker, qty: o.qty, memo: memo || "" }), o.key, shipLabel_(o) + " の" + step);
+  /* マークの写真照合。AIの判定は10〜20秒かかるので、その行は「照合中…」にしておく */
+  const [markAi, setMarkAi] = useState(null);
+  const [markResults, setMarkResults] = useState({});
+  const photoUi = (o, dataUrl) => {
+    if (!isGasEnv) return;
+    setShipSaving(o.key);
+    flashShip(shipLabel_(o) + " のマークを写真で照合しています…（10〜20秒）", "info");
+    try {
+      google.script.run
+        .withSuccessHandler((r) => {
+          setShipSaving(null);
+          if (r && r.progress && r.progress.days) setLive((prev) => ({ ...prev, shipProg: r.progress }));
+          setMarkResults((m) => ({ ...m, [o.key]: r }));
+          const v = (r && r.verdict) || {};
+          flashShip(v.result === "一致" ? "✓ " + shipLabel_(o) + " のマークは一致。記録しました" : shipLabel_(o) + " のマークは「" + v.result + "」。下の理由を見てください", v.result === "一致" ? "ok" : v.result === "違う" ? "error" : "warn");
+        })
+        .withFailureHandler((err) => { setShipSaving(null); flashShip("照合できませんでした：" + (err && err.message || err), "error"); })
+        .checkMarkPhoto({ key: o.key, name: worker, image: dataUrl, mime: "image/jpeg" });
+    } catch (e) { setShipSaving(null); flashShip("照合できませんでした：" + String(e), "error"); }
+  };
+  const setKeyUi = (key, done) => {
+    if (!isGasEnv) return;
+    google.script.run
+      .withSuccessHandler((st) => { setMarkAi(st); if (done) done(); flashShip(st && st.hasKey ? "✓ AIのキーを入れました" : "キーを消しました", "ok"); })
+      .withFailureHandler((err) => flashShip("キーを入れられませんでした：" + (err && err.message || err), "error"))
+      .setMarkAiKey(key);
+  };
   const cancelShipUi = (id, o, step) => runShip((r) => r.cancelWorkRecord({ id, name: worker }), o ? o.key : id, (o ? shipLabel_(o) + " の" : "") + (step || "") + "の取消");
   const fetchWorkLog = () => {
     if (!isGasEnv) return;
@@ -4927,6 +5045,8 @@ export default function App() {
           {tab === "ship" && <ShipProgressTab data={live.shipProg} staff={live.workStaff} worker={worker}
             onWorker={chooseWorker} onStep={stepUi} onCancel={cancelShipUi} onAddStaff={addStaffUi}
             saving={shipSaving} msg={shipMsg} onMsg={flashShip}
+            markAi={markAi} onPhoto={photoUi} markResults={markResults} onSetKey={setKeyUi}
+            onCloseResult={(k) => setMarkResults((m) => { const n = { ...m }; delete n[k]; return n; })}
             busy={shipBusy} onRefresh={() => fetchShip(true)} log={live.workLog} onLoadLog={fetchWorkLog} />}
           {/* ★ 前回のデータを出したまま取り直しているあいだは、そうと書く */}
           {tab === "yardcap" && yardTabPending > 0 && live.yardTab && (

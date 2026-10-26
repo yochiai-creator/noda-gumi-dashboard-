@@ -54,6 +54,17 @@ const PROG = {
         each((o) => ['mark', 'dcheck', 'shipped'].forEach((k) => { if (o[k] && o[k].id === req.id) o[k] = null; o.pending = !o.mark || !o.dcheck || o.check === 'チェック前'; })); return st.prog; },
       addWorkStaff: (name, role) => { st.calls.push(['add', name, role]); st.staff.push({ 名前: name, 役割: role }); return H.getWorkStaff(); },
       getWorkLog: (q) => ({ from: q.from, to: q.to, rows: st.log, sheetUrl: 'https://docs.google.com/x', error: null }),
+      getMarkAiStatus: () => ({ hasKey: !!st.hasKey, canSetKey: true }),
+      setMarkAiKey: (k) => { st.calls.push(['key', k]); st.hasKey = !!k; return { hasKey: st.hasKey, canSetKey: true }; },
+      checkMarkPhoto: (req) => {
+        st.calls.push(['photo', { key: req.key, name: req.name, img: String(req.image).slice(0, 23) }]);
+        const v = st.nextVerdict || 'shop';
+        if (v === '一致') {
+          H.recordShipStep({ key: req.key, step: 'マーク', name: req.name, qty: 0 });
+          return { key: req.key, verdict: { result: '一致', photoShop: 'ENERGY LIFE PARTNER', docShop: 'ENERGY LIFE PARTNER', photoTel: '086-279-0053', docTel: '086-279-0053', logo: '合う', reason: '同じです' }, photoId: 'PH1', photoUrl: 'https://drive/ph1', recorded: true, progress: st.prog };
+        }
+        return { key: req.key, verdict: { result: '違う', photoShop: 'ENERGY LIFE', docShop: 'ENERGY LIFE PARTNER', photoTel: '', docTel: '086-279-0053', logo: '合う', reason: '商店名の PARTNER が写真にありません' }, photoId: 'PH2', photoUrl: 'https://drive/ph2', recorded: false, progress: null };
+      },
     };
     function mk() { let ok = null; const px = new Proxy({}, { get(t, fn) {
       if (fn === 'withSuccessHandler') return (f) => { ok = f; return px; }; if (fn === 'withFailureHandler') return () => px;
@@ -132,6 +143,45 @@ const PROG = {
   chk('★取り消した記録も「取消」と残す', logRows.some((x) => /ダブルチェック 26-60846-0\(1\)/.test(x) && /取消/.test(x)), logRows);
   t = await txt();
   chk('★人ごと・段階ごとの本数', /野田 太郎[\s\S]{0,40}マーク 5本[\s\S]{0,20}ダブルチェック 3本/.test(t), t.slice(t.indexOf('チェックの実績'), t.indexOf('チェックの実績') + 300));
+
+  console.log('■ マークの写真照合');
+  t = await txt();
+  chk('★キーが無ければ持ち主にキーの欄を出し、📷は出さない', /AI（Gemini）のキーを入れてください/.test(t) && await page.locator('button', { hasText: '📷 マーク' }).count() === 0);
+  await page.locator('input[placeholder="AIza…"]').fill('AIzaSyD-abcdefghijklmnopqrstuv');
+  await page.locator('button', { hasText: /^入れる$/ }).click();
+  await page.waitForTimeout(400);
+  calls = await page.evaluate(() => window.__st.calls);
+  chk('★キーをサーバに送る', calls.some((c) => c[0] === 'key' && c[1] === 'AIzaSyD-abcdefghijklmnopqrstuv'));
+  chk('★キーが入ると「📷 マーク」と「写真なしでマークにする」', await row('26-20380-0(1)').locator('button', { hasText: '📷 マーク' }).count() === 1 &&
+    await row('26-20380-0(1)').locator('button', { hasText: '写真なしでマークにする' }).count() === 1);
+  // 写真：2x2 の PNG
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8z8DwnwEJMDGgAQBQ7QMBCjsNSAAAAABJRU5ErkJggg==', 'base64');
+  await page.evaluate(() => { window.__st.nextVerdict = '違う'; });
+  let [chooser] = await Promise.all([page.waitForEvent('filechooser'), row('26-20380-0(1)').locator('button', { hasText: '📷 マーク' }).click()]);
+  await chooser.setFiles({ name: 'mark.png', mimeType: 'image/png', buffer: PNG });
+  await page.waitForTimeout(800);
+  calls = await page.evaluate(() => window.__st.calls);
+  const ph = calls.filter((c) => c[0] === 'photo');
+  chk('★撮った写真をJPEGに縮めて、指図書と名前と一緒に送る', ph.length === 1 && ph[0][1].key === '26-20380-0(1)' && ph[0][1].name === '野田 太郎' && ph[0][1].img === 'data:image/jpeg;base64,', ph);
+  let vtxt = (await row('26-20380-0(1)').locator('[data-mark-verdict]').innerText()).replace(/\s+/g, ' ');
+  chk('★「違う」なら理由と、写真・指図書の商店名を出す（記録はしない）', /写真照合：違う/.test(vtxt) && /写真：ENERGY LIFE/.test(vtxt) && /指図書：ENERGY LIFE PARTNER/.test(vtxt) && /PARTNER が写真にありません/.test(vtxt) && !/✓マーク/.test(await row('26-20380-0(1)').innerText()), vtxt);
+  await row('26-20380-0(1)').locator('button', { hasText: '見て確かめたのでマークにする' }).click();
+  await page.waitForTimeout(400);
+  calls = await page.evaluate(() => window.__st.calls);
+  const forced = calls.filter((c) => c[0] === 'step' && c[1].key === '26-20380-0(1)').pop();
+  chk('★人が見て確かめたらマークにできる（写真照合の結果をメモに残す）', forced && forced[1].step === 'マーク' && /写真照合:違う→人が確認 写真:PH2/.test(forced[1].memo), forced);
+  // 一致：もう1件の指図書（20kg）で取消してからやり直す…ではなく、新しい行で確かめる
+  await row('26-20380-0(1)').locator('button', { hasText: 'マークを取消' }).click();
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { window.__st.nextVerdict = '一致'; });
+  [chooser] = await Promise.all([page.waitForEvent('filechooser'), row('26-20380-0(1)').locator('button', { hasText: '📷 マーク' }).click()]);
+  await chooser.setFiles({ name: 'mark.png', mimeType: 'image/png', buffer: PNG });
+  await page.waitForTimeout(800);
+  vtxt = (await row('26-20380-0(1)').locator('[data-mark-verdict]').innerText()).replace(/\s+/g, ' ');
+  chk('★「一致」ならマークを記録して、そう出す', /写真照合：一致（マークを記録しました）/.test(vtxt) && /✓マーク 野田 太郎/.test(await row('26-20380-0(1)').innerText()), vtxt);
+  const m2 = await page.evaluate(() => { const m = document.querySelector('[data-ship-msg]'); return m ? m.innerText : ''; });
+  chk('上に「一致。記録しました」', /一致。記録しました/.test(m2), m2);
+  await page.screenshot({ path: SP + '/ship_mark.png', fullPage: true });
 
   console.log('■ 名前を足す');
   await page.locator('button', { hasText: '名前を足す' }).click();
