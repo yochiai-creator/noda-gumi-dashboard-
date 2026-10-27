@@ -14,7 +14,7 @@ const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
 const H = ['ロットID', '生産日', '機種コード', '機種名', 'サイズ',
            '容器接頭辞', '容器No開始', '容器No終了', '本数',
            '状態', '受検日', '入庫日', '置場番号', '置場名', '出荷済本数', '出荷日', '依頼No',
-           '備考', '登録者', '登録日時', '更新日時'];
+           '備考', '登録者', '登録日時', '更新日時', '入込場持ち出し本数', '置場から引いた本数'];
 
 // 在庫照会CSVから取り込んだ機種マスタ（実ファイルにあったコードを使う）
 const TYPES = [
@@ -84,7 +84,7 @@ function build(lotRows, locations, ranges, headRow) {
 const lotRow = (o) => {
   const r = new Array(H.length).fill('');
   const set = (k, v) => { r[H.indexOf(k)] = v; };
-  set('ロットID', o.id); set('生産日', o.生産日 || '2026-09-17'); set('サイズ', o.サイズ === undefined ? '50kg' : o.サイズ);   // '' も渡せる（置場に列が無いサイズ）
+  set('ロットID', o.id); set('生産日', o.生産日 || (o.yard ? '2026-10-28' : '2026-09-17')); set('サイズ', o.サイズ === undefined ? '50kg' : o.サイズ);   // '' も渡せる（置場に列が無いサイズ）
   set('機種コード', o.機種コード || '123'); set('機種名', o.機種名 || '新軽量１１８Ｌ（５０ｋｇ）ＬＰガス容器');
   set('容器接頭辞', o.pre || 'HEP'); set('容器No開始', o.a); set('容器No終了', o.b);
   set('本数', o.本数); set('状態', o.状態 || '未受検'); set('出荷済本数', o.出荷済 || 0);
@@ -445,6 +445,78 @@ console.log('■ 同じ容器が2枚の指図書に載っていても二重に�
       { no: 'B', prefix: 'HEP', a: 51, b: 100, date: '2026-09-15' },
     ]);
   chk('隣り合う2枚は合わせて100本', s2.matchProdLotsWithOrders().引いた本数 === 100);
+}
+
+console.log('■ 入込場マップに入ったら、置場から自動で引く（持ち出し）');
+{
+  const blk = (pos, a, b, size) => ({ size: size || '50k', b: { found: true, kind: 'fill', pos, rangeStart: a, rangeEnd: b } });
+  const yardRaw = (list) => { const o = { '50k': [], '20k': [] }; list.forEach((x) => o[x.size].push(x.b)); return o; };
+  const setup = (lots, locs, ranges, blocks) => {
+    const s = build(lots, locs, ranges);
+    s.warm_yardQueries_ = () => ({ '50k': [], '20k': [] });
+    s.__blocks = blocks;
+    s.getYardMapUpdatesBothWithOrderText = () => JSON.stringify(yardRaw(s.__blocks));
+    s.__moves = [];
+    s.wstock_logFromLot_ = (kind, lot, from, to, qty, memo, who) => s.__moves.push({ kind, id: lot.ロットID, from: from && from.no, to: to && to.no, qty, memo, who });
+    return s;
+  };
+  // 受検済で置場7に置いたロット（80本）。40本ぶんが50kの区画 <3> に入った
+  let s = setup([lotRow({ yard: true, id: 'L1', a: '54401', b: '54480', 本数: 80, 状態: '受検済', 置場番号: 7, 置場名: '大型製缶' })],
+    [loc({ a50: 80 })], [], [blk('3', 54401, 54440)]);
+  let r = s.matchProdLotsWithOrders();
+  chk('★入込場の区画と番号が重なったぶん（40本）を置場から引く', r.引いた本数 === 40 && s.__locs[0].a50 === 40, [r, s.__locs[0].a50]);
+  chk('★作業記録に「持ち出し」（自動・置場7 → 50k入込場・区画）', s.__moves.length === 1 && s.__moves[0].kind === '持ち出し' && s.__moves[0].from === 7 && s.__moves[0].to === '50k入込場' && s.__moves[0].qty === 40 && /<3>/.test(s.__moves[0].memo) && /自動/.test(s.__moves[0].who), s.__moves);
+  let lot = s.getProdLots('', 0).lots[0];
+  chk('ロットに入込場持ち出し本数・置場から引いた本数を覚える', lot.入込場持ち出し本数 === 40 && lot.置場から引いた本数 === 40, lot);
+  r = s.matchProdLotsWithOrders();
+  chk('★もう一度走らせても二重に引かない', r.引いた本数 === 0 && s.__locs[0].a50 === 40 && s.__moves.length === 1, [r, s.__locs[0].a50]);
+
+  // 入庫を押して、指図書が80本ぶん出た。入込場に入っていた40本は二重に引かない
+  s.__rows[0][H.indexOf('状態')] = '入庫済';
+  s.shipact_index_ = () => ({ ranges: [{ no: '26-1', prefix: 'HEP', a: 54401, b: 54480, date: '2026-10-28' }] });
+  r = s.matchProdLotsWithOrders();
+  chk('★指図書で残りの40本だけ引く（入込場ぶんと二重にしない）', r.引いた本数 === 40 && s.__locs[0].a50 === 0, [r, s.__locs[0].a50]);
+  lot = s.getProdLots('', 0).lots[0];
+  chk('出荷済になる', lot.状態 === '出荷済' && lot.出荷済本数 === 80 && lot.置場から引いた本数 === 80, lot);
+  // 出荷で区画が空いても、置場には戻さない
+  s.__blocks = [];
+  r = s.matchProdLotsWithOrders();
+  chk('★区画が空いても置場に戻さない', s.__locs[0].a50 === 0 && r.引いた本数 === 0);
+
+  // 20kの区画は50kgのロットに当てない
+  s = setup([lotRow({ yard: true, id: 'L2', a: '54401', b: '54480', 本数: 80, 状態: '入庫済', 置場番号: 7, 置場名: 'x' })],
+    [loc({ a50: 80 })], [], [blk('5', 54401, 54480, '20k')]);
+  r = s.matchProdLotsWithOrders();
+  chk('★サイズが違う区画（20k）には当てない', r.引いた本数 === 0 && s.__locs[0].a50 === 80, r);
+
+  // 空き区画（-99〜0）や幅がありえない範囲は使わない
+  s = setup([lotRow({ yard: true, id: 'L3', a: '1', b: '80', 本数: 80, 状態: '入庫済', 置場番号: 7, 置場名: 'x' })],
+    [loc({ a50: 80 })], [], [blk('6', -99, 0), blk('7', 1, 5000)]);
+  r = s.matchProdLotsWithOrders();
+  chk('空き・幅がありえない区画は使わない', r.引いた本数 === 0, r);
+
+  // 古い行（置場から引いた本数が空）：出荷済本数ぶんは引いてあるとみなす
+  s = setup([lotRow({ yard: true, id: 'L4', a: '54401', b: '54480', 本数: 80, 状態: '入庫済', 出荷済: 40, 置場番号: 7, 置場名: 'x' })],
+    [loc({ a50: 40 })], [{ no: '26-1', prefix: 'HEP', a: 54401, b: 54440, date: '2026-10-01' }], [blk('3', 54401, 54440)]);
+  r = s.matchProdLotsWithOrders();
+  chk('★古い行：もう引いた40本と同じ容器が入込場にあっても引かない', r.引いた本数 === 0 && s.__locs[0].a50 === 40, [r, s.__locs[0].a50]);
+
+  // 置場の数字が手で減らされていても、あるぶんだけ引いて止まらない
+  s = setup([lotRow({ yard: true, id: 'L5', a: '1', b: '80', 本数: 80, 状態: '受検済', 置場番号: 7, 置場名: 'x' })],
+    [loc({ a50: 10 })], [], [blk('3', 1, 40)]);
+  r = s.matchProdLotsWithOrders();
+  chk('置場に10本しかなければ10本だけ引く（エラーで止まらない）', !r.error && r.引いた本数 === 10 && s.__locs[0].a50 === 0, r);
+
+  // 置場に置いていない未受検ロットは見ない
+  s = setup([lotRow({ yard: true, id: 'L6', a: '1', b: '80', 本数: 80, 状態: '未受検' })], [loc({ a50: 80 })], [], [blk('3', 1, 40)]);
+  r = s.matchProdLotsWithOrders();
+  chk('置場に置いていないロットは見ない', r.引いた本数 === 0 && s.__locs[0].a50 === 80, r);
+
+  // ★ 照合を始める前（10/27より前）に生産したロットは当てない（9/17の試しのロットなど）
+  s = setup([lotRow({ id: 'L7', 生産日: '2026-09-17', pre: 'HXP', サイズ: '20kg', a: '54401', b: '55000', 本数: 600, 状態: '入庫済', 置場番号: 14, 置場名: '資材倉庫' })],
+    [loc({ no: 14, name: '資材倉庫', a20: 600, m20: 0 })], [], [blk('2', 54401, 54500, '20k')]);
+  r = s.matchProdLotsWithOrders();
+  chk('★始める前に生産したロットは入込場に当てない（試しのロットを引かない）', r.引いた本数 === 0 && s.__locs[0].a20 === 600, r);
 }
 
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');

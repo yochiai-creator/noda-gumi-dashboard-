@@ -3817,7 +3817,7 @@ function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCa
           </select>
         </div>
       )}
-      {kind === "持ち出し" && <div className="text-[11px] text-slate-500">先：{yardTo}</div>}
+      {kind === "持ち出し" && <div className="text-[11px] text-slate-500">先：{yardTo}　<span className="text-amber-700">※ロットで置いた容器はマップから自動で引くので、ここでは入れないでください（二重になります）</span></div>}
       <div className="flex gap-2 flex-wrap items-center">
         <span className="text-[11px] text-slate-500 w-10">本数</span>
         <input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="numeric" placeholder="例 80" data-move="qty"
@@ -3955,7 +3955,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       {/* ---- 在庫の動き。移動・入込場への持ち出し・廃棄（作業記録に残す） ---- */}
       <Card className="p-3">
         <Collapsible tone="card" title="在庫の動き"
-          note="置場の移動・入込場への持ち出し。置場の本数が動き、誰がいつ何本動かしたかが残ります（生産からの入庫は上の「生産の流れ」で置くと自動で残ります）"
+          note="置場の移動・入込場への持ち出し。置場の本数が動き、誰がいつ何本動かしたかが残ります。生産の流れで置いたロットは、入込場のマップに入ると自動で持ち出しになります（1時間おき）。手で入れるのはロットに無い容器だけ"
           closedNote={moves && moves.rows ? "直近7日 " + moves.rows.filter((r) => !r.canceled).length + "件" : ""}>
           <StockMoveCard locations={list} staff={staff} worker={worker} onWorker={onWorker}
             moves={moves} onMove={onMove} onCancel={onCancelMove} saving={moveSaving} msg={moveMsg} />

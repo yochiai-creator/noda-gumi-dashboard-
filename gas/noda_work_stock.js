@@ -30,7 +30,7 @@ var WSTOCK_CONFIG = {
 };
 
 /* 置場の表し方：「7 大型製缶」。取り消しのときに番号を取り出す */
-function wstock_place_(loc) { return String(loc.no) + ' ' + (loc.name || ''); }
+function wstock_place_(loc) { return (String(loc.no) + ' ' + (loc.name || '')).trim(); }
 function wstock_placeNo_(text) { var m = String(text || '').match(/^(\S+)/); return m ? m[1] : ''; }
 
 /* 入力を確かめる（純関数）。直したものか { error } を返す */
@@ -166,9 +166,9 @@ function wstock_totals_(rows) {
 
 /* 生産の流れから呼ぶ：置場に置いた（入庫）・置き場所を変えた（移動）を作業記録に残す。
    ★ 本数はもう動かしてあるので、ここでは記録だけ。失敗しても生産の流れは止めない。 */
-function wstock_logFromLot_(kind, lot, fromLoc, toLoc, qty, memo) {
+function wstock_logFromLot_(kind, lot, fromLoc, toLoc, qty, memo, who) {
   try {
-    work_append_({ 名前: (typeof lot_user_ === 'function' ? lot_user_() : '') || '（生産の流れ）', 種類: kind,
+    work_append_({ 名前: who || (typeof lot_user_ === 'function' ? lot_user_() : '') || '（生産の流れ）', 種類: kind,
                    対象: lot.サイズ || '', 本数: qty, 元: fromLoc ? wstock_place_(fromLoc) : '',
                    先: toLoc ? wstock_place_(toLoc) : '', メモ: memo || ('ロット ' + (lot.ロットID || lot.id || '')) });
   } catch (e) { Logger.log('作業記録に残せませんでした（' + kind + '）: ' + e); }

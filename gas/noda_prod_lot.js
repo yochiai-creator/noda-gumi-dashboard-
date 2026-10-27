@@ -15,8 +15,17 @@
  *   置場の実績数からも引く。押し忘れで数字がずれるのを防ぐため。
  *
  * ★ 二重に引かない
- *   照合は毎晩走る。ロットごとに「もう何本引いたか」(出荷済本数)を持ち、
+ *   照合は毎時走る（harvestDailyData）。ロットごとに「もう何本引いたか」を持ち、
  *   前回からの差ぶんだけ置場から引く。何度走らせても結果は同じ。
+ *
+ * ★ 入込場への持ち出しも自動（2026/10/27 落合さん「野外置き場に入れて行くから自動にしたい」）
+ *   入込場マップの区画には容器番号の範囲がある。ロットの番号と重なったら、その容器は
+ *   野外置場から入込場へ出たので、ロットの置場から引き、作業記録に「持ち出し」を残す。
+ *   入込場に入った容器が後で指図書に載っても二重に引かないよう、置場から引いた本数は
+ *   「指図書 ∪ 入込場」の重なり（同じ容器は1回）で数え、列「置場から引いた本数」に持つ。
+ *   （この列が空の古い行は、出荷済本数ぶんを引いてあるとみなす）
+ *   区画は接頭辞を持たないので、サイズ（50k区画↔50kg、20k区画↔20kg）と番号で当てる。
+ *   引いた本数は戻さない（区画が出荷で空になっても、置場には戻ってこないため）。
  *
  * ★ 野外置場の数字は「今そこに物理的に何本あるか」
  *   置場に置いた時点（登録時）で足す。受検が済むのを待たない。現場は作って
@@ -42,7 +51,9 @@ var LOT_CONFIG = {
   HEADERS: ['ロットID', '生産日', '機種コード', '機種名', 'サイズ',
             '容器接頭辞', '容器No開始', '容器No終了', '本数',
             '状態', '受検日', '入庫日', '置場番号', '置場名', '出荷済本数', '出荷日', '依頼No',
-            '備考', '登録者', '登録日時', '更新日時'],
+            '備考', '登録者', '登録日時', '更新日時',
+            // ★ 後から足した列（2026/10/27）。前の列の並びは変えない（古い行がずれるため）
+            '入込場持ち出し本数', '置場から引いた本数'],
   // 流れは4つだけ。増やすと現場が迷う。
   STATES: ['未受検', '受検済', '入庫済', '出荷済'],
   /* 「取消」は流れの続きではなく、打ち間違えた行の打ち消し。
@@ -52,7 +63,11 @@ var LOT_CONFIG = {
      ★ 置場容量シートは20/30/50の3列しか無い。2K・5K・8K・10Kはここに無く、
        置場の在庫数には足さない（無い列に足せない）。流れだけ追う。 */
   SIZE_KEY: { '20kg': 'a20', '30kg': 'a30', '50kg': 'a50' },
-  MAX_LOT: 5000   // 1ロットの上限。桁を間違えた入力を弾く
+  MAX_LOT: 5000,  // 1ロットの上限。桁を間違えた入力を弾く
+  /* 入込場マップとの照合（自動の持ち出し）を始めた日。これより前に生産したロットは当てない。
+     ★ 9/17 に試しに入れたロット（20kg HXP54401〜55000・資材倉庫）があり、マップの番号と
+       たまたま重なると、実物と関係なく置場から引いてしまうため。 */
+  YARD_FROM: '2026-10-27'
 };
 
 // ===== 公開関数：ロット一覧（画面用） =====
@@ -362,29 +377,154 @@ function cancelProdLot(id, reason) {
  * ★ 何度走らせても同じ結果になる（ロットごとに「もう何本引いたか」を持つ）。
  */
 function matchProdLotsWithOrders() {
-  var out = { 照合: 0, 出荷済: 0, 引いた本数: 0, error: null, 明細: [] };
+  var out = { 照合: 0, 出荷済: 0, 引いた本数: 0, 持ち出し: 0, error: null, 明細: [] };
   try {
     var idx = shipact_index_();
     var ships = lot_shipRanges_(idx);
-    if (ships.length === 0) return out;
+    var yards = [];
+    try { yards = lot_yardRanges_(); } catch (e) { Logger.log('入込場マップが読めないので持ち出しは見ない: ' + e); }
+    if (ships.length === 0 && yards.length === 0) return out;
 
-    var lots = lot_readAll_().filter(function (r) { return r.状態 === '入庫済'; });
+    /* 指図書と照合するのは入庫済のロットだけ（今までどおり）。
+       入込場は、置場に置いてあるロットなら状態を問わず見る（入庫を押し忘れていても実物は動く）。 */
+    var lots = lot_readAll_().filter(function (r) {
+      return r.状態 === '入庫済' || ((r.状態 === '未受検' || r.状態 === '受検済') && r.置場番号);
+    });
     for (var i = 0; i < lots.length; i++) {
       var lot = lots[i];
-      var hit = lot_matchOne_(lot, ships);
-      out.照合++;
-      if (hit.本数 <= 0) continue;
-      var r = lot_applyShipped_(lot, hit);
+      var isIn = lot.状態 === '入庫済';
+      if (isIn) out.照合++;
+      var hit = isIn ? lot_matchOne_(lot, ships) : { 本数: 0, 累計: lot.出荷済本数, 依頼No: '', 出荷日: '' };
+      var yh = String(lot.生産日 || '') >= LOT_CONFIG.YARD_FROM ? lot_yardMatch_(lot, yards) : { spans: [], 累計: 0, pos: [] };
+      var outCov = lot_union_(lot, (isIn ? lot_shipSpans_(lot, ships) : []).concat(yh.spans));
+      var prevOut = lot.置場から引いた本数 == null ? lot.出荷済本数 : lot.置場から引いた本数;
+      if (hit.本数 <= 0 && outCov <= prevOut && yh.累計 <= lot.入込場持ち出し本数) continue;
+      var r = lot_applyOut_(lot, isIn ? hit : null, yh, outCov);
       if (r.error) { out.error = r.error; continue; }
-      out.引いた本数 += hit.本数;
+      out.引いた本数 += r.引いた;
+      if (r.持ち出し) out.持ち出し += r.持ち出し;
       if (r.出荷済) out.出荷済++;
-      out.明細.push({ id: lot.ロットID, 本数: hit.本数, 依頼No: hit.依頼No, 置場: lot.置場名 });
+      out.明細.push({ id: lot.ロットID, 本数: r.引いた, 依頼No: hit.依頼No, 入込場: yh.pos.join(','), 置場: lot.置場名 });
     }
   } catch (err) {
     out.error = String(err);
-    Logger.log('指図書との照合でエラー: ' + String(err));
+    Logger.log('指図書・入込場との照合でエラー: ' + String(err));
   }
   return out;
+}
+
+/* 入込場マップの区画の容器番号の範囲（純関数）。raw は getYardMapUpdatesBothWithOrderText の結果。
+   埋まっている区画だけ。空き（-99〜0 など）や幅がありえない範囲は使わない。 */
+function lot_yardRangesFrom_(raw) {
+  var out = [];
+  var SIZE = { '50k': '50kg', '20k': '20kg' };
+  Object.keys(SIZE).forEach(function (k) {
+    ((raw && raw[k]) || []).forEach(function (b) {
+      if (!b || !b.found || b.kind !== 'fill') return;
+      var a = Number(b.rangeStart), z = Number(b.rangeEnd);
+      if (!(a > 0) || !(z >= a) || z - a + 1 > 1000) return;
+      out.push({ size: SIZE[k], a: a, b: z, pos: String(b.pos) });
+    });
+  });
+  return out;
+}
+
+function lot_yardRanges_() {
+  if (typeof getYardMapUpdatesBothWithOrderText !== 'function' || typeof warm_yardQueries_ !== 'function') return [];
+  var q = warm_yardQueries_();
+  var raw = getYardMapUpdatesBothWithOrderText(q['50k'], q['20k'], false);
+  return lot_yardRangesFrom_(typeof raw === 'string' ? JSON.parse(raw) : raw);
+}
+
+/* ロットと指図書が重なる範囲（純関数） */
+function lot_shipSpans_(lot, ships) {
+  var pre = String(lot.容器接頭辞).toUpperCase();
+  var a = Number(lot.容器No開始), b = Number(lot.容器No終了);
+  var out = [];
+  (ships || []).forEach(function (s) {
+    if (s.prefix !== pre) return;
+    var lo = Math.max(a, s.a), hi = Math.min(b, s.b);
+    if (hi >= lo) out.push([lo, hi]);
+  });
+  return out;
+}
+
+/* ロットと入込場の区画が重なる範囲（純関数）。サイズと番号で当てる（区画は接頭辞を持たない） */
+function lot_yardMatch_(lot, yards) {
+  var a = Number(lot.容器No開始), b = Number(lot.容器No終了);
+  var spans = [], pos = [];
+  (yards || []).forEach(function (y) {
+    if (y.size !== lot.サイズ) return;
+    var lo = Math.max(a, y.a), hi = Math.min(b, y.b);
+    if (hi < lo) return;
+    spans.push([lo, hi]);
+    if (pos.indexOf(y.pos) < 0) pos.push(y.pos);
+  });
+  return { spans: spans, 累計: lot_union_(lot, spans), pos: pos };
+}
+
+/* 範囲を重ねて数える（同じ容器は1回）。ロットの本数は超えない（純関数） */
+function lot_union_(lot, spans) {
+  var list = (spans || []).slice().sort(function (x, y) { return x[0] - y[0]; });
+  var covered = 0, lo = null, hi = null;
+  list.forEach(function (sp) {
+    if (hi === null || sp[0] > hi + 1) {
+      if (hi !== null) covered += hi - lo + 1;
+      lo = sp[0]; hi = sp[1];
+    } else if (sp[1] > hi) {
+      hi = sp[1];
+    }
+  });
+  if (hi !== null) covered += hi - lo + 1;
+  return covered > lot.本数 ? lot.本数 : covered;
+}
+
+/* 置場から出たぶんを引いて、ロットを書き直す。
+   hit … 指図書（入庫済のときだけ）、yh … 入込場、outCov … 指図書∪入込場の重なり */
+function lot_applyOut_(lot, hit, yh, outCov) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var found = lot_findRow_(lot.ロットID);
+    if (!found) return { error: 'ロット「' + lot.ロットID + '」が見つかりません' };
+    var cur = found.lot;
+    var prevOut = cur.置場から引いた本数 == null ? cur.出荷済本数 : cur.置場から引いた本数;
+    var sub = outCov - prevOut;
+    var key = LOT_CONFIG.SIZE_KEY[cur.サイズ];
+    var loc = (key && cur.置場番号) ? lot_findLocation_(cur.置場番号) : null;
+    var 引いた = 0;
+    if (sub > 0 && loc) {
+      // ★ 置場の数字が手で直されて少なくなっていたら、あるぶんだけ引く（毎時エラーで止まり続けないように）
+      var have = Number(loc[key]) || 0;
+      引いた = Math.min(sub, have);
+      if (引いた > 0) {
+        var r = lot_moveYard_(loc, key, -引いた);
+        if (r.error) return { error: r.error };
+      }
+    }
+    var shipCov = hit ? Math.max(cur.出荷済本数, hit.累計) : cur.出荷済本数;
+    var yardCov = Math.max(cur.入込場持ち出し本数, yh.累計);
+    var done = shipCov >= cur.本数;
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    lot_writeRow_(found.rowNo, function (row, H) {
+      row[H['出荷済本数']] = shipCov;
+      if (hit && hit.依頼No) { row[H['依頼No']] = hit.依頼No; row[H['出荷日']] = hit.出荷日; }
+      if (done) row[H['状態']] = '出荷済';
+      row[H['入込場持ち出し本数']] = yardCov;
+      row[H['置場から引いた本数']] = Math.max(prevOut, outCov);
+      row[H['更新日時']] = now;
+    });
+    // 入込場に入ったぶんで置場から引いたら、作業記録に「持ち出し」（自動）を残す
+    var 持ち出し = 0;
+    if (引いた > 0 && yardCov > cur.入込場持ち出し本数 && typeof wstock_logFromLot_ === 'function') {
+      持ち出し = 引いた;
+      wstock_logFromLot_('持ち出し', cur, loc, { no: cur.サイズ === '20kg' ? '20k入込場' : '50k入込場', name: '' }, 引いた,
+        'ロット ' + cur.ロットID + ' の容器が入込場の区画 <' + yh.pos.join('>,<') + '> に入った（マップから自動）', '（自動：入込場マップ）');
+    }
+    return { error: null, 引いた: 引いた, 持ち出し: 持ち出し, 出荷済: done && cur.状態 !== '出荷済' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* 指図書の容器番号レンジを取り出す（純関数）。
@@ -607,7 +747,10 @@ function lot_shapeRows_(values) {
       出荷日: lot_dateText_(r[H['出荷日']]),
       依頼No: String(r[H['依頼No']] || ''),
       備考: String(r[H['備考']] || ''),
-      登録者: String(r[H['登録者']] || '')
+      登録者: String(r[H['登録者']] || ''),
+      入込場持ち出し本数: Number(r[H['入込場持ち出し本数']]) || 0,
+      // 空なら null（古い行。出荷済本数ぶんを引いてあるとみなす）
+      置場から引いた本数: r[H['置場から引いた本数']] === '' || r[H['置場から引いた本数']] == null ? null : Number(r[H['置場から引いた本数']]) || 0
     });
   });
   return out;

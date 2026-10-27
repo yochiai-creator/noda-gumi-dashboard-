@@ -7443,7 +7443,9 @@ function StockMoveCard({
     value: r.no
   }, r.no, " ", r.name, r.position ? "（" + r.position + "）" : "", "\u3000", size, " ", r[key] || 0, "/", r[mkey] || "—", "\u672C")))), kind === "持ち出し" && /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] text-slate-500"
-  }, "\u5148\uFF1A", yardTo), /*#__PURE__*/React.createElement("div", {
+  }, "\u5148\uFF1A", yardTo, "\u3000", /*#__PURE__*/React.createElement("span", {
+    className: "text-amber-700"
+  }, "\u203B\u30ED\u30C3\u30C8\u3067\u7F6E\u3044\u305F\u5BB9\u5668\u306F\u30DE\u30C3\u30D7\u304B\u3089\u81EA\u52D5\u3067\u5F15\u304F\u306E\u3067\u3001\u3053\u3053\u3067\u306F\u5165\u308C\u306A\u3044\u3067\u304F\u3060\u3055\u3044\uFF08\u4E8C\u91CD\u306B\u306A\u308A\u307E\u3059\uFF09")), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 flex-wrap items-center"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] text-slate-500 w-10"
@@ -7678,7 +7680,7 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u5728\u5EAB\u306E\u52D5\u304D",
-    note: "\u7F6E\u5834\u306E\u79FB\u52D5\u30FB\u5165\u8FBC\u5834\u3078\u306E\u6301\u3061\u51FA\u3057\u3002\u7F6E\u5834\u306E\u672C\u6570\u304C\u52D5\u304D\u3001\u8AB0\u304C\u3044\u3064\u4F55\u672C\u52D5\u304B\u3057\u305F\u304B\u304C\u6B8B\u308A\u307E\u3059\uFF08\u751F\u7523\u304B\u3089\u306E\u5165\u5EAB\u306F\u4E0A\u306E\u300C\u751F\u7523\u306E\u6D41\u308C\u300D\u3067\u7F6E\u304F\u3068\u81EA\u52D5\u3067\u6B8B\u308A\u307E\u3059\uFF09",
+    note: "\u7F6E\u5834\u306E\u79FB\u52D5\u30FB\u5165\u8FBC\u5834\u3078\u306E\u6301\u3061\u51FA\u3057\u3002\u7F6E\u5834\u306E\u672C\u6570\u304C\u52D5\u304D\u3001\u8AB0\u304C\u3044\u3064\u4F55\u672C\u52D5\u304B\u3057\u305F\u304B\u304C\u6B8B\u308A\u307E\u3059\u3002\u751F\u7523\u306E\u6D41\u308C\u3067\u7F6E\u3044\u305F\u30ED\u30C3\u30C8\u306F\u3001\u5165\u8FBC\u5834\u306E\u30DE\u30C3\u30D7\u306B\u5165\u308B\u3068\u81EA\u52D5\u3067\u6301\u3061\u51FA\u3057\u306B\u306A\u308A\u307E\u3059\uFF081\u6642\u9593\u304A\u304D\uFF09\u3002\u624B\u3067\u5165\u308C\u308B\u306E\u306F\u30ED\u30C3\u30C8\u306B\u7121\u3044\u5BB9\u5668\u3060\u3051",
     closedNote: moves && moves.rows ? "直近7日 " + moves.rows.filter(r => !r.canceled).length + "件" : ""
   }, /*#__PURE__*/React.createElement(StockMoveCard, {
     locations: list,
