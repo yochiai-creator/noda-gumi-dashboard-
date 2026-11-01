@@ -18,6 +18,9 @@ const rows = JSON.parse(fs.readFileSync(__dirname + '/sitemap_rows.json', 'utf8'
 const recs = rows.map((r) => ({ no: r[0], name: r[1], position: r[2], a20: r[3], m20: r[4], a30: r[5], m30: r[6], a50: r[7], m50: r[8], mapX: r[9], mapY: r[10], note: '' }));
 // 50kg を置いた置場を作っておく（7 大型製缶 に 300本）
 recs.find((r) => r.no === '7').a50 = '300';
+// エリア（囲み）のある置場（2026/11/01）。12 事務所を囲む。壊れた値はピンのまま
+recs.find((r) => r.no === '12').area = '[[8300,7800],[8900,7800],[8900,8300],[8300,8300]]';
+recs.find((r) => r.no === '11').area = 'こわれた';
 const locs = recs.map(s.yardtab_shape_);
 
 (async () => {
@@ -71,6 +74,17 @@ const locs = recs.map(s.yardtab_shape_);
   const ord = await order();
   chk('★敷地図 → 在庫の動き → 生産の流れ → 置場の一覧 の順', JSON.stringify(ord) === JSON.stringify(['map', 'move', 'lots', 'list']), ord);
   chk('★生産計画は置場の一覧より下', t.indexOf('生産計画') > t.indexOf('置場の一覧'));
+
+  console.log('■ エリア（囲み）');
+  chk('★サーバ：エリアの文字を角の配列に（壊れた値は null）', s.yardtab_area_('[[1,2],[3,4.4],[5,6]]').join('|') === '1,2|3,4|5,6' && s.yardtab_area_('こわれた') === null && s.yardtab_area_('[[1,2],[3,4]]') === null && s.yardtab_area_('') === null);
+  chk('★囲みのある置場（12）は多角形で描く', await page.locator('[data-area="12"]').count() === 1);
+  chk('★囲みの真ん中に番号（ピンの代わり）', await page.evaluate(() => { const g = document.querySelector('[data-pin="12"]'); return !!g && !g.querySelector('polygon'); }));
+  chk('壊れた値の置場（11）はピンのまま', await page.locator('[data-area="11"]').count() === 0 && await page.locator('[data-pin="11"]').count() === 1);
+  await page.locator('[data-area="12"]').dispatchEvent('click');
+  await page.waitForTimeout(200);
+  chk('★囲みを押すと中身が出る', /12 事務所/.test(await page.evaluate(() => { const d = document.querySelector('[data-place-detail]'); return d ? d.innerText : ''; })));
+  await page.locator('[data-area="12"]').dispatchEvent('click');
+  await page.waitForTimeout(200);
 
   console.log('■ ピンを押すと中身');
   await page.locator('[data-pin="7"]').dispatchEvent('click');

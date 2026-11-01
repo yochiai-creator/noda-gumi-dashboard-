@@ -66,10 +66,10 @@ console.log('■ サーバ：地図の位置と建屋の手直しも返す');
     return { pins, polys: svg.querySelectorAll('polygon').length, zoneText: [...svg.querySelectorAll('text')].some((t) => t.textContent === '雪置場') };
   });
   chk('★敷地図が出る', !!info, info);
-  // 元アプリの18か所＋紙の配置図から写した置場（このデータでは 1・5・6・13・15・16・19）。29 地区倉庫だけ位置が無い
-  // ★ 2026/11/01 19・32・33、続けて14・25を消して番号を詰めた（今は1〜33）
-  const placedNos = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','19','20','21','23','24','26'];
-  chk('★位置のある置場22か所にピン', info && info.pins.length === 22 && placedNos.every((n) => info.pins.some((p) => p.no === n)), info && info.pins.map((p) => p.no));
+  // 元アプリの18か所＋紙の配置図から写した置場（このデータでは 1・5・6・13・15・16・19）。28 地区倉庫だけ位置が無い
+  // ★ 2026/11/01 19・32・33、14・25、26を消して番号を詰めた（今は1〜32）
+  const placedNos = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','19','20','21','23','24'];
+  chk('★位置のある置場21か所にピン', info && info.pins.length === 21 && placedNos.every((n) => info.pins.some((p) => p.no === n)), info && info.pins.map((p) => p.no));
   chk('建屋・敷地の線・池が描かれる（多角形が30以上）', info && info.polys > 30, info && info.polys);
   chk('囲みのエリアの名前が出る', info && info.zoneText);
   const fillOf = (n) => info.pins.find((p) => p.no === n).fill;
@@ -78,7 +78,7 @@ console.log('■ サーバ：地図の位置と建屋の手直しも返す');
   chk('7 大型製缶（0/2400）は余裕の色', fillOf('7') === '#2f9e58');
   const t = await page.evaluate(() => document.body.innerText);
   const unplacedText = t.slice(t.indexOf('地図に位置が無い置場'), t.indexOf('押してから地図'));
-  chk('★位置の無い置場を書く（29 地区倉庫）', /地図に位置が無い置場/.test(t) && /29 地区倉庫/.test(unplacedText), unplacedText);
+  chk('★位置の無い置場を書く（28 地区倉庫）', /地図に位置が無い置場/.test(t) && /28 地区倉庫/.test(unplacedText), unplacedText);
   chk('★紙の配置図から写した置場は「位置が無い」に出ない（1 駐車場・19 風呂場跡）', !/\b1 駐車場/.test(unplacedText) && !/19 風呂場跡/.test(unplacedText), unplacedText);
   chk('凡例に数（満杯に近い 2）', /満杯に近い（80%〜） 2/.test(t), t.slice(t.indexOf('満杯（'), t.indexOf('満杯（') + 80));
 

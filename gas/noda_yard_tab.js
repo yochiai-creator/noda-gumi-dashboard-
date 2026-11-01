@@ -85,8 +85,27 @@ function yardtab_shape_(r) {
     状態: rate >= 1 ? '超過' : rate >= 0.8 ? '満杯に近い' : (未設定 ? '収容数なし' : ''),
     updatedAt: r.updatedAt || '', updatedBy: r.updatedBy || '',
     // 敷地図の上の位置（元アプリで動かして保存したもの）。無ければ画面側の初期位置
-    mapX: yardtab_num_(r.mapX), mapY: yardtab_num_(r.mapY)
+    mapX: yardtab_num_(r.mapX), mapY: yardtab_num_(r.mapY),
+    // 置場の囲み（角の座標）。読めなければ null（ピンだけ出す）
+    area: yardtab_area_(r.area)
   };
+}
+
+/* エリアの文字（JSON [[x,y],…]）→ 角の配列（純関数）。3点未満・数でないものは null */
+function yardtab_area_(v) {
+  if (v === '' || v == null) return null;
+  var a;
+  try { a = JSON.parse(String(v)); } catch (e) { return null; }
+  if (!Array.isArray(a) || a.length < 3 || a.length > 60) return null;
+  var out = [];
+  for (var i = 0; i < a.length; i++) {
+    var p = a[i];
+    if (!Array.isArray(p) || p.length < 2) return null;
+    var x = Number(p[0]), y = Number(p[1]);
+    if (isNaN(x) || isNaN(y)) return null;
+    out.push([Math.round(x), Math.round(y)]);
+  }
+  return out;
 }
 
 /* 空や文字は null（0 と区別する。0 は地図の端にある本物の位置かもしれない） */

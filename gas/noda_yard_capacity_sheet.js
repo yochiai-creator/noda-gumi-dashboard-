@@ -30,7 +30,10 @@ var YARD_COLUMNS = [
   { key: 'updatedAt', label: '更新日時' },
   { key: 'updatedBy', label: '更新者' },
   { key: 'mapX', label: '地図X' },
-  { key: 'mapY', label: '地図Y' }
+  { key: 'mapY', label: '地図Y' },
+  // 敷地図の上の置場の囲み（2026/11/01 落合さん「エリア囲んでわかりやすくしたい」）。
+  // 角の座標を JSON で [[x,y],[x,y],…]（地図X/Yと同じ座標）。空ならピンだけ。
+  { key: 'area', label: 'エリア' }
 ];
 
 // 初回作成時の初期データ。既存の「容器置場可能数」表(2021/02時点)から取り込み。
