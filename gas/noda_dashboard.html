@@ -7109,7 +7109,7 @@ function siteLabelSize_(w, h, name, tall) {
 }
 function siteTransform_(cx, cy, o) {
   if (!o) return undefined;
-  return "translate(" + (o.dx || 0) + "," + (o.dy || 0) + ") translate(" + cx + "," + cy + ") " + "rotate(" + (o.rotation || 0) + ") scale(" + (o.scale || 1) + ") translate(" + -cx + "," + -cy + ")";
+  return "translate(" + (o.dx || 0) + "," + (o.dy || 0) + ") translate(" + cx + "," + cy + ") " + "rotate(" + (o.rotation || 0) + ") scale(" + (o.sx != null ? o.sx + "," + (o.sy != null ? o.sy : o.sx) : o.scale || 1) + ") translate(" + -cx + "," + -cy + ")";
 }
 
 /* ===== 野外置場の敷地図 =====

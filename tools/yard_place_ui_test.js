@@ -26,7 +26,7 @@ const locs = recs.map(s.yardtab_shape_);
 (async () => {
   const data = {}; Object.keys(REPLY).forEach((k) => { data[k] = REPLY[k](); });
   Object.assign(data, {
-    getYardTabData: { updated: 'x', error: null, sheetUrl: 'x', totals: s.yardtab_totals_(locs), locations: locs, site: { overrides: {}, zones: [], extra: [{ name: '集会場', points: [[12300, 9500], [12900, 9500], [12900, 9900], [12300, 9900]] }] } },
+    getYardTabData: { updated: 'x', error: null, sheetUrl: 'x', totals: s.yardtab_totals_(locs), locations: locs, site: { overrides: { 'shape:0': { dx: 100, dy: 0, rotation: 5, sx: 1.2, sy: 0.8 } }, zones: [], extra: [{ name: '集会場', points: [[12300, 9500], [12900, 9500], [12900, 9900], [12300, 9900]] }] } },
     getYardDailyTotals: { error: null, days: [] }, getYardChangeLog: { error: null, rows: [] },
     getProdLots: { error: null, lots: [], totals: {}, inYard: [
       { id: 'L20261028-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-28', state: '受検済', pre: 'HXP', from: '10001', to: '10200', n: 200, left: 200, counted: true },
@@ -89,6 +89,12 @@ const locs = recs.map(s.yardtab_shape_);
   console.log('■ 後から足した建物（集会場）');
   chk('★サーバ：シート「敷地図の建物」の行を建物に（名前なし・形の壊れた行は飛ばす）', JSON.stringify(s.yardtab_extraFrom_([['集会場', '[[1,2],[3,4],[5,6]]'], ['', '[[1,2],[3,4],[5,6]]'], ['倉庫', 'x']])) === JSON.stringify([{ name: '集会場', points: [[1, 2], [3, 4], [5, 6]] }]));
   chk('★敷地図に集会場の建物を描く（名前つき）', await page.locator('[data-extra="集会場"] polygon').count() === 1 && /集会場/.test(await page.locator('[data-extra="集会場"] text').textContent()));
+
+  console.log('■ 今ある建物の手直し（シート「敷地図の建物の手直し」）');
+  chk('★サーバ：手直しの行を読む（IDの無い行は飛ばす・空は既定）', JSON.stringify(s.yardtab_ovFrom_([['shape:3', '大型製缶工場', 100, '', 5, 1.2, ''], ['x', '', 1, 1, 1, 1, 1]])) === JSON.stringify({ 'shape:3': { dx: 100, dy: 0, rotation: 5, sx: 1.2, sy: 1 } }));
+  chk('★サーバ：元アプリの手直し（scale）をシートの行に写す', JSON.stringify(s.yardtab_ovRowsFromProps_({ 'rect:1': { dx: 10, dy: 20, rotation: 3, scale: 1.5 }, 'zone:9': { dx: 1 } }).map((r) => r.slice(0, 7))) === JSON.stringify([['rect:1', '', 10, 20, 3, 1.5, 1.5]]));
+  chk('シートのほうを優先', s.yardtab_mergeOverrides_({ a: 1, b: 2 }, { b: 3 }).b === 3);
+  chk('★敷地図：横と縦の大きさを別々に効かせる', await page.evaluate(() => [...document.querySelectorAll('g[transform]')].some((g) => /rotate\(5\) scale\(1\.2,0\.8\)/.test(g.getAttribute('transform')))));
 
   console.log('■ ピンを押すと中身');
   await page.locator('[data-pin="7"]').dispatchEvent('click');

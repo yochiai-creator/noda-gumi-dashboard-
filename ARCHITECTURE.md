@@ -557,6 +557,11 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
   もともと無かった。足りない建物は置場容量のスプレッドシートのシート「敷地図の建物」（名前・角の座標 JSON・更新日時）に入れ、
   `getYardTabData` の `site.extra`（`yardtab_extraBuildings_`）で返して、敷地図に建屋と同じ形で描く。
   「野外置場 ピン合わせ」ページの「建物を足す」で、名前を入れてエリアと同じ操作で描ける。
+- **今ある建屋の手直し**（2026/11/01 落合さん「今の建物動かせないといけない」）：位置・向き・大きさの手直しは元アプリが
+  スクリプトプロパティに持っていた（ページから読み書きできない）。シート「敷地図の建物の手直し」（ID〔rect:i / shape:i〕・名前・
+  横ずらし・縦ずらし・回転・横の大きさ・縦の大きさ）に持たせ、`getYardTabData` でスクリプトプロパティの上に重ねる（シート優先。
+  `yardtab_sheetOverrides_`）。シートが見出しだけのときは、今あるスクリプトプロパティの手直しを1回だけシートに写す。
+  `siteTransform_` は横縦の大きさ（`sx`/`sy`）も効かせる。ページの「建物を直す・足す」で建物を押すと、エリアと同じ取っ手で直せる。
   ピンの位置は Claude の「野外置場 ピン合わせ」ページ（Google Sheets 接続で地図X/Yを書く）でも直せる。
   建屋の位置・向きの手直し（`yardGetBuildingOverrides`）と囲みのエリア（`yardGetAreaZones`）も `getYardTabData` で返す。
   ピンを押すと本数、「本数を直す」で一覧のその置場をひらく。ドラッグ・2本指・＋－で拡大。

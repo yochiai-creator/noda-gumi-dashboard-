@@ -50,6 +50,8 @@ function getYardTabData() {
          手直しと、囲みのエリアも一緒に返す。どちらもスクリプトプロパティなので軽い。 */
     data.site = { overrides: {}, zones: [] };
     try { data.site.overrides = yardGetBuildingOverrides() || {}; } catch (e2) { /* 無くても描ける */ }
+    // 建屋の手直しは、シート「敷地図の建物の手直し」のほうを優先（ピン合わせページで直せる。2026/11/01）
+    try { data.site.overrides = yardtab_mergeOverrides_(data.site.overrides, yardtab_sheetOverrides_(data.site.overrides)); } catch (e5) { /* 無くても描ける */ }
     try { data.site.zones = yardGetAreaZones() || []; } catch (e3) { /* 無くても描ける */ }
     // 後から足した建物（集会場など。2026/11/01）。シート「敷地図の建物」
     data.site.extra = [];
@@ -292,5 +294,47 @@ function yardtab_extraFrom_(values) {
     var pts = yardtab_area_(r[1]);
     if (name && pts) out.push({ name: name, points: pts });
   });
+  return out;
+}
+
+/* ★ 2026/11/01 落合さん「今の建物動かせないといけない」：建屋の位置・向き・大きさの手直しは、元アプリが
+     スクリプトプロパティに持っていた（ピン合わせページからは読み書きできない）。シート「敷地図の建物の手直し」
+     （ID・名前・横ずらし・縦ずらし・回転・横の大きさ・縦の大きさ）に持たせ、こちらを優先する。
+     シートが見出しだけのときは、今あるスクリプトプロパティの手直しを1回だけ写す（ページで続きから直せるように）。 */
+var YARDTAB_OV_SHEET = '敷地図の建物の手直し';
+var YARDTAB_OV_HEAD = ['ID', '名前', '横ずらし', '縦ずらし', '回転', '横の大きさ', '縦の大きさ', '更新日時'];
+function yardtab_sheetOverrides_(propOv) {
+  var sh = yardGetSpreadsheet_().getSheetByName(YARDTAB_OV_SHEET);
+  if (!sh) return {};
+  if (sh.getLastRow() < 2) {
+    var rows = yardtab_ovRowsFromProps_(propOv);
+    if (rows.length) sh.getRange(2, 1, rows.length, YARDTAB_OV_HEAD.length).setValues(rows);
+    return {};
+  }
+  return yardtab_ovFrom_(sh.getRange(2, 1, sh.getLastRow() - 1, 7).getValues());
+}
+/* スクリプトプロパティの手直し → シートの行（純関数）。建屋（rect: / shape:）だけ */
+function yardtab_ovRowsFromProps_(ov) {
+  var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+  return Object.keys(ov || {}).filter(function (k) { return /^(rect|shape):\d+$/.test(k); }).map(function (k) {
+    var o = ov[k] || {}, sc = Number(o.scale) || 1;
+    return [k, '', Number(o.dx) || 0, Number(o.dy) || 0, Number(o.rotation) || 0, sc, sc, now];
+  });
+}
+/* シートの行 → { id: {dx, dy, rotation, sx, sy} }（純関数） */
+function yardtab_ovFrom_(values) {
+  var out = {};
+  (values || []).forEach(function (r) {
+    var id = String(r[0] == null ? '' : r[0]).trim();
+    if (!/^(rect|shape):\d+$/.test(id)) return;
+    var n = function (v, d) { var x = Number(v); return v === '' || v == null || isNaN(x) ? d : x; };
+    out[id] = { dx: n(r[2], 0), dy: n(r[3], 0), rotation: n(r[4], 0), sx: n(r[5], 1), sy: n(r[6], 1) };
+  });
+  return out;
+}
+function yardtab_mergeOverrides_(base, over) {
+  var out = {};
+  Object.keys(base || {}).forEach(function (k) { out[k] = base[k]; });
+  Object.keys(over || {}).forEach(function (k) { out[k] = over[k]; });
   return out;
 }
