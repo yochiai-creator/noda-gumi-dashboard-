@@ -341,6 +341,58 @@ function stockInLot(id, locationNo) {
   }
 }
 
+// ===== 公開関数：置場に置く（受検の前でも） =====
+/**
+ * ★ 2026/11/01〜 重量転記アプリで量った容器は、ロットが自動で（置場なしの未受検で）できる。
+ *   現場は置場を選ぶだけ。選んだ時点でその置場の本数に足す（登録のときに置場を選んだのと同じ）。
+ *   もう置場があるロットなら、前の置場から引いて新しい置場に足す（置き場所を変えた）。
+ *   入庫済・出荷済・取消は、ここでは動かさない（入庫済の置き場所は在庫の動きの「移動」で）。
+ */
+function placeProdLot(id, locationNo) {
+  try {
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var found = lot_findRow_(id);
+      if (!found) return { ok: false, error: 'ロット「' + id + '」が見つかりません' };
+      var lot = found.lot;
+      if (lot.状態 !== '未受検' && lot.状態 !== '受検済') {
+        return { ok: false, error: '未受検・受検済のロットだけ置けます（今は「' + lot.状態 + '」）' };
+      }
+      var loc = lot_findLocation_(String(locationNo || '').trim());
+      if (!loc) return { ok: false, error: '置場を選んでください' };
+      var prev = String(lot.置場番号 || '').trim();
+      if (prev === String(loc.no)) return { ok: true, error: null, 置場: loc.name, 本数: 0, 在庫に反映: false };
+      var qty = lot.本数 - (lot.置場から引いた本数 == null ? lot.出荷済本数 : lot.置場から引いた本数);
+      if (prev) {
+        var back = lot_yardMove_(prev, lot.サイズ, -qty);
+        if (back.error) return { ok: false, error: back.error };
+      }
+      var fwd = lot_yardMove_(loc.no, lot.サイズ, qty);
+      if (fwd.error) {
+        if (prev) lot_yardMove_(prev, lot.サイズ, qty);
+        return { ok: false, error: fwd.error };
+      }
+      if (fwd.反映 && typeof wstock_logFromLot_ === 'function') {
+        wstock_logFromLot_(prev ? '移動' : '入庫', lot, prev ? lot_findLocation_(prev) : null, loc, qty,
+          'ロット ' + id + (prev ? ' の置き場所を変えた' : ' を置いた') + '（生産の流れ）');
+      }
+      var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+      lot_writeRow_(found.rowNo, function (row, H) {
+        row[H['置場番号']] = loc.no;
+        row[H['置場名']] = loc.name;
+        row[H['更新日時']] = now;
+      });
+      return { ok: true, error: null, 置場: loc.name, 本数: qty, 在庫に反映: fwd.反映 };
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    Logger.log('置場に置くでエラー: ' + String(err));
+    return { ok: false, error: String(err) };
+  }
+}
+
 // ===== 公開関数：打ち間違えたロットを取り消す =====
 /**
  * ★ なぜ要るのか

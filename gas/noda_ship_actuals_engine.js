@@ -316,6 +316,15 @@ function harvestDailyData() {
     Logger.log('機種マスタの取込で例外: ' + String(err));
   }
 
+  /* 重量転記アプリで量った容器から、日ごとの生産数と自動ロットを作る（2026/11/01）。
+     ★ ロットの照合より先にやる。できたロットをすぐ照合にかけられるように。 */
+  try {
+    out.weightLog = syncWeightLog();
+  } catch (err) {
+    out.weightLog = { error: String(err) };
+    Logger.log('重量転記アプリの取込で例外: ' + String(err));
+  }
+
   /* 生産ロットを指図書と突き合わせて、出た分を置場から引く。
      ★ 置場の日次記録より先にやる。後にすると、引く前の数字を推移に残してしまう。 */
   try {

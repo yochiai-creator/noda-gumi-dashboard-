@@ -381,13 +381,34 @@ const LOT_TONE = {
    ★ 置場の話と並べる意味
      「今日どれだけ作るか」が分かると、置場に入る余地があるかをその場で判断できる。
      置場の本数だけ見ていても、今日の入荷ぶんは読めない。 */
-function ProdPlanCard({ plan }) {
+/* 計画の工場名・サイズ → 実績のサイズ（50k工場 → 50kg）。当てられなければ '' */
+function planSizeOf_(name) { const m = String(name || "").match(/(20|30|50)/); return m ? m[1] + "kg" : ""; }
+/* 実績を計画と並べる1行（2026/11/01 落合さん「重量転記アプリのログで生産数がわかる」） */
+function ActualLine({ n, plan }) {
+  if (n == null) return null;
+  const rate = plan > 0 ? n / plan : null;
+  return (
+    <span data-actual="1" className="block text-[11px] tabular-nums font-semibold" style={{ color: rate != null && rate >= 1 ? "#15803d" : VIZ.ink }}>
+      実績 {vizComma(n)}本{rate != null ? "（" + Math.round(rate * 100) + "%）" : ""}
+    </span>
+  );
+}
+
+function ProdPlanCard({ plan, actual }) {
   if (!plan) return <p className="text-xs text-slate-500 py-2">読み込み中…</p>;
   if (plan.error) return <p className="text-xs text-amber-700 py-2">{plan.error}</p>;
   const d = plan.daily || {};
   const m = plan.monthly || {};
   const 工場 = d.工場 || [];
   const 月行 = m.行 || [];
+  /* 実績は重量転記アプリで量った本数（1時間おきに取り込む）。今日のぶんの計画を出しているときだけ並べる */
+  const act = actual && !actual.error ? actual : null;
+  const todayAct = (size) => (act && d.今日 && size ? ((act.today && act.today[size]) || 0) : null);
+  const monthAct = (size) => {
+    if (!act || !size || !m.月) return null;
+    const mm = (act.months || []).find((x) => x.月 === m.月);
+    return mm ? (mm[size] || 0) : 0;
+  };
 
   return (
     <div>
@@ -434,6 +455,7 @@ function ProdPlanCard({ plan }) {
               <span className="block text-[10px] tabular-nums" style={{ color: VIZ.muted }}>
                 社員{p.社員} 協力{p.協力}
               </span>
+              <ActualLine n={todayAct(planSizeOf_(p.工場))} plan={p.計画数} />
             </span>
           ))}
         </div>
@@ -469,6 +491,7 @@ function ProdPlanCard({ plan }) {
               <span className="block text-[15px] font-bold tabular-nums" style={{ color: NAVY }}>
                 {vizComma(x.月計)}<span className="text-[10px] font-normal"> 本</span>
               </span>
+              <ActualLine n={monthAct(planSizeOf_(x.サイズ))} plan={x.月計} />
             </span>
           ))}
           <span className="px-2 py-1 rounded-md" style={{ background: "#e2e8f0" }}>
@@ -480,6 +503,12 @@ function ProdPlanCard({ plan }) {
         </div>
       )}
 
+      {act && (
+        <span className="block text-[10px] mt-2" style={{ color: VIZ.ink2 }}>
+          実績は重量転記アプリで量った本数（欠番・底黒は数えない）{act.syncedAt ? "。" + act.syncedAt.slice(5).replace("-", "/") + " 取込" : ""}
+          {act.today && act.today.その他 > 0 ? "。ほかに置場の無いサイズ " + vizComma(act.today.その他) + "本" : ""}
+        </span>
+      )}
       <span className="block text-[10px] mt-2" style={{ color: VIZ.muted }}>
         {d.fileName ? "当日：" + d.fileName : ""}
         {m.fileName ? "　当月：" + m.fileName : ""}
@@ -498,7 +527,8 @@ function ProdPlanCard({ plan }) {
   );
 }
 
-function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, saving }) {
+const LOT_AUTO_WHO = "（自動：重量転記）";
+function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, onPlace, saving }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(null);
   const [pickFor, setPickFor] = useState(null);   // 入庫先を選んでいるロット
@@ -550,10 +580,15 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
         ))}
       </div>
 
+      {/* ★ 2026/11/01〜 重量転記アプリで量った容器は、1時間おきに自動でロットになる（未受検・置場なし）。
+             現場は「置場に置く」で置場を選ぶだけ。手で登録するのは、重量転記を通らないものだけ。 */}
+      <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>
+        重量転記アプリで量った容器は、1時間おきに自動でロットになります。置場を選ぶだけで置場の本数に入ります。
+      </span>
       {!adding ? (
         <button onClick={openAdd}
           className="px-3 py-1.5 rounded-md text-xs font-semibold text-white mb-2"
-          style={{ background: NAVY }}>＋ 当日の生産を登録</button>
+          style={{ background: NAVY }}>＋ 手で登録（重量転記を通らないもの）</button>
       ) : (
         <div className="rounded-md border border-slate-200 bg-slate-50 p-2 mb-2">
           <span className="flex flex-wrap items-center gap-2 mb-1.5">
@@ -669,6 +704,9 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
                       （{vizComma(l.出荷済本数)}本 出荷済）
                     </span>
                   )}
+                  {l.登録者 === LOT_AUTO_WHO && (
+                    <span data-lot-auto="1" className="text-[10px] px-1 rounded shrink-0" style={{ background: "#e0f2fe", color: "#0369a1" }}>重量転記から</span>
+                  )}
                   <span className="text-[10px] ml-auto shrink-0" style={{ color: VIZ.muted }}>{l.生産日}</span>
                 </span>
                 {l.機種名 && (
@@ -683,7 +721,28 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
                   {l.出荷日 ? "　" + l.出荷日 + " 出荷" : ""}
                 </span>
 
-                {l.状態 === "未受検" && (
+                {/* ★ 置場の無い未受検のロット（重量転記から自動でできたもの）。置場を選ぶと、すぐ置場の本数に足す */}
+                {l.状態 === "未受検" && !l.置場番号 && onPlace && (
+                  pickFor === "place:" + l.ロットID ? (
+                    <span className="block mt-1">
+                      <span className="block text-[10px] mb-1" style={{ color: VIZ.ink2 }}>どの置場に置きましたか</span>
+                      <span className="flex flex-wrap gap-1">
+                        {locations.map((loc) => (
+                          <button key={loc.no} disabled={saving} data-place-lot={loc.no}
+                            onClick={() => onPlace(l.ロットID, loc.no, () => setPickFor(null))}
+                            className="px-2 py-1 rounded-md text-[11px] bg-slate-100" style={{ color: VIZ.ink2 }}>
+                            {loc.no} {loc.name}
+                          </button>
+                        ))}
+                        <button onClick={() => setPickFor(null)} className="px-2 py-1 rounded-md text-[11px] bg-slate-200" style={{ color: VIZ.ink2 }}>やめる</button>
+                      </span>
+                    </span>
+                  ) : (
+                    <button data-lot-place={l.ロットID} onClick={() => setPickFor("place:" + l.ロットID)}
+                      className="mt-1 mr-2 px-3 py-1 rounded-md text-[11px] font-semibold text-white" style={{ background: "#b45309" }}>置場に置く</button>
+                  )
+                )}
+                {l.状態 === "未受検" && pickFor !== "place:" + l.ロットID && (
                   <button disabled={saving} onClick={() => onInspect(l.ロットID)}
                     className="mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white"
                     style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>受検OK</button>
@@ -3248,7 +3307,70 @@ function DispatchGrid({ grid, onSave, onWeek, saving }) {
 }
 
 /* ---------- 実績・推移タブ本体 ---------- */
-function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
+/* ---------- 生産の推移（重量転記アプリで量った本数。2026/11/01） ----------
+   ★ 日ごとの積み上げ棒（50kg・20kg・その他）。棒を押すとその日の内訳。
+     縦軸は0から（本数の大きさを比べるので、在庫の推移と違って0から始める）。 */
+const PROD_SERIES = [["50kg", VIZ.s1], ["20kg", VIZ.s2], ["30kg", "#0f766e"], ["その他", "#94a3b8"]];
+function ProductionChart({ days }) {
+  const [pick, setPick] = useState(null);
+  const list = (days || []).slice(-31);
+  if (list.length === 0) return null;
+  const series = PROD_SERIES.filter(([k]) => list.some((d) => (d[k] || 0) > 0));
+  const W = 360, H = 170, L = 34, R = 6, T = 10, B = 22;
+  const max = Math.max(...list.map((d) => d.合計), 1);
+  const step = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.ceil(max / step) * step;
+  const ticks = [0, top / 2, top];
+  const bw = (W - L - R) / list.length;
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const sel = pick != null ? list[pick] : list[list.length - 1];
+  const md = (s) => Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10));
+  return (
+    <div data-prod-chart="1">
+      <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", height: "auto", display: "block" }}>
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke={VIZ.grid} strokeWidth="1" />
+            <text x={L - 4} y={y(t)} textAnchor="end" dominantBaseline="central" fontSize="9" fill={VIZ.muted}>{vizComma(t)}</text>
+          </g>
+        ))}
+        {list.map((d, i) => {
+          let acc = 0;
+          const x = L + i * bw + Math.max(1, bw * 0.15), w = Math.max(2, bw * 0.7);
+          const on = sel === d;
+          return (
+            <g key={d.日付} onClick={() => setPick(i)} style={{ cursor: "pointer" }}>
+              <rect x={L + i * bw} y={T} width={bw} height={H - T - B} fill="transparent" />
+              {series.map(([k, c]) => {
+                const v = d[k] || 0; if (!v) return null;
+                const y0 = y(acc), y1 = y(acc + v); acc += v;
+                return <rect key={k} x={x} y={y1} width={w} height={Math.max(0, y0 - y1 - 1)} fill={c} opacity={on || pick == null ? 1 : 0.55} />;
+              })}
+              {(i === 0 || i === list.length - 1 || d.日付.slice(8) === "01" || on) && (
+                <text x={x + w / 2} y={H - B + 12} textAnchor="middle" fontSize="9" fill={on ? VIZ.ink : VIZ.muted} fontWeight={on ? 700 : 400}>{md(d.日付)}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-[11px]" style={{ color: VIZ.ink2 }}>
+        {series.map(([k, c]) => (
+          <span key={k} className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm" style={{ background: c }} />{k}</span>
+        ))}
+      </div>
+      {sel && (
+        <div data-prod-pick="1" className="mt-2 rounded-md px-3 py-2 text-[12px] tabular-nums" style={{ background: "#f1f5f9", color: VIZ.ink }}>
+          <span className="font-bold">{md(sel.日付)}　{vizComma(sel.合計)}本</span>
+          <span className="block text-[11px]" style={{ color: VIZ.ink2 }}>
+            {Object.keys(sel.区分 || {}).map((k) => k + " " + vizComma(sel.区分[k])).join("・")}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActualsTab({ invTrend, monthly, armMonthly, onRefresh, prodActual }) {
   const inv = invTrend, mc = monthly;
 
   /* ★ グラフは縦に長いので、見出しをタップして畳めるようにする。
@@ -3278,8 +3400,47 @@ function ActualsTab({ invTrend, monthly, armMonthly, onRefresh }) {
 
   const mcMonths = mc && mc.months ? mc.months : null;
 
+  const pa = prodActual;
+  const paMonths = pa && pa.months ? pa.months.slice(-6) : [];
+
   return (
     <div className="nd-tab">
+      {/* ---- 生産の推移（重量転記アプリで量った本数。2026/11/01） ---- */}
+      <Card title="生産の推移" note="重量転記アプリで量った本数（日ごと・直近31日）"
+        closedNote={pa && pa.today ? "今日 " + vizComma(pa.today.合計) + "本" : ""}>
+        {!pa ? (
+          <div className="text-xs text-slate-400 py-4 text-center">読み込み中…</div>
+        ) : pa.error ? (
+          <div className="text-xs text-amber-700 py-2" style={{ wordBreak: "break-all" }}>取得エラー：{pa.error}</div>
+        ) : (pa.days || []).length === 0 ? (
+          <div className="text-xs text-slate-500 py-2">まだ取り込んでいません。1時間おきに重量転記アプリから取り込みます。</div>
+        ) : (
+          <div>
+            <ProductionChart days={pa.days} />
+            <div className="mt-3 rounded-md border border-slate-200 overflow-hidden" data-prod-months="1">
+              <div className="flex text-[11px] font-semibold text-slate-500 bg-slate-50 px-2.5 py-2">
+                <span className="w-16">月</span>
+                <span className="flex-1 text-right">50kg</span>
+                <span className="flex-1 text-right">20kg</span>
+                <span className="flex-1 text-right">合計</span>
+              </div>
+              {paMonths.slice().reverse().map((m) => (
+                <div key={m.月} className="flex text-[13px] tabular-nums px-2.5 py-2 border-t border-slate-100">
+                  <span className="w-16 text-slate-600">{Number(m.月.slice(5, 7))}月<span className="text-[10px] text-slate-400"> {m.日数}日</span></span>
+                  <span className="flex-1 text-right">{vizComma(m["50kg"] || 0)}</span>
+                  <span className="flex-1 text-right">{vizComma(m["20kg"] || 0)}</span>
+                  <span className="flex-1 text-right font-bold" style={{ color: NAVY }}>{vizComma(m.合計)}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] mt-1" style={{ color: VIZ.muted }}>
+              欠番・訂正・ダブり・底黒（再搬入）は数えません。同じ容器を量り直したときは最初の日に1本。
+              {pa.days[0] ? " 記録は " + pa.days[0].日付 + " から。" : ""}
+            </p>
+          </div>
+        )}
+      </Card>
+
       {/* ---- 在庫・出荷・受注をまとめて（月次） ----
            ★「元データ」のリンクは落合さんの指示で外した（別タブが開くのが邪魔）。
              スプレッドシートのURLはサーバ側が今も返しているので、必要になれば
@@ -3982,7 +4143,7 @@ function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCa
 }
 
 function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSave, onRefresh,
-                          onAddLot, onInspectLot, onStockInLot, onCancelLot, plan, saving,
+                          onAddLot, onInspectLot, onStockInLot, onCancelLot, onPlaceLot, plan, prodActual, saving,
                           staff, worker, onWorker, moves, onMove, onCancelMove, moveSaving, moveMsg }) {
   const [keyword, setKeyword] = useState("");
   const [onlyNearFull, setOnlyNearFull] = useState(false);
@@ -4099,7 +4260,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
             ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済)
             : ""}>
           <ProdLotCard data={lotData} types={types} locations={list} onAdd={onAddLot}
-            onInspect={onInspectLot} onStockIn={onStockInLot} onCancel={onCancelLot}
+            onInspect={onInspectLot} onStockIn={onStockInLot} onCancel={onCancelLot} onPlace={onPlaceLot}
             saving={saving} />
         </Collapsible>
       </Card>
@@ -4301,7 +4462,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
           note="当日は処理（最終工程）の本数。置場に入ってくるぶん"
           closedNote={plan && plan.daily && plan.daily.合計
             ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""}>
-          <ProdPlanCard plan={plan} />
+          <ProdPlanCard plan={plan} actual={prodActual} />
         </Collapsible>
       </Card>
 
@@ -4900,7 +5061,7 @@ export default function App() {
     if (!isGasEnv) return;
     // ★ いつ取ったかと、まだ返ってきていない本数（前回のデータを出したまま裏で取り直すため）
     setYardTabAt(Date.now());
-    setYardTabPending(8);
+    setYardTabPending(9);
     const done1 = () => setYardTabPending((n) => Math.max(0, n - 1));
     /* ★ 1本でも呼べなかったら（関数が無いなど）、その1本だけエラーにする。
          裏で先に取っておく読み込みが、画面全体を止めてはいけない。 */
@@ -4918,6 +5079,8 @@ export default function App() {
     one("lots", (r) => r.getProdLots("", 60));
     one("cTypes", (r) => r.getContainerTypes());
     one("plan", (r) => r.getProdPlanData(false));
+    // 生産の実績（重量転記アプリで量った本数。計画と並べる）
+    one("prodActual", (r) => r.getProdActuals(62));
     // 在庫の動き（作業記録）と、記録する人の名前
     one("stockMoves", (r) => r.getStockMoves({}));
     one("workStaff", (r) => r.getWorkStaff());
@@ -4949,11 +5112,24 @@ export default function App() {
     開始: form.開始, 終了: form.終了, 備考: form.備考 }), done);
   const inspectLot = (id) => runLotAction((run) => run.markLotInspected(id));
   const stockInLot = (id, no, done) => runLotAction((run) => run.stockInLot(id, no), done);
+  const placeLot = (id, no, done) => runLotAction((run) => run.placeProdLot(id, no), done);
   const cancelLot = (id, done) => runLotAction((run) => run.cancelProdLot(id, "画面から取消"), done);
 
   /* 本数を直して保存する。
      ★ 保存できたらサーバから取り直す。画面だけ書き換えると、本当は保存
        できていないのに直ったように見える状態を作ってしまう（配車表と同じ考え）。 */
+  // 実績・推移タブを開いたら、生産の実績（重量転記アプリ）を取る。野外置場タブで取っていればそれを使う
+  useEffect(() => {
+    if (tab !== "actuals" || !isGasEnv || (live.prodActual && !live.prodActual.error)) return;
+    // ★ 呼べなくても（関数が無い・古い版など）画面全体を止めない。このカードだけエラーにする
+    try {
+      google.script.run
+        .withSuccessHandler((d) => setLive((prev) => ({ ...prev, prodActual: d })))
+        .withFailureHandler((e) => setLive((prev) => ({ ...prev, prodActual: { error: String(e) } })))
+        .getProdActuals(62);
+    } catch (e) { setLive((prev) => ({ ...prev, prodActual: { error: String(e) } })); }
+  }, [tab]);
+
   const saveYardCount = (no, updates, done) => {
     if (!isGasEnv) return;
     setYardSaving(true);
@@ -5379,7 +5555,7 @@ export default function App() {
 
           {tab === "orders" && <OrdersTab orders={shippingOrders} total={shippingTotal} today={shippingToday} planBySize={planBySize} planRecent={planRecent} monthLabel={shippingMonthLabel} />}
           {tab === "yard" && <YardTab inventory={inventory} invTotal={invTotal} byYear={invByYear} oldest={invOldest} yardLive={yardLive} onRefresh={() => fetchLiveData(true)} bySize={invBySize} />}
-          {tab === "actuals" && <ActualsTab invTrend={live.invTrend} monthly={live.monthly} armMonthly={live.armMonthly} onRefresh={() => fetchLiveData(true)} />}
+          {tab === "actuals" && <ActualsTab invTrend={live.invTrend} monthly={live.monthly} armMonthly={live.armMonthly} prodActual={live.prodActual} onRefresh={() => fetchLiveData(true)} />}
           {tab === "dispatch" && <DispatchTab
             grid={live.dispGrid} onSaveCell={saveDispatchCell} onWeek={changeGridWeek} saving={gridSaving} />}
           {tab === "arm" && <ArmTab plan={live.armPlan} />}
@@ -5400,7 +5576,7 @@ export default function App() {
             url={live.yardCapUrl}
             onSave={saveYardCount} onRefresh={fetchYardTab}
             onAddLot={addLot} onInspectLot={inspectLot} onStockInLot={stockInLot}
-            onCancelLot={cancelLot} plan={live.plan}
+            onCancelLot={cancelLot} onPlaceLot={placeLot} plan={live.plan} prodActual={live.prodActual}
             saving={yardSaving}
             staff={live.workStaff} worker={worker} onWorker={chooseWorker}
             moves={live.stockMoves} onMove={moveUi} onCancelMove={cancelMoveUi} moveSaving={moveSaving} moveMsg={moveMsg} />}

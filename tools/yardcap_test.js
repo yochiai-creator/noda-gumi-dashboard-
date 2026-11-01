@@ -300,7 +300,7 @@ const REPLY = {
   chk('★置場を選べる', picks.length >= 3 && picks.some((p) => /大型製缶/.test(p)), picks);
 
   // 登録フォーム：番号を入れると本数が出る
-  await page.locator('button', { hasText: '＋ 当日の生産を登録' }).first().click();
+  await page.locator('button', { hasText: '＋ 手で登録' }).first().click();
   await page.waitForTimeout(300);
   // ★ 機種はマスタから選ぶ（手打ちさせない）
   const sel = await page.evaluate(() => {
