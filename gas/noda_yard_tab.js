@@ -51,6 +51,9 @@ function getYardTabData() {
     data.site = { overrides: {}, zones: [] };
     try { data.site.overrides = yardGetBuildingOverrides() || {}; } catch (e2) { /* 無くても描ける */ }
     try { data.site.zones = yardGetAreaZones() || []; } catch (e3) { /* 無くても描ける */ }
+    // 後から足した建物（集会場など。2026/11/01）。シート「敷地図の建物」
+    data.site.extra = [];
+    try { data.site.extra = yardtab_extraBuildings_(); } catch (e4) { /* 無くても描ける */ }
   } catch (err) {
     data.error = String(err);
     Logger.log('野外置場の一覧でエラー: ' + String(err));
@@ -270,4 +273,24 @@ function 野外置場の今日ぶんを記録する() {
   Logger.log(r.error ? ('エラー: ' + r.error)
     : (r.date + ' 合計 ' + r.合計 + '本を記録しました' + (r.上書き ? '（上書き）' : '')));
   return r;
+}
+
+/* ★ 2026/11/01 落合さん「集会場がマップから消えてる」：元の敷地図（元アプリから写した SITE_MAP）に
+     集会場の建物が無かった。足りない建物は、置場容量のスプレッドシートのシート「敷地図の建物」
+     （名前・角の座標 JSON）に足し、敷地図に建屋と同じ形で描く。「野外置場 ピン合わせ」ページで描ける。 */
+var YARDTAB_EXTRA_SHEET = '敷地図の建物';
+function yardtab_extraBuildings_() {
+  var sh = yardGetSpreadsheet_().getSheetByName(YARDTAB_EXTRA_SHEET);
+  if (!sh || sh.getLastRow() < 2) return [];
+  return yardtab_extraFrom_(sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues());
+}
+/* 行 → [{ name, points }]（純関数）。名前が無い・角が読めない行は飛ばす */
+function yardtab_extraFrom_(values) {
+  var out = [];
+  (values || []).forEach(function (r) {
+    var name = String(r[0] == null ? '' : r[0]).trim();
+    var pts = yardtab_area_(r[1]);
+    if (name && pts) out.push({ name: name, points: pts });
+  });
+  return out;
 }

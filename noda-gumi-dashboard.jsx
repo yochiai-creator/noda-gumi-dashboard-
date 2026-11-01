@@ -3711,6 +3711,7 @@ function SiteMap({ locations, site, onOpen, inYard, moves, onMoveFrom, onPlace }
 
   const overrides = (site && site.overrides) || {};
   const zones = (site && site.zones) || [];
+  const extra = (site && site.extra) || [];
   /* ★ 2026/11/01 落合さん「エリア囲んでわかりやすくしたい」：置場容量シートの「エリア」（角の座標）が
        あれば、ピンの代わりに置場を囲んで混み具合の色で塗り、真ん中に番号を出す。無ければ今までどおりピン。 */
   const placed = [], unplaced = [], areas = [];
@@ -3831,6 +3832,20 @@ function SiteMap({ locations, site, onOpen, inYard, moves, onMoveFrom, onPlace }
             const st = SITE_BLDG_STYLE[siteBldgKind_(b.name)];
             return (
               <g key={"s" + i} transform={siteTransform_(cx, cy, overrides["shape:" + i])}>
+                <polygon points={b.points.map((p) => p.join(",")).join(" ")} fill={st.fill} stroke={st.stroke} strokeWidth="22" />
+                <text x={cx} y={cy} dominantBaseline="central" textAnchor="middle" fill="#4b5563" fontWeight="600"
+                  fontSize={siteLabelSize_(x1 - x0, y1 - y0, b.name, tall)} transform={tall ? "rotate(-90 " + cx + " " + cy + ")" : undefined}>{b.name}</text>
+              </g>
+            );
+          })}
+          {/* 後から足した建物（シート「敷地図の建物」。集会場など） */}
+          {extra.map((b, i) => {
+            const xs = b.points.map((p) => p[0]), ys = b.points.map((p) => p[1]);
+            const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+            const cx = b.points.reduce((a, p) => a + p[0], 0) / b.points.length, cy = b.points.reduce((a, p) => a + p[1], 0) / b.points.length;
+            const tall = (y1 - y0) > (x1 - x0) * 1.3, st = SITE_BLDG_STYLE[siteBldgKind_(b.name)];
+            return (
+              <g key={"x" + i} data-extra={b.name}>
                 <polygon points={b.points.map((p) => p.join(",")).join(" ")} fill={st.fill} stroke={st.stroke} strokeWidth="22" />
                 <text x={cx} y={cy} dominantBaseline="central" textAnchor="middle" fill="#4b5563" fontWeight="600"
                   fontSize={siteLabelSize_(x1 - x0, y1 - y0, b.name, tall)} transform={tall ? "rotate(-90 " + cx + " " + cy + ")" : undefined}>{b.name}</text>

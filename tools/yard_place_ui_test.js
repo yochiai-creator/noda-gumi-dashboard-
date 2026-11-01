@@ -26,7 +26,7 @@ const locs = recs.map(s.yardtab_shape_);
 (async () => {
   const data = {}; Object.keys(REPLY).forEach((k) => { data[k] = REPLY[k](); });
   Object.assign(data, {
-    getYardTabData: { updated: 'x', error: null, sheetUrl: 'x', totals: s.yardtab_totals_(locs), locations: locs, site: { overrides: {}, zones: [] } },
+    getYardTabData: { updated: 'x', error: null, sheetUrl: 'x', totals: s.yardtab_totals_(locs), locations: locs, site: { overrides: {}, zones: [], extra: [{ name: '集会場', points: [[12300, 9500], [12900, 9500], [12900, 9900], [12300, 9900]] }] } },
     getYardDailyTotals: { error: null, days: [] }, getYardChangeLog: { error: null, rows: [] },
     getProdLots: { error: null, lots: [], totals: {}, inYard: [
       { id: 'L20261028-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-28', state: '受検済', pre: 'HXP', from: '10001', to: '10200', n: 200, left: 200, counted: true },
@@ -85,6 +85,10 @@ const locs = recs.map(s.yardtab_shape_);
   chk('★囲みを押すと中身が出る', /12 事務所/.test(await page.evaluate(() => { const d = document.querySelector('[data-place-detail]'); return d ? d.innerText : ''; })));
   await page.locator('[data-area="12"]').dispatchEvent('click');
   await page.waitForTimeout(200);
+
+  console.log('■ 後から足した建物（集会場）');
+  chk('★サーバ：シート「敷地図の建物」の行を建物に（名前なし・形の壊れた行は飛ばす）', JSON.stringify(s.yardtab_extraFrom_([['集会場', '[[1,2],[3,4],[5,6]]'], ['', '[[1,2],[3,4],[5,6]]'], ['倉庫', 'x']])) === JSON.stringify([{ name: '集会場', points: [[1, 2], [3, 4], [5, 6]] }]));
+  chk('★敷地図に集会場の建物を描く（名前つき）', await page.locator('[data-extra="集会場"] polygon').count() === 1 && /集会場/.test(await page.locator('[data-extra="集会場"] text').textContent()));
 
   console.log('■ ピンを押すと中身');
   await page.locator('[data-pin="7"]').dispatchEvent('click');
