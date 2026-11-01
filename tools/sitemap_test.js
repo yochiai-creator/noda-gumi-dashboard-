@@ -76,7 +76,7 @@ console.log('■ サーバ：地図の位置と建屋の手直しも返す');
   chk('★2 水処理（収容数なし）は灰色', fillOf('2') === '#9aa2af', fillOf('2'));
   chk('7 大型製缶（0/2400）は余裕の色', fillOf('7') === '#2f9e58');
   const t = await page.evaluate(() => document.body.innerText);
-  const unplacedText = t.slice(t.indexOf('地図に位置が無い置場'), t.indexOf('ピンの位置は'));
+  const unplacedText = t.slice(t.indexOf('地図に位置が無い置場'), t.indexOf('押してから地図'));
   chk('★位置の無い置場を書く（14 資材倉庫）', /地図に位置が無い置場/.test(t) && /14 資材倉庫/.test(unplacedText), unplacedText);
   chk('★紙の配置図から写した置場は「位置が無い」に出ない（1 駐車場・21 風呂場跡）', !/\b1 駐車場/.test(unplacedText) && !/21 風呂場跡/.test(unplacedText), unplacedText);
   chk('凡例に数（満杯に近い 2）', /満杯に近い（80%〜） 2/.test(t), t.slice(t.indexOf('満杯（'), t.indexOf('満杯（') + 80));
@@ -87,7 +87,7 @@ console.log('■ サーバ：地図の位置と建屋の手直しも返す');
   let t2 = await page.evaluate(() => document.body.innerText);
   chk('★ピンを押すとその置場の本数が出る', /12 事務所/.test(t2) && /1,600/.test(t2) && /84%/.test(t2), t2.slice(t2.indexOf('12 事務所'), t2.indexOf('12 事務所') + 80));
   // 本数を直す → 一覧でその置場をひらく
-  await page.locator('button', { hasText: '本数を直す' }).first().click();
+  await page.locator('[data-place-act="edit"]').click();   // 置場の中身の「本数を直す」（上の飛び先ボタンと同じ名前なので目印で押す）
   await page.waitForTimeout(400);
   const kw = await page.evaluate(() => { const i = [...document.querySelectorAll('input')].find((x) => /置場名/.test(x.placeholder || '')); return i && i.value; });
   chk('★「本数を直す」で一覧をその置場にしぼってひらく', kw === '12', kw);

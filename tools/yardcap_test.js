@@ -239,7 +239,8 @@ const REPLY = {
   /* ---- 生産の流れ ---- */
   const flow = await page.evaluate(() => {
     const t = document.body.innerText.replace(/\n/g, ' | ');
-    const btns = [...document.querySelectorAll('main button')].map((b) => b.textContent.trim());
+    // 生産の流れのカードの中だけ（2026/11/01〜 上に敷地図・在庫の動きが来たので、ページ全体だと混ざる）
+    const btns = [...document.querySelectorAll('[data-card="lots"] button')].map((b) => b.textContent.trim());
     return { t, btns };
   });
   console.log('   生産の流れ:', JSON.stringify(flow.t.slice(flow.t.indexOf('生産の流れ'),
@@ -303,7 +304,7 @@ const REPLY = {
   await page.waitForTimeout(300);
   // ★ 機種はマスタから選ぶ（手打ちさせない）
   const sel = await page.evaluate(() => {
-    const s2 = document.querySelector('main select');
+    const s2 = document.querySelector('[data-card="lots"] select');
     if (!s2) return null;
     return { 件数: s2.options.length, 先頭: s2.options[0].textContent,
       値: [...s2.options].map((o) => o.value) };
@@ -326,12 +327,12 @@ const REPLY = {
   chk('分類と品名が出る', sel && /５０Ｋ ＬＰＧ容器｜新軽量/.test(sel.先頭), sel);
 
   // ★ 置場の列が無い機種を選ぶと、その場で伝える（入庫してから気づくのは遅い）
-  await page.selectOption('main select', '113');
+  await page.selectOption('[data-card="lots"] select', '113');
   await page.waitForTimeout(300);
   chk('★置場に足せない機種はその場で伝える',
     await page.evaluate(() => /置場の在庫数には足しません/.test(document.body.innerText)),
     await page.evaluate(() => document.body.innerText.slice(0, 300)));
-  await page.selectOption('main select', '123');
+  await page.selectOption('[data-card="lots"] select', '123');
   await page.waitForTimeout(200);
 
   // 欄はプレースホルダで選ぶ（並び順で選ぶと、置場を選ぶ欄が開いた分だけずれる）

@@ -519,5 +519,29 @@ console.log('■ 入込場マップに入ったら、置場から自動で引く
   chk('★始める前に生産したロットは入込場に当てない（試しのロットを引かない）', r.引いた本数 === 0 && s.__locs[0].a20 === 600, r);
 }
 
+console.log('■ 置場の中身（置場に残っているロット）');
+{
+  const withOut = (r, n) => { r[H.indexOf('置場から引いた本数')] = n; return r; };
+  const s = build([
+    lotRow({ id: 'L2', 生産日: '2026-10-29', a: '201', b: '300', 本数: 100, 状態: '入庫済', 置場番号: 7, 置場名: '大型製缶' }),
+    lotRow({ id: 'L1', 生産日: '2026-10-28', a: '1', b: '200', 本数: 200, 状態: '受検済', 置場番号: 7, 置場名: '大型製缶' }),
+    withOut(lotRow({ id: 'L3', 生産日: '2026-10-28', a: '301', b: '400', 本数: 100, 状態: '入庫済', 置場番号: 7, 置場名: '大型製缶' }), 40),
+    lotRow({ id: 'L4', a: '401', b: '500', 本数: 100, 状態: '出荷済', 出荷済: 100, 置場番号: 7, 置場名: '大型製缶' }),
+    lotRow({ id: 'L5', a: '501', b: '600', 本数: 100, 状態: '取消', 置場番号: 7, 置場名: '大型製缶' }),
+    lotRow({ id: 'L6', a: '601', b: '700', 本数: 100, 状態: '受検済' }),
+    lotRow({ id: 'L7', サイズ: '', a: '701', b: '710', 本数: 10, 状態: '受検済', 置場番号: 12, 置場名: '事務所' }),
+  ], [loc({})], []);
+  const g = s.getProdLots('', 1);
+  const iy = g.inYard || [];
+  const ids = iy.map((x) => x.id);
+  chk('★件数で切らない（一覧は1件でも、置場の中身は全部）', g.lots.length === 1 && iy.length === 4, ids);
+  chk('★古い順（生産日→ロットID）', JSON.stringify(ids) === JSON.stringify(['L7', 'L1', 'L3', 'L2']), ids);
+  chk('★残り＝本数−置場から引いた本数（L3は100−40＝60）', iy.find((x) => x.id === 'L3').left === 60);
+  chk('★出し切った・取消・置場なしは出さない', ids.indexOf('L4') < 0 && ids.indexOf('L5') < 0 && ids.indexOf('L6') < 0);
+  const l1 = iy.find((x) => x.id === 'L1');
+  chk('容器番号・置場番号・状態を持つ', l1.pre === 'HEP' && l1.from === '1' && l1.to === '200' && l1.no === '7' && l1.state === '受検済' && l1.counted === true, l1);
+  chk('★置場の本数に入らないサイズは counted:false', iy.find((x) => x.id === 'L7').counted === false);
+}
+
 console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');
 process.exit(fail ? 1 : 0);

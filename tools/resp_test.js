@@ -112,7 +112,8 @@ const chk = (n, c, e) => { if (c) { pass++; console.log('  OK   ' + n); }
     const { ctx, page } = await openAt(1366, 860);
     chk('★中身を広く（1100px以上）', await mainWidth(page) >= 1100, await mainWidth(page));
     await tab(page, '野外置場');
-    chk('★生産計画と生産の流れを横に並べる', await sameRow(page, '生産計画', '生産の流れ') === true);
+    // 2026/11/01〜 野外置場は 敷地図（横いっぱい）→ 在庫の動き・生産の流れ → 置場の一覧・生産計画 の並び
+    chk('★在庫の動きと生産の流れを横に並べる', await sameRow(page, '在庫の動き', '生産の流れ') === true);
     chk('KPIは1行', await kpiRows(page) === 1);
     await tab(page, '受注・指図書');
     chk('★受注出荷計画表と指図書を横に並べる', await sameRow(page, '受注出荷計画表 概要', '出荷作業指図書 最新') === true);

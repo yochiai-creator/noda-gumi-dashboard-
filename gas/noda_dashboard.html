@@ -881,9 +881,12 @@ function Chip({
 function Card({
   children,
   className = "",
-  style
+  style,
+  "data-card": dataCard
 }) {
+  // data-card は「カードへ飛ぶ」の目印（野外置場タブ）。広げる書き方（{...rest}）はこのビルドで使えない
   return /*#__PURE__*/React.createElement("div", {
+    "data-card": dataCard,
     className: `bg-white rounded-xl border border-slate-200 shadow-sm ${className}`,
     style: style
   }, children);
@@ -899,9 +902,14 @@ function Collapsible({
   closedNote,
   tone,
   defaultOpen,
+  openSignal,
   children
 }) {
   const [open, setOpen] = useState(defaultOpen !== false);
+  // 外から開かせる（敷地図の「ここから移動」で、たたんであった在庫の動きを開く）
+  useEffect(() => {
+    if (openSignal) setOpen(true);
+  }, [openSignal]);
   const isCard = tone === "card";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
     onClick: () => setOpen(!open),
@@ -6864,11 +6872,21 @@ function siteTransform_(cx, cy, o) {
    ★ 今までは「敷地レイアウト図を開く」で元の屋外在庫管理アプリを別に開いていた。
      同じ図（建屋・池・敷地の線）をダッシュボードの中に描き、置場ごとのピンを
      混み具合の色で出す。ピンを押すとその置場の本数が下に出る。
-     建屋の位置の手直し・ピンの置き直しは今までどおり元アプリで（ここは見るだけ）。 */
+     建屋の位置の手直しは今までどおり元アプリで。
+   ★ 2026/11/01 落合さん「野外置場の所をもっとちゃんと」：
+     ・ピンを押すと置場の中身（ロットの容器番号・番号なしの本数・この1週間の動き）が出て、
+       そこから「ここから移動」「入込場へ持ち出し」「本数を直す」ができる。
+     ・ピンの位置もここで直せる（「ピンの位置を直す」→地図を押す）。地図X/Yに保存する。
+       位置の保存は変更履歴に残さない（元アプリのドラッグと同じ）。
+     ・拡大すると、ピンの下に今ある本数を出す。 */
 function SiteMap({
   locations,
   site,
-  onOpen
+  onOpen,
+  inYard,
+  moves,
+  onMoveFrom,
+  onPlace
 }) {
   const VB = {
     x: -300,
@@ -6877,6 +6895,7 @@ function SiteMap({
     h: 12700
   };
   const [sel, setSel] = useState(null);
+  const [placing, setPlacing] = useState(null); // ピンを置き直している置場の番号
   const [zoom, setZoom] = useState({
     x: VB.x,
     y: VB.y,
@@ -7015,6 +7034,15 @@ function SiteMap({
     const s = Math.max(zoom.s, 3);
     setZoom(clamp(p.x - VB.w / s / 2, p.y - VB.h / s / 2, s));
   };
+  // ピンの置き直し中に地図を押したら、そこを新しい位置にする
+  const onMapClick = e => {
+    if (placing == null || !onPlace || !svgRef.current) return;
+    const p = toVb(e.clientX, e.clientY, zoom);
+    onPlace(placing, Math.round(p.x), Math.round(p.y));
+    setSel(placing);
+    setPlacing(null);
+  };
+  const placingRec = placing != null ? (locations || []).find(r => String(r.no) === String(placing)) : null;
   const selRec = sel != null ? (locations || []).find(r => String(r.no) === String(sel)) : null;
   const counts = {
     over: 0,
@@ -7025,7 +7053,17 @@ function SiteMap({
   (locations || []).forEach(r => {
     counts[siteLevel_(r)]++;
   });
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement("div", null, placingRec && /*#__PURE__*/React.createElement("div", {
+    "data-placing": "1",
+    className: "flex items-center gap-2 mb-2 px-3 py-2 rounded-md text-[12px] font-semibold",
+    style: {
+      background: "#fef3c7",
+      color: "#b45309"
+    }
+  }, "\u300C", placingRec.no, " ", placingRec.name, "\u300D\u306E\u5834\u6240\u3092\u5730\u56F3\u3067\u62BC\u3057\u3066\u304F\u3060\u3055\u3044\uFF08\u62E1\u5927\u3057\u3066\u304B\u3089\u62BC\u3059\u3068\u6B63\u78BA\u3067\u3059\uFF09", /*#__PURE__*/React.createElement("button", {
+    onClick: () => setPlacing(null),
+    className: "ml-auto px-2 py-0.5 rounded bg-white text-slate-600 text-[11px]"
+  }, "\u3084\u3081\u308B")), /*#__PURE__*/React.createElement("div", {
     style: {
       borderRadius: 8,
       overflow: "hidden",
@@ -7041,11 +7079,13 @@ function SiteMap({
     ref: svgRef,
     viewBox: vbOf(zoom),
     preserveAspectRatio: "xMidYMid meet",
+    onClick: onMapClick,
     style: {
       width: "100%",
       height: "auto",
       display: "block",
-      background: "#dbead2"
+      background: "#dbead2",
+      cursor: placing != null ? "crosshair" : undefined
     }
   }, /*#__PURE__*/React.createElement("rect", {
     x: VB.x,
@@ -7167,9 +7207,13 @@ function SiteMap({
     const lv = SITE_LEVEL[siteLevel_(r)],
       on = String(sel) === String(r.no);
     const cy = pos.y - pinR * 1.5;
+    const total = (r.a20 || 0) + (r.a30 || 0) + (r.a50 || 0);
     return /*#__PURE__*/React.createElement("g", {
       key: "m" + r.no,
-      onClick: () => setSel(on ? null : r.no),
+      "data-pin": r.no,
+      onClick: () => {
+        if (placing == null) setSel(on ? null : r.no);
+      },
       style: {
         cursor: "pointer"
       }
@@ -7197,7 +7241,17 @@ function SiteMap({
       fill: "#fff",
       fontWeight: "700",
       fontSize: pinR * (String(r.no).length > 1 ? 0.95 : 1.15)
-    }, r.no));
+    }, r.no), zoom.s >= 2.5 && /*#__PURE__*/React.createElement("text", {
+      x: pos.x,
+      y: pos.y + pinR * 0.9,
+      textAnchor: "middle",
+      fill: "#0f172a",
+      fontWeight: "700",
+      stroke: "#fff",
+      strokeWidth: pinR * 0.18,
+      paintOrder: "stroke",
+      fontSize: pinR * 0.8
+    }, vizComma(total), "\u672C"));
   }))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 mt-2"
   }, /*#__PURE__*/React.createElement("button", {
@@ -7217,7 +7271,7 @@ function SiteMap({
     className: "px-2 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100"
   }, "\u5168\u4F53\u306B\u623B\u3059"), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400 ml-auto"
-  }, "\u30D4\u30F3\u3092\u62BC\u3059\u3068\u672C\u6570\u30022\u672C\u6307\u3067\u62E1\u5927")), /*#__PURE__*/React.createElement("div", {
+  }, "\u30D4\u30F3\u3092\u62BC\u3059\u3068\u4E2D\u8EAB\u30022\u672C\u6307\u3067\u62E1\u5927")), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-600"
   }, Object.keys(SITE_LEVEL).map(k => /*#__PURE__*/React.createElement("span", {
     key: k,
@@ -7228,51 +7282,30 @@ function SiteMap({
       background: SITE_LEVEL[k].fill
     }
   }), SITE_LEVEL[k].label, " ", counts[k]))), selRec && /*#__PURE__*/React.createElement("div", {
-    className: "mt-2 rounded-lg border border-slate-200 bg-white p-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm font-bold text-slate-900"
-  }, selRec.no, " ", selRec.name), /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] text-slate-500"
-  }, selRec.position), /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] font-semibold ml-auto",
-    style: {
-      color: SITE_LEVEL[siteLevel_(selRec)].fill
-    }
-  }, selRec.状態 || SITE_LEVEL[siteLevel_(selRec)].label)), (selRec.sizes || []).map(s => /*#__PURE__*/React.createElement("div", {
-    key: s.key,
-    className: "flex items-center gap-2 mt-1 text-xs tabular-nums"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "w-10 text-slate-500"
-  }, s.label), /*#__PURE__*/React.createElement("span", {
-    className: "font-semibold text-slate-800"
-  }, s.実績.toLocaleString()), /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-400"
-  }, "/ ", s.max > 0 ? s.max.toLocaleString() : "—"), /*#__PURE__*/React.createElement("span", {
-    className: "ml-auto text-slate-600"
-  }, s.率 != null ? Math.round(s.率 * 100) + "%" : "—"))), selRec.note && /*#__PURE__*/React.createElement("div", {
-    className: "text-[11px] text-slate-500 mt-1"
-  }, selRec.note), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 mt-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => onOpen && onOpen(selRec),
-    className: "px-3 py-1 rounded-md text-xs font-semibold text-white",
-    style: {
-      background: NAVY
-    }
-  }, "\u672C\u6570\u3092\u76F4\u3059"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setSel(null),
-    className: "px-3 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100"
-  }, "\u9589\u3058\u308B"))), unplaced.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "mt-2"
+  }, /*#__PURE__*/React.createElement(YardPlaceDetail, {
+    loc: selRec,
+    inYard: inYard,
+    moves: moves,
+    onMoveFrom: onMoveFrom,
+    onEdit: onOpen,
+    onPlacePin: onPlace ? r => {
+      setPlacing(r.no);
+    } : null,
+    onClose: () => setSel(null)
+  })), unplaced.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "mt-2 text-[11px] text-slate-500"
   }, "\u5730\u56F3\u306B\u4F4D\u7F6E\u304C\u7121\u3044\u7F6E\u5834\uFF1A", unplaced.map(r => /*#__PURE__*/React.createElement("button", {
     key: "n" + r.no,
-    onClick: () => onOpen && onOpen(r),
+    "data-unplaced": r.no,
+    onClick: () => {
+      setSel(r.no);
+      if (onPlace) setPlacing(r.no);
+    },
     className: "ml-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700"
   }, r.no, " ", r.name)), /*#__PURE__*/React.createElement("span", {
     className: "block text-[10px] text-slate-400 mt-0.5"
-  }, "\u30D4\u30F3\u306E\u4F4D\u7F6E\u306F\u300C\u6577\u5730\u30EC\u30A4\u30A2\u30A6\u30C8\u56F3\u3092\u958B\u304F\u300D\uFF08\u5143\u306E\u30A2\u30D7\u30EA\uFF09\u306E\u914D\u7F6E\u7DE8\u96C6\u3067\u7F6E\u3051\u307E\u3059")));
+  }, "\u62BC\u3057\u3066\u304B\u3089\u5730\u56F3\u306E\u4E0A\u306E\u5834\u6240\u3092\u62BC\u3059\u3068\u3001\u30D4\u30F3\u3092\u7F6E\u3051\u307E\u3059")));
 }
 
 /* ---------- 在庫の動き（移動・入込場への持ち出し・廃棄） ----------
@@ -7288,6 +7321,199 @@ const MOVE_TONE = {
   持ち出し: ["#fef3c7", "#b45309"],
   廃棄: ["#fee2e2", "#b91c1c"]
 };
+
+/* ---------- 置場の中身（2026/11/01 落合さん「野外置場の所をもっとちゃんと作りたい」） ----------
+   ★ 置場を押したら「何が何本あるか」を出す。ロットで置いたもの（容器番号が分かる）と、
+     ロットに無いもの（前からある在庫など。番号は分からない）を分けて出す。
+     番号なし＝置場の本数−その置場に残っているロットの残り。マイナスになったら、
+     置場の本数かロットのどちらかがずれているので、数え直しを促す。 */
+const PLACE_SIZES = [["20kg", "a20", "m20"], ["30kg", "a30", "m30"], ["50kg", "a50", "m50"]];
+function yardPlaceContents_(loc, inYard) {
+  const lots = (inYard || []).filter(x => String(x.no) === String(loc.no));
+  const sizes = PLACE_SIZES.map(([sz, ak, mk]) => {
+    const inLots = lots.filter(x => x.size === sz).reduce((s, x) => s + (x.left || 0), 0);
+    const have = loc[ak] || 0;
+    return {
+      size: sz,
+      have,
+      max: loc[mk] || 0,
+      inLots,
+      other: have - inLots
+    };
+  }).filter(s => s.have > 0 || s.inLots > 0 || s.max > 0);
+  return {
+    lots,
+    sizes
+  };
+}
+/* 作業記録の「元・先」は「7 大型製缶」の形。頭の番号で置場を当てる */
+function placeNoOf_(text) {
+  return String(text || "").trim().split(/\s+/)[0];
+}
+function yardPlaceMoves_(no, moves) {
+  return (moves && moves.rows || []).filter(r => placeNoOf_(r.from) === String(no) || placeNoOf_(r.to) === String(no));
+}
+const LOT_STATE_TONE = {
+  未受検: ["#fef3c7", "#b45309"],
+  受検済: ["#e0f2fe", "#0369a1"],
+  入庫済: ["#dcfce7", "#15803d"],
+  出荷済: ["#e2e8f0", "#475569"]
+};
+function YardPlaceDetail({
+  loc,
+  inYard,
+  moves,
+  onMoveFrom,
+  onEdit,
+  onPlacePin,
+  onClose
+}) {
+  const c = yardPlaceContents_(loc, inYard);
+  const recent = yardPlaceMoves_(loc.no, moves).slice(0, 5);
+  const lv = SITE_LEVEL[siteLevel_(loc)];
+  const canOut = (loc.a20 || 0) > 0 || (loc.a50 || 0) > 0;
+  const canMove = (loc.a20 || 0) + (loc.a30 || 0) + (loc.a50 || 0) > 0;
+  const md = s => {
+    s = String(s || "");
+    return s.length >= 10 ? Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10)) : s;
+  };
+  const btn = "px-3 py-1.5 rounded-md text-xs font-semibold";
+  return /*#__PURE__*/React.createElement("div", {
+    "data-place-detail": loc.no,
+    className: "rounded-lg border border-slate-200 bg-white p-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-baseline gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-bold",
+    style: {
+      color: VIZ.ink
+    }
+  }, loc.no, " ", loc.name), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] text-slate-500"
+  }, loc.position), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] font-semibold ml-auto",
+    style: {
+      color: lv.fill
+    }
+  }, loc.状態 || lv.label)), c.sizes.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500 mt-1"
+  }, "\u672C\u6570\u3082\u53CE\u5BB9\u6570\u3082\u5165\u3063\u3066\u3044\u307E\u305B\u3093\u3002"), c.sizes.map(s => {
+    const rate = s.max > 0 ? s.have / s.max : null;
+    return /*#__PURE__*/React.createElement("div", {
+      key: s.size,
+      className: "mt-1.5"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 text-xs tabular-nums"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "w-10 text-slate-500"
+    }, s.size), /*#__PURE__*/React.createElement("span", {
+      className: "font-bold",
+      style: {
+        color: VIZ.ink
+      }
+    }, vizComma(s.have), "\u672C"), /*#__PURE__*/React.createElement("span", {
+      className: "text-slate-400"
+    }, "/ ", s.max > 0 ? vizComma(s.max) : "—"), /*#__PURE__*/React.createElement("span", {
+      className: "flex-1 h-1.5 rounded-full",
+      style: {
+        background: "#e2e8f0"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "block h-1.5 rounded-full",
+      style: {
+        width: Math.min(100, Math.round((rate || 0) * 100)) + "%",
+        background: (rate || 0) >= 1 ? "#dc2626" : (rate || 0) >= 0.8 ? "#f59e0b" : VIZ.s1
+      }
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "w-9 text-right text-slate-500"
+    }, rate == null ? "—" : Math.round(rate * 100) + "%")), /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px]",
+      style: {
+        color: VIZ.ink2,
+        paddingLeft: 48
+      }
+    }, "\u30ED\u30C3\u30C8 ", vizComma(s.inLots), "\u672C", s.other >= 0 ? "・番号なし（前からの在庫など） " + vizComma(s.other) + "本" : /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#b45309"
+      }
+    }, "\u3000\u203B\u30ED\u30C3\u30C8\u306E\u6B8B\u308A\u304C\u7F6E\u5834\u306E\u672C\u6570\u3088\u308A ", vizComma(-s.other), "\u672C \u591A\u3044\uFF08\u3069\u3061\u3089\u304B\u304C\u305A\u308C\u3066\u3044\u307E\u3059\uFF09")));
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 pt-2 border-t border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] font-semibold mb-1",
+    style: {
+      color: NAVY
+    }
+  }, "\u3053\u3053\u306B\u3042\u308B\u30ED\u30C3\u30C8\uFF08\u53E4\u3044\u9806\uFF09"), c.lots.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-[11px] text-slate-500"
+  }, "\u751F\u7523\u306E\u6D41\u308C\u3067\u7F6E\u3044\u305F\u30ED\u30C3\u30C8\u306F\u3042\u308A\u307E\u305B\u3093\u3002"), c.lots.map(x => /*#__PURE__*/React.createElement("div", {
+    key: x.id,
+    "data-place-lot": "1",
+    className: "flex items-baseline flex-wrap py-0.5",
+    style: {
+      columnGap: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] tabular-nums font-semibold",
+    style: {
+      color: VIZ.ink
+    }
+  }, x.pre, x.from, "\u301C", x.to), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] tabular-nums",
+    style: {
+      color: VIZ.ink2
+    }
+  }, x.size, " \u6B8B\u308A", vizComma(x.left), x.left !== x.n ? "/" + vizComma(x.n) : "", "\u672C"), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] px-1 rounded",
+    style: {
+      background: (LOT_STATE_TONE[x.state] || LOT_STATE_TONE.出荷済)[0],
+      color: (LOT_STATE_TONE[x.state] || LOT_STATE_TONE.出荷済)[1]
+    }
+  }, x.state), /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] text-slate-500"
+  }, md(x.day), " ", x.name, x.counted ? "" : "（置場の本数には入らないサイズ）")))), recent.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 pt-2 border-t border-slate-100"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] font-semibold mb-1",
+    style: {
+      color: NAVY
+    }
+  }, "\u3053\u306E1\u9031\u9593\u306E\u52D5\u304D"), recent.map(r => /*#__PURE__*/React.createElement("div", {
+    key: r.id,
+    className: "text-[11px] tabular-nums",
+    style: {
+      color: VIZ.ink2,
+      opacity: r.canceled ? 0.5 : 1
+    }
+  }, md(r.at), " ", r.kind, " ", r.size, " ", r.qty, "\u672C\u3000", r.from || "生産", " \u2192 ", r.to, "\u3000", r.name, r.canceled ? "（取消）" : ""))), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mt-3 flex-wrap"
+  }, onMoveFrom && canMove && /*#__PURE__*/React.createElement("button", {
+    "data-place-act": "move",
+    onClick: () => onMoveFrom("移動", loc),
+    className: btn + " text-white",
+    style: {
+      background: NAVY
+    }
+  }, "\u3053\u3053\u304B\u3089\u79FB\u52D5"), onMoveFrom && canOut && /*#__PURE__*/React.createElement("button", {
+    "data-place-act": "out",
+    onClick: () => onMoveFrom("持ち出し", loc),
+    className: btn + " text-white",
+    style: {
+      background: "#b45309"
+    }
+  }, "\u5165\u8FBC\u5834\u3078\u6301\u3061\u51FA\u3057"), onEdit && /*#__PURE__*/React.createElement("button", {
+    "data-place-act": "edit",
+    onClick: () => onEdit(loc),
+    className: btn + " text-slate-700 bg-slate-100"
+  }, "\u672C\u6570\u3092\u76F4\u3059"), onPlacePin && /*#__PURE__*/React.createElement("button", {
+    "data-place-act": "pin",
+    onClick: () => onPlacePin(loc),
+    className: btn + " text-slate-700 bg-slate-100"
+  }, "\u30D4\u30F3\u306E\u4F4D\u7F6E\u3092\u76F4\u3059"), onClose && /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    className: btn + " text-slate-500 bg-slate-100"
+  }, "\u9589\u3058\u308B")));
+}
 function StockMoveCard({
   locations,
   staff,
@@ -7297,7 +7523,8 @@ function StockMoveCard({
   onMove,
   onCancel,
   saving,
-  msg
+  msg,
+  preset
 }) {
   const [kind, setKind] = useState("移動");
   const [size, setSize] = useState("50kg");
@@ -7305,6 +7532,16 @@ function StockMoveCard({
   const [to, setTo] = useState("");
   const [qty, setQty] = useState("");
   const [memo, setMemo] = useState("");
+  // 敷地図・置場の中身の「ここから移動」「入込場へ持ち出し」から、種類・サイズ・元を入れた状態で開く
+  useEffect(() => {
+    if (!preset || !preset.n) return;
+    setKind(preset.kind);
+    setSize(preset.size);
+    setFrom(String(preset.from));
+    setTo("");
+    setQty("");
+    setMemo("");
+  }, [preset && preset.n]);
   const names = (staff && staff.staff || []).map(x => x.名前);
   const knownWorker = worker && names.indexOf(worker) >= 0;
   const key = {
@@ -7579,6 +7816,29 @@ function YardCapacityTab({
   const [draft, setDraft] = useState(null);
   const [editMax, setEditMax] = useState(false); // 収容数（MAX）も直すかどうか
   const [pick, setPick] = useState(null);
+  const [movePreset, setMovePreset] = useState(null);
+
+  // カードへ飛ぶ。たたんであってもその見出しまで出す
+  const jump = k => setTimeout(() => {
+    const el = document.querySelector('[data-card="' + k + '"]');
+    if (el && el.scrollIntoView) el.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  }, 60);
+  /* 敷地図・置場の中身から「ここから移動」「入込場へ持ち出し」。
+     サイズはその置場に一番多くあるもの（持ち出しは入込場がある50kg・20kgだけ） */
+  const moveFrom = (kind, loc) => {
+    const cands = kind === "持ち出し" ? [["50kg", "a50"], ["20kg", "a20"]] : [["50kg", "a50"], ["20kg", "a20"], ["30kg", "a30"]];
+    const best = cands.slice().sort((a, b) => (loc[b[1]] || 0) - (loc[a[1]] || 0))[0];
+    setMovePreset({
+      kind,
+      size: best[0],
+      from: loc.no,
+      n: Date.now()
+    });
+    jump("move");
+  };
   const err = data && data.error || summary && summary.error || null;
   const list = data && data.locations || [];
   const totals = data && data.totals || null;
@@ -7651,16 +7911,67 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-red-700 bg-red-50 rounded-md px-3 py-2"
   }, "\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F\uFF1A", err)), /*#__PURE__*/React.createElement(Card, {
-    className: "p-3"
+    className: "nd-full p-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1.5 flex-wrap",
+    "data-quick": "1"
+  }, [["map", "地図"], ["move", "動かす"], ["lots", "ロット登録"], ["list", "本数を直す"]].map(([k, lab]) => /*#__PURE__*/React.createElement("button", {
+    key: k,
+    "data-jump": k,
+    onClick: () => jump(k),
+    className: "flex-1 px-1 py-2 rounded-md text-xs font-bold",
+    style: {
+      background: "#f1f5f9",
+      color: NAVY,
+      minWidth: 64,
+      whiteSpace: "nowrap"
+    }
+  }, lab)))), list.length > 0 && /*#__PURE__*/React.createElement(Card, {
+    className: "nd-full p-3",
+    "data-card": "map"
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
-    title: "\u751F\u7523\u8A08\u753B",
-    note: "\u5F53\u65E5\u306F\u51E6\u7406\uFF08\u6700\u7D42\u5DE5\u7A0B\uFF09\u306E\u672C\u6570\u3002\u7F6E\u5834\u306B\u5165\u3063\u3066\u304F\u308B\u3076\u3093",
-    closedNote: plan && plan.daily && plan.daily.合計 ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""
-  }, /*#__PURE__*/React.createElement(ProdPlanCard, {
-    plan: plan
+    title: "\u6577\u5730\u56F3",
+    note: "\u30D4\u30F3\u3092\u62BC\u3059\u3068\u4E2D\u8EAB\uFF08\u30ED\u30C3\u30C8\u30FB\u672C\u6570\uFF09\u3068\u3001\u79FB\u52D5\u30FB\u6301\u3061\u51FA\u3057",
+    closedNote: list.length + "か所"
+  }, /*#__PURE__*/React.createElement(SiteMap, {
+    locations: list,
+    site: data && data.site,
+    inYard: lotData && lotData.inYard,
+    moves: moves,
+    onMoveFrom: moveFrom,
+    onPlace: (no, x, y) => onSave(no, {
+      mapX: x,
+      mapY: y
+    }),
+    onOpen: r => {
+      setKeyword(String(r.no));
+      if (openNo !== r.no) openEdit(r);
+      jump("list");
+    }
   }))), /*#__PURE__*/React.createElement(Card, {
-    className: "p-3"
+    className: "p-3",
+    "data-card": "move"
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    tone: "card",
+    title: "\u5728\u5EAB\u306E\u52D5\u304D",
+    openSignal: movePreset && movePreset.n,
+    note: "\u7F6E\u5834\u306E\u79FB\u52D5\u30FB\u5165\u8FBC\u5834\u3078\u306E\u6301\u3061\u51FA\u3057\u3002\u7F6E\u5834\u306E\u672C\u6570\u304C\u52D5\u304D\u3001\u8AB0\u304C\u3044\u3064\u4F55\u672C\u52D5\u304B\u3057\u305F\u304B\u304C\u6B8B\u308A\u307E\u3059\u3002\u751F\u7523\u306E\u6D41\u308C\u3067\u7F6E\u3044\u305F\u30ED\u30C3\u30C8\u306F\u3001\u5165\u8FBC\u5834\u306E\u30DE\u30C3\u30D7\u306B\u5165\u308B\u3068\u81EA\u52D5\u3067\u6301\u3061\u51FA\u3057\u306B\u306A\u308A\u307E\u3059\uFF081\u6642\u9593\u304A\u304D\uFF09\u3002\u624B\u3067\u5165\u308C\u308B\u306E\u306F\u30ED\u30C3\u30C8\u306B\u7121\u3044\u5BB9\u5668\u3060\u3051",
+    closedNote: moves && moves.rows ? "直近7日 " + moves.rows.filter(r => !r.canceled).length + "件" : ""
+  }, /*#__PURE__*/React.createElement(StockMoveCard, {
+    locations: list,
+    staff: staff,
+    worker: worker,
+    onWorker: onWorker,
+    moves: moves,
+    onMove: onMove,
+    onCancel: onCancelMove,
+    saving: moveSaving,
+    msg: moveMsg,
+    preset: movePreset
+  }))), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3",
+    "data-card": "lots"
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u751F\u7523\u306E\u6D41\u308C",
@@ -7676,38 +7987,8 @@ function YardCapacityTab({
     onCancel: onCancelLot,
     saving: saving
   }))), /*#__PURE__*/React.createElement(Card, {
-    className: "p-3"
-  }, /*#__PURE__*/React.createElement(Collapsible, {
-    tone: "card",
-    title: "\u5728\u5EAB\u306E\u52D5\u304D",
-    note: "\u7F6E\u5834\u306E\u79FB\u52D5\u30FB\u5165\u8FBC\u5834\u3078\u306E\u6301\u3061\u51FA\u3057\u3002\u7F6E\u5834\u306E\u672C\u6570\u304C\u52D5\u304D\u3001\u8AB0\u304C\u3044\u3064\u4F55\u672C\u52D5\u304B\u3057\u305F\u304B\u304C\u6B8B\u308A\u307E\u3059\u3002\u751F\u7523\u306E\u6D41\u308C\u3067\u7F6E\u3044\u305F\u30ED\u30C3\u30C8\u306F\u3001\u5165\u8FBC\u5834\u306E\u30DE\u30C3\u30D7\u306B\u5165\u308B\u3068\u81EA\u52D5\u3067\u6301\u3061\u51FA\u3057\u306B\u306A\u308A\u307E\u3059\uFF081\u6642\u9593\u304A\u304D\uFF09\u3002\u624B\u3067\u5165\u308C\u308B\u306E\u306F\u30ED\u30C3\u30C8\u306B\u7121\u3044\u5BB9\u5668\u3060\u3051",
-    closedNote: moves && moves.rows ? "直近7日 " + moves.rows.filter(r => !r.canceled).length + "件" : ""
-  }, /*#__PURE__*/React.createElement(StockMoveCard, {
-    locations: list,
-    staff: staff,
-    worker: worker,
-    onWorker: onWorker,
-    moves: moves,
-    onMove: onMove,
-    onCancel: onCancelMove,
-    saving: moveSaving,
-    msg: moveMsg
-  }))), list.length > 0 && /*#__PURE__*/React.createElement(Card, {
-    className: "nd-full p-3"
-  }, /*#__PURE__*/React.createElement(Collapsible, {
-    tone: "card",
-    title: "\u6577\u5730\u56F3",
-    note: "\u7F6E\u5834\u3054\u3068\u306E\u6DF7\u307F\u5177\u5408",
-    closedNote: list.length + "か所"
-  }, /*#__PURE__*/React.createElement(SiteMap, {
-    locations: list,
-    site: data && data.site,
-    onOpen: r => {
-      setKeyword(String(r.no));
-      if (openNo !== r.no) openEdit(r);
-    }
-  }))), /*#__PURE__*/React.createElement(Card, {
-    className: "p-3"
+    className: "p-3",
+    "data-card": "list"
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u7F6E\u5834\u306E\u4E00\u89A7",
@@ -7954,8 +8235,48 @@ function YardCapacityTab({
       style: {
         color: VIZ.muted
       }
-    }, x.日時, "\u3000", x.内容))));
+    }, x.日時, "\u3000", x.内容)), (() => {
+      const c = yardPlaceContents_(r, lotData && lotData.inYard);
+      return /*#__PURE__*/React.createElement("span", {
+        className: "block mt-2 pt-2 border-t border-slate-200",
+        "data-list-contents": r.no
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "block text-[11px] font-semibold",
+        style: {
+          color: NAVY
+        }
+      }, "\u4E2D\u8EAB\uFF1A", c.sizes.filter(x => x.have > 0 || x.inLots > 0).map(x => x.size + " ロット" + vizComma(x.inLots) + "・番号なし" + vizComma(Math.max(0, x.other))).join("／") || "なし"), c.lots.map(x => /*#__PURE__*/React.createElement("span", {
+        key: x.id,
+        className: "block text-[11px] tabular-nums",
+        style: {
+          color: VIZ.ink2
+        }
+      }, x.pre, x.from, "\u301C", x.to, "\u3000", x.size, " \u6B8B\u308A", vizComma(x.left), "\u672C\u3000", x.state)), /*#__PURE__*/React.createElement("span", {
+        className: "flex gap-2 mt-1.5"
+      }, r.a20 + r.a30 + r.a50 > 0 && /*#__PURE__*/React.createElement("button", {
+        onClick: () => moveFrom("移動", r),
+        className: "px-2 py-1 rounded-md text-[11px] font-semibold text-white",
+        style: {
+          background: NAVY
+        }
+      }, "\u3053\u3053\u304B\u3089\u79FB\u52D5"), r.a20 + r.a50 > 0 && /*#__PURE__*/React.createElement("button", {
+        onClick: () => moveFrom("持ち出し", r),
+        className: "px-2 py-1 rounded-md text-[11px] font-semibold text-white",
+        style: {
+          background: "#b45309"
+        }
+      }, "\u5165\u8FBC\u5834\u3078\u6301\u3061\u51FA\u3057")));
+    })()));
   })))), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement(Collapsible, {
+    tone: "card",
+    title: "\u751F\u7523\u8A08\u753B",
+    note: "\u5F53\u65E5\u306F\u51E6\u7406\uFF08\u6700\u7D42\u5DE5\u7A0B\uFF09\u306E\u672C\u6570\u3002\u7F6E\u5834\u306B\u5165\u3063\u3066\u304F\u308B\u3076\u3093",
+    closedNote: plan && plan.daily && plan.daily.合計 ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""
+  }, /*#__PURE__*/React.createElement(ProdPlanCard, {
+    plan: plan
+  }))), /*#__PURE__*/React.createElement(Card, {
     className: "p-3"
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",

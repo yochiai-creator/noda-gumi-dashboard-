@@ -90,10 +90,37 @@ function getProdLots(state, limit) {
       return a.ロットID < b.ロットID ? 1 : -1;
     });
     out.lots = limit ? rows.slice(0, limit) : rows;
+    // 置場の中身（敷地図・置場の一覧で出す）。件数で切らない（古いロットも置場に残っているため）
+    out.inYard = lot_inYard_(all);
   } catch (err) {
     out.error = String(err);
     Logger.log('生産ロットの取得でエラー: ' + String(err));
   }
+  return out;
+}
+
+/* 置場にまだ残っているロット（純関数）。2026/11/01 落合さん「野外置場の所をもっとちゃんと」：
+   置場を押したら、どのロット（容器番号）が何本残っているかを見せる。
+   ★ 残り＝本数−置場から引いた本数（指図書と入込場マップで引いたぶん）。
+     その列が空の古い行は出荷済本数ぶん引いてあるとみなす（matchProdLotsWithOrders と同じ決まり）。
+   ★ 取消・置場番号なし・残り0は出さない。サイズが置場容量シートに無いもの（2K等）は
+     counted:false（置場の本数には入っていない）を付けて出す。 */
+function lot_inYard_(list) {
+  var out = [];
+  (list || []).forEach(function (r) {
+    if (r.状態 === LOT_CONFIG.CANCELLED || r.置場番号 === '' || r.置場番号 == null) return;
+    var used = r.置場から引いた本数 == null ? r.出荷済本数 : r.置場から引いた本数;
+    var left = r.本数 - (Number(used) || 0);
+    if (left <= 0) return;
+    out.push({ id: r.ロットID, no: String(r.置場番号), size: r.サイズ, name: r.機種名, day: r.生産日,
+               state: r.状態, pre: r.容器接頭辞, from: r.容器No開始, to: r.容器No終了,
+               n: r.本数, left: left, counted: !!LOT_CONFIG.SIZE_KEY[r.サイズ] });
+  });
+  // 古い順（先に出すべきものが上）
+  out.sort(function (a, b) {
+    if (a.day !== b.day) return a.day < b.day ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
   return out;
 }
 

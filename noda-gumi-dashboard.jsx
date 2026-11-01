@@ -153,9 +153,10 @@ function Chip({ tone, children }) {
   );
 }
 
-function Card({ children, className = "", style }) {
+function Card({ children, className = "", style, "data-card": dataCard }) {
+  // data-card は「カードへ飛ぶ」の目印（野外置場タブ）。広げる書き方（{...rest}）はこのビルドで使えない
   return (
-    <div className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`} style={style}>{children}</div>
+    <div data-card={dataCard} className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`} style={style}>{children}</div>
   );
 }
 
@@ -163,8 +164,10 @@ function Card({ children, className = "", style }) {
    ★ 中身は外さずに隠す。外すと中の状態（選んでいた日・開いていた表など）が
      消えて、開き直したときに初期状態に戻ってしまう。
    ★ 畳んでいる間も closedNote を出す。何も見えなくなると畳んだ意味が無い。 */
-function Collapsible({ title, note, closedNote, tone, defaultOpen, children }) {
+function Collapsible({ title, note, closedNote, tone, defaultOpen, openSignal, children }) {
   const [open, setOpen] = useState(defaultOpen !== false);
+  // 外から開かせる（敷地図の「ここから移動」で、たたんであった在庫の動きを開く）
+  useEffect(() => { if (openSignal) setOpen(true); }, [openSignal]);
   const isCard = tone === "card";
   return (
     <div>
@@ -3517,10 +3520,17 @@ function siteTransform_(cx, cy, o) {
    ★ 今までは「敷地レイアウト図を開く」で元の屋外在庫管理アプリを別に開いていた。
      同じ図（建屋・池・敷地の線）をダッシュボードの中に描き、置場ごとのピンを
      混み具合の色で出す。ピンを押すとその置場の本数が下に出る。
-     建屋の位置の手直し・ピンの置き直しは今までどおり元アプリで（ここは見るだけ）。 */
-function SiteMap({ locations, site, onOpen }) {
+     建屋の位置の手直しは今までどおり元アプリで。
+   ★ 2026/11/01 落合さん「野外置場の所をもっとちゃんと」：
+     ・ピンを押すと置場の中身（ロットの容器番号・番号なしの本数・この1週間の動き）が出て、
+       そこから「ここから移動」「入込場へ持ち出し」「本数を直す」ができる。
+     ・ピンの位置もここで直せる（「ピンの位置を直す」→地図を押す）。地図X/Yに保存する。
+       位置の保存は変更履歴に残さない（元アプリのドラッグと同じ）。
+     ・拡大すると、ピンの下に今ある本数を出す。 */
+function SiteMap({ locations, site, onOpen, inYard, moves, onMoveFrom, onPlace }) {
   const VB = { x: -300, y: -300, w: 18400, h: 12700 };
   const [sel, setSel] = useState(null);
+  const [placing, setPlacing] = useState(null);   // ピンを置き直している置場の番号
   const [zoom, setZoom] = useState({ x: VB.x, y: VB.y, s: 1 });
   const [pxW, setPxW] = useState(360);
   const svgRef = React.useRef(null);
@@ -3599,6 +3609,14 @@ function SiteMap({ locations, site, onOpen }) {
   const zoomBy = (k) => setZoom((z) => { const c = { x: z.x + VB.w / z.s / 2, y: z.y + VB.h / z.s / 2 }; const s = z.s * k;
     return clamp(c.x - VB.w / s / 2, c.y - VB.h / s / 2, s); });
   const zoomTo = (p) => { const s = Math.max(zoom.s, 3); setZoom(clamp(p.x - VB.w / s / 2, p.y - VB.h / s / 2, s)); };
+  // ピンの置き直し中に地図を押したら、そこを新しい位置にする
+  const onMapClick = (e) => {
+    if (placing == null || !onPlace || !svgRef.current) return;
+    const p = toVb(e.clientX, e.clientY, zoom);
+    onPlace(placing, Math.round(p.x), Math.round(p.y));
+    setSel(placing); setPlacing(null);
+  };
+  const placingRec = placing != null ? (locations || []).find((r) => String(r.no) === String(placing)) : null;
 
   const selRec = sel != null ? (locations || []).find((r) => String(r.no) === String(sel)) : null;
   const counts = { over: 0, warn: 0, ok: 0, empty: 0 };
@@ -3606,11 +3624,17 @@ function SiteMap({ locations, site, onOpen }) {
 
   return (
     <div>
+      {placingRec && (
+        <div data-placing="1" className="flex items-center gap-2 mb-2 px-3 py-2 rounded-md text-[12px] font-semibold" style={{ background: "#fef3c7", color: "#b45309" }}>
+          「{placingRec.no} {placingRec.name}」の場所を地図で押してください（拡大してから押すと正確です）
+          <button onClick={() => setPlacing(null)} className="ml-auto px-2 py-0.5 rounded bg-white text-slate-600 text-[11px]">やめる</button>
+        </div>
+      )}
       <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", touchAction: zoom.s > 1 ? "none" : "pan-y" }}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
         onClickCapture={onClickCapture}>
-        <svg ref={svgRef} viewBox={vbOf(zoom)} preserveAspectRatio="xMidYMid meet"
-          style={{ width: "100%", height: "auto", display: "block", background: "#dbead2" }}>
+        <svg ref={svgRef} viewBox={vbOf(zoom)} preserveAspectRatio="xMidYMid meet" onClick={onMapClick}
+          style={{ width: "100%", height: "auto", display: "block", background: "#dbead2", cursor: placing != null ? "crosshair" : undefined }}>
           <rect x={VB.x} y={VB.y} width={VB.w} height={VB.h} fill="#dbead2" />
           <polygon points={SITE_MAP.boundary.map((p) => p.join(",")).join(" ")} fill="#eee6c8" stroke="#b1552a" strokeWidth="30" strokeLinejoin="round" />
           <polygon points={SITE_MAP.pond.map((p) => p.join(",")).join(" ")} fill="#a9cbe8" stroke="#6f9dc4" strokeWidth="18" />
@@ -3655,13 +3679,18 @@ function SiteMap({ locations, site, onOpen }) {
           {placed.slice().sort((a, b) => (String(a.r.no) === String(sel) ? 1 : 0) - (String(b.r.no) === String(sel) ? 1 : 0)).map(({ r, pos }) => {
             const lv = SITE_LEVEL[siteLevel_(r)], on = String(sel) === String(r.no);
             const cy = pos.y - pinR * 1.5;
+            const total = (r.a20 || 0) + (r.a30 || 0) + (r.a50 || 0);
             return (
-              <g key={"m" + r.no} onClick={() => setSel(on ? null : r.no)} style={{ cursor: "pointer" }}>
+              <g key={"m" + r.no} data-pin={r.no} onClick={() => { if (placing == null) setSel(on ? null : r.no); }} style={{ cursor: "pointer" }}>
                 <ellipse cx={pos.x} cy={pos.y + 14} rx={pinR * 0.5} ry={pinR * 0.2} fill="rgba(16,24,40,0.28)" />
                 <polygon points={(pos.x - pinR * 0.55) + "," + (cy + pinR * 0.7) + " " + (pos.x + pinR * 0.55) + "," + (cy + pinR * 0.7) + " " + pos.x + "," + pos.y} fill={lv.fill} />
                 <circle cx={pos.x} cy={cy} r={pinR} fill={lv.fill} stroke={on ? "#0f172a" : "#fff"} strokeWidth={on ? pinR * 0.22 : pinR * 0.09} />
                 <text x={pos.x} y={cy} dominantBaseline="central" textAnchor="middle" fill="#fff" fontWeight="700"
                   fontSize={pinR * (String(r.no).length > 1 ? 0.95 : 1.15)}>{r.no}</text>
+                {zoom.s >= 2.5 && (
+                  <text x={pos.x} y={pos.y + pinR * 0.9} textAnchor="middle" fill="#0f172a" fontWeight="700"
+                    stroke="#fff" strokeWidth={pinR * 0.18} paintOrder="stroke" fontSize={pinR * 0.8}>{vizComma(total)}本</text>
+                )}
               </g>
             );
           })}
@@ -3677,7 +3706,7 @@ function SiteMap({ locations, site, onOpen }) {
           <button onClick={() => setZoom({ x: VB.x, y: VB.y, s: 1 })}
             className="px-2 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100">全体に戻す</button>
         )}
-        <span className="text-[10px] text-slate-400 ml-auto">ピンを押すと本数。2本指で拡大</span>
+        <span className="text-[10px] text-slate-400 ml-auto">ピンを押すと中身。2本指で拡大</span>
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-600">
@@ -3690,28 +3719,10 @@ function SiteMap({ locations, site, onOpen }) {
       </div>
 
       {selRec && (
-        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-slate-900">{selRec.no} {selRec.name}</span>
-            <span className="text-[11px] text-slate-500">{selRec.position}</span>
-            <span className="text-[11px] font-semibold ml-auto" style={{ color: SITE_LEVEL[siteLevel_(selRec)].fill }}>
-              {selRec.状態 || SITE_LEVEL[siteLevel_(selRec)].label}
-            </span>
-          </div>
-          {(selRec.sizes || []).map((s) => (
-            <div key={s.key} className="flex items-center gap-2 mt-1 text-xs tabular-nums">
-              <span className="w-10 text-slate-500">{s.label}</span>
-              <span className="font-semibold text-slate-800">{s.実績.toLocaleString()}</span>
-              <span className="text-slate-400">/ {s.max > 0 ? s.max.toLocaleString() : "—"}</span>
-              <span className="ml-auto text-slate-600">{s.率 != null ? Math.round(s.率 * 100) + "%" : "—"}</span>
-            </div>
-          ))}
-          {selRec.note && <div className="text-[11px] text-slate-500 mt-1">{selRec.note}</div>}
-          <div className="flex gap-2 mt-2">
-            <button onClick={() => onOpen && onOpen(selRec)}
-              className="px-3 py-1 rounded-md text-xs font-semibold text-white" style={{ background: NAVY }}>本数を直す</button>
-            <button onClick={() => setSel(null)} className="px-3 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100">閉じる</button>
-          </div>
+        <div className="mt-2">
+          <YardPlaceDetail loc={selRec} inYard={inYard} moves={moves} onMoveFrom={onMoveFrom}
+            onEdit={onOpen} onPlacePin={onPlace ? (r) => { setPlacing(r.no); } : null}
+            onClose={() => setSel(null)} />
         </div>
       )}
 
@@ -3719,10 +3730,10 @@ function SiteMap({ locations, site, onOpen }) {
         <div className="mt-2 text-[11px] text-slate-500">
           地図に位置が無い置場：
           {unplaced.map((r) => (
-            <button key={"n" + r.no} onClick={() => onOpen && onOpen(r)}
+            <button key={"n" + r.no} data-unplaced={r.no} onClick={() => { setSel(r.no); if (onPlace) setPlacing(r.no); }}
               className="ml-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{r.no} {r.name}</button>
           ))}
-          <span className="block text-[10px] text-slate-400 mt-0.5">ピンの位置は「敷地レイアウト図を開く」（元のアプリ）の配置編集で置けます</span>
+          <span className="block text-[10px] text-slate-400 mt-0.5">押してから地図の上の場所を押すと、ピンを置けます</span>
         </div>
       )}
     </div>
@@ -3738,13 +3749,117 @@ const MOVE_KINDS = [["移動", "置場の移動"], ["持ち出し", "入込場�
 const MOVE_SIZES = ["20kg", "30kg", "50kg"];
 const MOVE_TONE = { 入庫: ["#dbeafe", "#1d4ed8"], 移動: ["#ede9fe", "#6d28d9"], 持ち出し: ["#fef3c7", "#b45309"], 廃棄: ["#fee2e2", "#b91c1c"] };
 
-function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCancel, saving, msg }) {
+/* ---------- 置場の中身（2026/11/01 落合さん「野外置場の所をもっとちゃんと作りたい」） ----------
+   ★ 置場を押したら「何が何本あるか」を出す。ロットで置いたもの（容器番号が分かる）と、
+     ロットに無いもの（前からある在庫など。番号は分からない）を分けて出す。
+     番号なし＝置場の本数−その置場に残っているロットの残り。マイナスになったら、
+     置場の本数かロットのどちらかがずれているので、数え直しを促す。 */
+const PLACE_SIZES = [["20kg", "a20", "m20"], ["30kg", "a30", "m30"], ["50kg", "a50", "m50"]];
+function yardPlaceContents_(loc, inYard) {
+  const lots = (inYard || []).filter((x) => String(x.no) === String(loc.no));
+  const sizes = PLACE_SIZES.map(([sz, ak, mk]) => {
+    const inLots = lots.filter((x) => x.size === sz).reduce((s, x) => s + (x.left || 0), 0);
+    const have = loc[ak] || 0;
+    return { size: sz, have, max: loc[mk] || 0, inLots, other: have - inLots };
+  }).filter((s) => s.have > 0 || s.inLots > 0 || s.max > 0);
+  return { lots, sizes };
+}
+/* 作業記録の「元・先」は「7 大型製缶」の形。頭の番号で置場を当てる */
+function placeNoOf_(text) { return String(text || "").trim().split(/\s+/)[0]; }
+function yardPlaceMoves_(no, moves) {
+  return ((moves && moves.rows) || []).filter((r) =>
+    placeNoOf_(r.from) === String(no) || placeNoOf_(r.to) === String(no));
+}
+const LOT_STATE_TONE = { 未受検: ["#fef3c7", "#b45309"], 受検済: ["#e0f2fe", "#0369a1"], 入庫済: ["#dcfce7", "#15803d"], 出荷済: ["#e2e8f0", "#475569"] };
+
+function YardPlaceDetail({ loc, inYard, moves, onMoveFrom, onEdit, onPlacePin, onClose }) {
+  const c = yardPlaceContents_(loc, inYard);
+  const recent = yardPlaceMoves_(loc.no, moves).slice(0, 5);
+  const lv = SITE_LEVEL[siteLevel_(loc)];
+  const canOut = (loc.a20 || 0) > 0 || (loc.a50 || 0) > 0;
+  const canMove = (loc.a20 || 0) + (loc.a30 || 0) + (loc.a50 || 0) > 0;
+  const md = (s) => { s = String(s || ""); return s.length >= 10 ? Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10)) : s; };
+  const btn = "px-3 py-1.5 rounded-md text-xs font-semibold";
+  return (
+    <div data-place-detail={loc.no} className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-sm font-bold" style={{ color: VIZ.ink }}>{loc.no} {loc.name}</span>
+        <span className="text-[11px] text-slate-500">{loc.position}</span>
+        <span className="text-[11px] font-semibold ml-auto" style={{ color: lv.fill }}>{loc.状態 || lv.label}</span>
+      </div>
+
+      {c.sizes.length === 0 && <p className="text-xs text-slate-500 mt-1">本数も収容数も入っていません。</p>}
+      {c.sizes.map((s) => {
+        const rate = s.max > 0 ? s.have / s.max : null;
+        return (
+          <div key={s.size} className="mt-1.5">
+            <div className="flex items-center gap-2 text-xs tabular-nums">
+              <span className="w-10 text-slate-500">{s.size}</span>
+              <span className="font-bold" style={{ color: VIZ.ink }}>{vizComma(s.have)}本</span>
+              <span className="text-slate-400">/ {s.max > 0 ? vizComma(s.max) : "—"}</span>
+              <span className="flex-1 h-1.5 rounded-full" style={{ background: "#e2e8f0" }}>
+                <span className="block h-1.5 rounded-full" style={{ width: Math.min(100, Math.round((rate || 0) * 100)) + "%",
+                  background: (rate || 0) >= 1 ? "#dc2626" : (rate || 0) >= 0.8 ? "#f59e0b" : VIZ.s1 }} />
+              </span>
+              <span className="w-9 text-right text-slate-500">{rate == null ? "—" : Math.round(rate * 100) + "%"}</span>
+            </div>
+            <div className="text-[11px]" style={{ color: VIZ.ink2, paddingLeft: 48 }}>
+              ロット {vizComma(s.inLots)}本
+              {s.other >= 0
+                ? "・番号なし（前からの在庫など） " + vizComma(s.other) + "本"
+                : <span style={{ color: "#b45309" }}>　※ロットの残りが置場の本数より {vizComma(-s.other)}本 多い（どちらかがずれています）</span>}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="mt-2 pt-2 border-t border-slate-100">
+        <div className="text-[11px] font-semibold mb-1" style={{ color: NAVY }}>ここにあるロット（古い順）</div>
+        {c.lots.length === 0 && <p className="text-[11px] text-slate-500">生産の流れで置いたロットはありません。</p>}
+        {c.lots.map((x) => (
+          <div key={x.id} data-place-lot="1" className="flex items-baseline flex-wrap py-0.5" style={{ columnGap: 8 }}>
+            <span className="text-[12px] tabular-nums font-semibold" style={{ color: VIZ.ink }}>{x.pre}{x.from}〜{x.to}</span>
+            <span className="text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>{x.size} 残り{vizComma(x.left)}{x.left !== x.n ? "/" + vizComma(x.n) : ""}本</span>
+            <span className="text-[10px] px-1 rounded" style={{ background: (LOT_STATE_TONE[x.state] || LOT_STATE_TONE.出荷済)[0], color: (LOT_STATE_TONE[x.state] || LOT_STATE_TONE.出荷済)[1] }}>{x.state}</span>
+            <span className="text-[10px] text-slate-500">{md(x.day)} {x.name}{x.counted ? "" : "（置場の本数には入らないサイズ）"}</span>
+          </div>
+        ))}
+      </div>
+
+      {recent.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-slate-100">
+          <div className="text-[11px] font-semibold mb-1" style={{ color: NAVY }}>この1週間の動き</div>
+          {recent.map((r) => (
+            <div key={r.id} className="text-[11px] tabular-nums" style={{ color: VIZ.ink2, opacity: r.canceled ? 0.5 : 1 }}>
+              {md(r.at)} {r.kind} {r.size} {r.qty}本　{r.from || "生産"} → {r.to}　{r.name}{r.canceled ? "（取消）" : ""}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-3 flex-wrap">
+        {onMoveFrom && canMove && <button data-place-act="move" onClick={() => onMoveFrom("移動", loc)} className={btn + " text-white"} style={{ background: NAVY }}>ここから移動</button>}
+        {onMoveFrom && canOut && <button data-place-act="out" onClick={() => onMoveFrom("持ち出し", loc)} className={btn + " text-white"} style={{ background: "#b45309" }}>入込場へ持ち出し</button>}
+        {onEdit && <button data-place-act="edit" onClick={() => onEdit(loc)} className={btn + " text-slate-700 bg-slate-100"}>本数を直す</button>}
+        {onPlacePin && <button data-place-act="pin" onClick={() => onPlacePin(loc)} className={btn + " text-slate-700 bg-slate-100"}>ピンの位置を直す</button>}
+        {onClose && <button onClick={onClose} className={btn + " text-slate-500 bg-slate-100"}>閉じる</button>}
+      </div>
+    </div>
+  );
+}
+
+function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCancel, saving, msg, preset }) {
   const [kind, setKind] = useState("移動");
   const [size, setSize] = useState("50kg");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [qty, setQty] = useState("");
   const [memo, setMemo] = useState("");
+  // 敷地図・置場の中身の「ここから移動」「入込場へ持ち出し」から、種類・サイズ・元を入れた状態で開く
+  useEffect(() => {
+    if (!preset || !preset.n) return;
+    setKind(preset.kind); setSize(preset.size); setFrom(String(preset.from)); setTo(""); setQty(""); setMemo("");
+  }, [preset && preset.n]);
   const names = ((staff && staff.staff) || []).map((x) => x.名前);
   const knownWorker = worker && names.indexOf(worker) >= 0;
   const key = { "20kg": "a20", "30kg": "a30", "50kg": "a50" }[size];
@@ -3876,6 +3991,21 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
   const [draft, setDraft] = useState(null);
   const [editMax, setEditMax] = useState(false);   // 収容数（MAX）も直すかどうか
   const [pick, setPick] = useState(null);
+  const [movePreset, setMovePreset] = useState(null);
+
+  // カードへ飛ぶ。たたんであってもその見出しまで出す
+  const jump = (k) => setTimeout(() => {
+    const el = document.querySelector('[data-card="' + k + '"]');
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 60);
+  /* 敷地図・置場の中身から「ここから移動」「入込場へ持ち出し」。
+     サイズはその置場に一番多くあるもの（持ち出しは入込場がある50kg・20kgだけ） */
+  const moveFrom = (kind, loc) => {
+    const cands = kind === "持ち出し" ? [["50kg", "a50"], ["20kg", "a20"]] : [["50kg", "a50"], ["20kg", "a20"], ["30kg", "a30"]];
+    const best = cands.slice().sort((a, b) => (loc[b[1]] || 0) - (loc[a[1]] || 0))[0];
+    setMovePreset({ kind, size: best[0], from: loc.no, n: Date.now() });
+    jump("move");
+  };
 
   const err = (data && data.error) || (summary && summary.error) || null;
   const list = (data && data.locations) || [];
@@ -3929,18 +4059,40 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
         </Card>
       )}
 
-      {/* ---- 生産の流れ。作った→検査→入庫→出荷 ---- */}
-      {/* ---- 今日と今月どれだけ作るか ---- */}
-      <Card className="p-3">
-        <Collapsible tone="card" title="生産計画"
-          note="当日は処理（最終工程）の本数。置場に入ってくるぶん"
-          closedNote={plan && plan.daily && plan.daily.合計
-            ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""}>
-          <ProdPlanCard plan={plan} />
+      {/* ---- 現場ですぐ使うものへ飛ぶ（2026/11/01 落合さん「現場で使いやすく」）。
+             よく使う順：地図で見る → 動かす → ロットを置く → 一覧で直す ---- */}
+      <Card className="nd-full p-2">
+        <div className="flex gap-1.5 flex-wrap" data-quick="1">
+          {[["map", "地図"], ["move", "動かす"], ["lots", "ロット登録"], ["list", "本数を直す"]].map(([k, lab]) => (
+            <button key={k} data-jump={k} onClick={() => jump(k)}
+              className="flex-1 px-1 py-2 rounded-md text-xs font-bold" style={{ background: "#f1f5f9", color: NAVY, minWidth: 64, whiteSpace: "nowrap" }}>{lab}</button>
+          ))}
+        </div>
+      </Card>
+
+      {/* ---- 敷地図。置場ごとのピンを混み具合の色で ---- */}
+      {list.length > 0 && (
+        <Card className="nd-full p-3" data-card="map">
+          <Collapsible tone="card" title="敷地図" note="ピンを押すと中身（ロット・本数）と、移動・持ち出し"
+            closedNote={list.length + "か所"}>
+            <SiteMap locations={list} site={data && data.site} inYard={lotData && lotData.inYard} moves={moves}
+              onMoveFrom={moveFrom} onPlace={(no, x, y) => onSave(no, { mapX: x, mapY: y })}
+              onOpen={(r) => { setKeyword(String(r.no)); if (openNo !== r.no) openEdit(r); jump("list"); }} />
+          </Collapsible>
+        </Card>
+      )}
+
+      {/* ---- 在庫の動き。移動・入込場への持ち出し・廃棄（作業記録に残す） ---- */}
+      <Card className="p-3" data-card="move">
+        <Collapsible tone="card" title="在庫の動き" openSignal={movePreset && movePreset.n}
+          note="置場の移動・入込場への持ち出し。置場の本数が動き、誰がいつ何本動かしたかが残ります。生産の流れで置いたロットは、入込場のマップに入ると自動で持ち出しになります（1時間おき）。手で入れるのはロットに無い容器だけ"
+          closedNote={moves && moves.rows ? "直近7日 " + moves.rows.filter((r) => !r.canceled).length + "件" : ""}>
+          <StockMoveCard locations={list} staff={staff} worker={worker} onWorker={onWorker}
+            moves={moves} onMove={onMove} onCancel={onCancelMove} saving={moveSaving} msg={moveMsg} preset={movePreset} />
         </Collapsible>
       </Card>
 
-      <Card className="p-3">
+      <Card className="p-3" data-card="lots">
         <Collapsible tone="card" title="生産の流れ"
           note="作った → 受検 → 入庫 → 指図書で自動的に出荷。置場の本数は置いた時点で増えます"
           closedNote={lotData && lotData.totals
@@ -3952,29 +4104,8 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
         </Collapsible>
       </Card>
 
-      {/* ---- 在庫の動き。移動・入込場への持ち出し・廃棄（作業記録に残す） ---- */}
-      <Card className="p-3">
-        <Collapsible tone="card" title="在庫の動き"
-          note="置場の移動・入込場への持ち出し。置場の本数が動き、誰がいつ何本動かしたかが残ります。生産の流れで置いたロットは、入込場のマップに入ると自動で持ち出しになります（1時間おき）。手で入れるのはロットに無い容器だけ"
-          closedNote={moves && moves.rows ? "直近7日 " + moves.rows.filter((r) => !r.canceled).length + "件" : ""}>
-          <StockMoveCard locations={list} staff={staff} worker={worker} onWorker={onWorker}
-            moves={moves} onMove={onMove} onCancel={onCancelMove} saving={moveSaving} msg={moveMsg} />
-        </Collapsible>
-      </Card>
-
-      {/* ---- 敷地図。置場ごとのピンを混み具合の色で ---- */}
-      {list.length > 0 && (
-        <Card className="nd-full p-3">
-          <Collapsible tone="card" title="敷地図" note="置場ごとの混み具合"
-            closedNote={list.length + "か所"}>
-            <SiteMap locations={list} site={data && data.site}
-              onOpen={(r) => { setKeyword(String(r.no)); if (openNo !== r.no) openEdit(r); }} />
-          </Collapsible>
-        </Card>
-      )}
-
       {/* ---- 置場の一覧。ここで本数を直す ---- */}
-      <Card className="p-3">
+      <Card className="p-3" data-card="list">
         <Collapsible tone="card" title="置場の一覧"
           note={totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) : "読み込み中…"}
           closedNote={totals ? totals.置場数 + "か所" : ""}>
@@ -4134,6 +4265,26 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
                             {x.日時}　{x.内容}
                           </span>
                         ))}
+                        {/* この置場の中身（ロットの容器番号）。番号なしのぶんも分けて出す */}
+                        {(() => {
+                          const c = yardPlaceContents_(r, lotData && lotData.inYard);
+                          return (
+                            <span className="block mt-2 pt-2 border-t border-slate-200" data-list-contents={r.no}>
+                              <span className="block text-[11px] font-semibold" style={{ color: NAVY }}>
+                                中身：{c.sizes.filter((x) => x.have > 0 || x.inLots > 0).map((x) => x.size + " ロット" + vizComma(x.inLots) + "・番号なし" + vizComma(Math.max(0, x.other))).join("／") || "なし"}
+                              </span>
+                              {c.lots.map((x) => (
+                                <span key={x.id} className="block text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>
+                                  {x.pre}{x.from}〜{x.to}　{x.size} 残り{vizComma(x.left)}本　{x.state}
+                                </span>
+                              ))}
+                              <span className="flex gap-2 mt-1.5">
+                                {(r.a20 + r.a30 + r.a50) > 0 && <button onClick={() => moveFrom("移動", r)} className="px-2 py-1 rounded-md text-[11px] font-semibold text-white" style={{ background: NAVY }}>ここから移動</button>}
+                                {(r.a20 + r.a50) > 0 && <button onClick={() => moveFrom("持ち出し", r)} className="px-2 py-1 rounded-md text-[11px] font-semibold text-white" style={{ background: "#b45309" }}>入込場へ持ち出し</button>}
+                              </span>
+                            </span>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -4141,6 +4292,16 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
               })}
             </div>
           )}
+        </Collapsible>
+      </Card>
+
+      {/* ---- 今日と今月どれだけ作るか ---- */}
+      <Card className="p-3">
+        <Collapsible tone="card" title="生産計画"
+          note="当日は処理（最終工程）の本数。置場に入ってくるぶん"
+          closedNote={plan && plan.daily && plan.daily.合計
+            ? "当日 " + vizComma(plan.daily.合計) + " 本" : ""}>
+          <ProdPlanCard plan={plan} />
         </Collapsible>
       </Card>
 
