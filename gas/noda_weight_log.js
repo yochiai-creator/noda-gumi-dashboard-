@@ -129,8 +129,16 @@ function wlog_pad_(n, width) {
 function wlog_plan_(list, lots, from) {
   var acts = [];
   var groups = {};
+  /* ★ 100本の組（重量転記アプリの成績表の単位）ごとに、量り始めた日を見る。始める日より前に量り始めた組の
+       残りを後から量っても、新しい生産ではない（11/2 HHF96640 の1本だけのロットができた）ので作らない。 */
+  var started = {};
+  (list || []).forEach(function (r) {
+    var gk = r.pre + ':' + Math.floor((r.num - 1) / 100);
+    if (!started[gk] || r.day < started[gk]) started[gk] = r.day;
+  });
   (list || []).forEach(function (r) {
     if (r.day < (from || WLOG_CONFIG.AUTO_FROM)) return;
+    if (started[r.pre + ':' + Math.floor((r.num - 1) / 100)] < (from || WLOG_CONFIG.AUTO_FROM)) return;
     var k = r.day + '|' + r.pre + '|' + r.kind;
     (groups[k] = groups[k] || { day: r.day, pre: r.pre, kind: r.kind, width: r.width, nums: [] }).nums.push(r.num);
   });
