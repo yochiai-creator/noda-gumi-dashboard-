@@ -7487,7 +7487,7 @@ function SiteMap({
       on = String(sel) === String(r.no);
     const total = (r.a20 || 0) + (r.a30 || 0) + (r.a50 || 0),
       R = pinR * 0.9;
-    return /*#__PURE__*/React.createElement("g", {
+    return /*#__PURE__*/ /* ★ 11/2 落合さん「ピン消して」：囲みの真ん中は丸（ピン）にせず、番号の文字だけ */React.createElement("g", {
       key: "ab" + r.no,
       "data-pin": r.no,
       onClick: () => {
@@ -7496,21 +7496,17 @@ function SiteMap({
       style: {
         cursor: "pointer"
       }
-    }, /*#__PURE__*/React.createElement("circle", {
-      cx: c.x,
-      cy: c.y,
-      r: R,
-      fill: lv.fill,
-      stroke: on ? "#0f172a" : "#fff",
-      strokeWidth: on ? R * 0.22 : R * 0.1
-    }), /*#__PURE__*/React.createElement("text", {
+    }, /*#__PURE__*/React.createElement("text", {
       x: c.x,
       y: c.y,
       dominantBaseline: "central",
       textAnchor: "middle",
-      fill: "#fff",
-      fontWeight: "700",
-      fontSize: R * (String(r.no).length > 1 ? 0.95 : 1.15)
+      fill: "#0f172a",
+      fontWeight: "800",
+      stroke: "#fff",
+      strokeWidth: R * 0.22,
+      paintOrder: "stroke",
+      fontSize: R * 1.25
     }, r.no), zoom.s >= 2.5 && /*#__PURE__*/React.createElement("text", {
       x: c.x,
       y: c.y + R * 1.9,
@@ -7593,7 +7589,7 @@ function SiteMap({
     className: "px-2 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100"
   }, "\u5168\u4F53\u306B\u623B\u3059"), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-400 ml-auto"
-  }, "\u30D4\u30F3\u3092\u62BC\u3059\u3068\u4E2D\u8EAB\u30022\u672C\u6307\u3067\u62E1\u5927")), /*#__PURE__*/React.createElement("div", {
+  }, "\u7F6E\u5834\u3092\u62BC\u3059\u3068\u4E2D\u8EAB\u30022\u672C\u6307\u3067\u62E1\u5927")), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-600"
   }, Object.keys(SITE_LEVEL).map(k => /*#__PURE__*/React.createElement("span", {
     key: k,
@@ -7827,7 +7823,7 @@ function YardPlaceDetail({
     "data-place-act": "edit",
     onClick: () => onEdit(loc),
     className: btn + " text-slate-700 bg-slate-100"
-  }, "\u672C\u6570\u3092\u76F4\u3059"), onPlacePin && /*#__PURE__*/React.createElement("button", {
+  }, "\u672C\u6570\u3092\u76F4\u3059"), onPlacePin && !(loc.area && loc.area.length >= 3) && /*#__PURE__*/React.createElement("button", {
     "data-place-act": "pin",
     onClick: () => onPlacePin(loc),
     className: btn + " text-slate-700 bg-slate-100"
@@ -8256,7 +8252,7 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u6577\u5730\u56F3",
-    note: "\u30D4\u30F3\u3092\u62BC\u3059\u3068\u4E2D\u8EAB\uFF08\u30ED\u30C3\u30C8\u30FB\u672C\u6570\uFF09\u3068\u3001\u79FB\u52D5\u30FB\u6301\u3061\u51FA\u3057",
+    note: "\u7F6E\u5834\u3092\u62BC\u3059\u3068\u4E2D\u8EAB\uFF08\u30ED\u30C3\u30C8\u30FB\u672C\u6570\uFF09\u3068\u3001\u79FB\u52D5\u30FB\u6301\u3061\u51FA\u3057",
     closedNote: list.length + "か所"
   }, /*#__PURE__*/React.createElement(SiteMap, {
     locations: list,

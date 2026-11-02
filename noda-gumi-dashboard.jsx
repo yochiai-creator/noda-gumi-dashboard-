@@ -3877,10 +3877,10 @@ function SiteMap({ locations, site, onOpen, inYard, moves, onMoveFrom, onPlace }
             const lv = SITE_LEVEL[siteLevel_(r)], on = String(sel) === String(r.no);
             const total = (r.a20 || 0) + (r.a30 || 0) + (r.a50 || 0), R = pinR * 0.9;
             return (
+              /* ★ 11/2 落合さん「ピン消して」：囲みの真ん中は丸（ピン）にせず、番号の文字だけ */
               <g key={"ab" + r.no} data-pin={r.no} onClick={() => { if (placing == null) setSel(on ? null : r.no); }} style={{ cursor: "pointer" }}>
-                <circle cx={c.x} cy={c.y} r={R} fill={lv.fill} stroke={on ? "#0f172a" : "#fff"} strokeWidth={on ? R * 0.22 : R * 0.1} />
-                <text x={c.x} y={c.y} dominantBaseline="central" textAnchor="middle" fill="#fff" fontWeight="700"
-                  fontSize={R * (String(r.no).length > 1 ? 0.95 : 1.15)}>{r.no}</text>
+                <text x={c.x} y={c.y} dominantBaseline="central" textAnchor="middle" fill="#0f172a" fontWeight="800"
+                  stroke="#fff" strokeWidth={R * 0.22} paintOrder="stroke" fontSize={R * 1.25}>{r.no}</text>
                 {zoom.s >= 2.5 && (
                   <text x={c.x} y={c.y + R * 1.9} textAnchor="middle" fill="#0f172a" fontWeight="700"
                     stroke="#fff" strokeWidth={R * 0.2} paintOrder="stroke" fontSize={R * 0.85}>{r.name} {vizComma(total)}本</text>
@@ -3919,7 +3919,7 @@ function SiteMap({ locations, site, onOpen, inYard, moves, onMoveFrom, onPlace }
           <button onClick={() => setZoom({ x: VB.x, y: VB.y, s: 1 })}
             className="px-2 py-1 rounded-md text-xs font-semibold text-slate-600 bg-slate-100">全体に戻す</button>
         )}
-        <span className="text-[10px] text-slate-400 ml-auto">ピンを押すと中身。2本指で拡大</span>
+        <span className="text-[10px] text-slate-400 ml-auto">置場を押すと中身。2本指で拡大</span>
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-slate-600">
@@ -4054,7 +4054,7 @@ function YardPlaceDetail({ loc, inYard, moves, onMoveFrom, onEdit, onPlacePin, o
         {onMoveFrom && canMove && <button data-place-act="move" onClick={() => onMoveFrom("移動", loc)} className={btn + " text-white"} style={{ background: NAVY }}>ここから移動</button>}
         {onMoveFrom && canOut && <button data-place-act="out" onClick={() => onMoveFrom("持ち出し", loc)} className={btn + " text-white"} style={{ background: "#b45309" }}>入込場へ持ち出し</button>}
         {onEdit && <button data-place-act="edit" onClick={() => onEdit(loc)} className={btn + " text-slate-700 bg-slate-100"}>本数を直す</button>}
-        {onPlacePin && <button data-place-act="pin" onClick={() => onPlacePin(loc)} className={btn + " text-slate-700 bg-slate-100"}>ピンの位置を直す</button>}
+        {onPlacePin && !(loc.area && loc.area.length >= 3) && <button data-place-act="pin" onClick={() => onPlacePin(loc)} className={btn + " text-slate-700 bg-slate-100"}>ピンの位置を直す</button>}
         {onClose && <button onClick={onClose} className={btn + " text-slate-500 bg-slate-100"}>閉じる</button>}
       </div>
     </div>
@@ -4286,7 +4286,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       {/* ---- 敷地図。置場ごとのピンを混み具合の色で ---- */}
       {list.length > 0 && (
         <Card className="nd-full p-3" data-card="map">
-          <Collapsible tone="card" title="敷地図" note="ピンを押すと中身（ロット・本数）と、移動・持ち出し"
+          <Collapsible tone="card" title="敷地図" note="置場を押すと中身（ロット・本数）と、移動・持ち出し"
             closedNote={list.length + "か所"}>
             <SiteMap locations={list} site={data && data.site} inYard={lotData && lotData.inYard} moves={moves}
               onMoveFrom={moveFrom} onPlace={(no, x, y) => onSave(no, { mapX: x, mapY: y })}
