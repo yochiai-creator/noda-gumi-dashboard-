@@ -7756,7 +7756,12 @@ function YardPlaceDetail({
     style: {
       color: lv.fill
     }
-  }, loc.状態 || lv.label)), c.sizes.length === 0 && /*#__PURE__*/React.createElement("p", {
+  }, loc.状態 || lv.label)), loc.屋内 && /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] mt-1",
+    style: {
+      color: "#6d28d9"
+    }
+  }, "\u5C4B\u5185\u30FB\u672C\u6570\u306F\u30E4\u30FC\u30C9\u30DE\u30C3\u30D7\uFF08\u5165\u8FBC\u5834\uFF09\u306E\u533A\u753B\u304B\u3089\u81EA\u52D5\uFF08\u91CE\u5916\u306E\u5408\u8A08\u306B\u306F\u5165\u308C\u307E\u305B\u3093\uFF09"), c.sizes.length === 0 && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-slate-500 mt-1"
   }, "\u672C\u6570\u3082\u53CE\u5BB9\u6570\u3082\u5165\u3063\u3066\u3044\u307E\u305B\u3093\u3002"), c.sizes.map(s => {
     const rate = s.max > 0 ? s.have / s.max : null;
@@ -8356,7 +8361,7 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u7F6E\u5834\u306E\u4E00\u89A7",
-    note: totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) : "読み込み中…",
+    note: totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) + (totals.屋内置場数 ? "　屋内 " + totals.屋内置場数 + "か所 " + vizComma(totals.屋内合計) + "本（ヤードマップ・合計には入れない）" : "") : "読み込み中…",
     closedNote: totals ? totals.置場数 + "か所" : ""
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 mb-2"
@@ -8435,7 +8440,14 @@ function YardCapacityTab({
       style: {
         color: VIZ.muted
       }
-    }, r.position), r.状態 && /*#__PURE__*/React.createElement("span", {
+    }, r.position), r.屋内 && /*#__PURE__*/React.createElement("span", {
+      "data-indoor": "1",
+      className: "text-[10px] px-1 rounded shrink-0",
+      style: {
+        background: "#ede9fe",
+        color: "#6d28d9"
+      }
+    }, "\u5C4B\u5185\u30FB\u30E4\u30FC\u30C9\u30DE\u30C3\u30D7\u9023\u52D5"), r.状態 && /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] px-1 rounded shrink-0",
       style: r.状態 === "超過" ? {
         background: "#fee2e2",
@@ -8500,7 +8512,13 @@ function YardCapacityTab({
       }
     }, r.note))), open && draft && /*#__PURE__*/React.createElement("div", {
       className: "px-3 pb-3 bg-slate-50"
-    }, /*#__PURE__*/React.createElement("span", {
+    }, r.屋内 && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] mb-1.5 px-2 py-1 rounded",
+      style: {
+        background: "#ede9fe",
+        color: "#6d28d9"
+      }
+    }, "\u5C4B\u5185\u306E\u7F6E\u5834\u3067\u3059\u3002\u672C\u6570\u306F\u30E4\u30FC\u30C9\u30DE\u30C3\u30D7\uFF08\u5165\u8FBC\u5834\uFF09\u306E\u533A\u753B\u304B\u30891\u6642\u9593\u304A\u304D\u306B\u81EA\u52D5\u3067\u5165\u308A\u307E\u3059\u3002\u3053\u3053\u3067\u76F4\u3057\u3066\u3082\u6B21\u306E\u53D6\u8FBC\u3067\u4E0A\u66F8\u304D\u3055\u308C\u307E\u3059\u3002"), /*#__PURE__*/React.createElement("span", {
       className: "flex items-baseline gap-2 mb-1"
     }, /*#__PURE__*/React.createElement("span", {
       className: "text-[11px]",

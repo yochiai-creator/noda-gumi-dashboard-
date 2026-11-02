@@ -334,6 +334,14 @@ function harvestDailyData() {
     Logger.log('生産ロットの照合で例外: ' + String(err));
   }
 
+  // 屋内の置場（ヤードマップの区画と連動）の本数を、ヤードマップから書く（11/2）。日次の記録より先に
+  try {
+    out.indoor = syncIndoorFromYardMap();
+  } catch (err) {
+    out.indoor = { error: String(err) };
+    Logger.log('屋内の置場の取込で例外: ' + String(err));
+  }
+
   // 野外置場の今日ぶんの合計を1行だけ貯める（推移グラフ用）。シート1枚読むだけ。
   try {
     out.yardDaily = harvestYardDailyTotals();

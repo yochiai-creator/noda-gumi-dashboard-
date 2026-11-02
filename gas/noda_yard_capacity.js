@@ -412,8 +412,16 @@ function getYardCapacitySummary() {
     var sum = { a20: 0, m20: 0, a30: 0, m30: 0, a50: 0, m50: 0 };
     var nearFull = 0;
     var over = 0;
+    // ★ 屋内（ヤードマップと連動）の置場は野外の合計に入れない（11/2）。別に数える
+    var indoor = { a20: 0, a50: 0, total: 0, locations: 0 };
+    var outdoor = records.filter(function (r) {
+      if (String(r.position || '').trim() !== '屋内') return true;
+      var a20 = Number(r.a20) || 0, a30 = Number(r.a30) || 0, a50 = Number(r.a50) || 0;
+      indoor.a20 += a20; indoor.a50 += a50; indoor.total += a20 + a30 + a50; indoor.locations += 1;
+      return false;
+    });
 
-    records.forEach(function (r) {
+    outdoor.forEach(function (r) {
       YARD_CAPACITY_KEYS.forEach(function (k) {
         var v = Number(r[k]);
         sum[k] += isNaN(v) ? 0 : v;
@@ -426,7 +434,8 @@ function getYardCapacitySummary() {
     return {
       updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
       error: null,
-      locations: records.length,
+      locations: outdoor.length,
+      indoor: indoor,
       a20: sum.a20, m20: sum.m20,
       a30: sum.a30, m30: sum.m30,
       a50: sum.a50, m50: sum.m50,

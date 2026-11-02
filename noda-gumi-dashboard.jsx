@@ -4028,6 +4028,7 @@ function YardPlaceDetail({ loc, inYard, moves, onMoveFrom, onEdit, onPlacePin, o
         <span className="text-[11px] text-slate-500">{loc.position}</span>
         <span className="text-[11px] font-semibold ml-auto" style={{ color: lv.fill }}>{loc.状態 || lv.label}</span>
       </div>
+      {loc.屋内 && <div className="text-[11px] mt-1" style={{ color: "#6d28d9" }}>屋内・本数はヤードマップ（入込場）の区画から自動（野外の合計には入れません）</div>}
 
       {c.sizes.length === 0 && <p className="text-xs text-slate-500 mt-1">本数も収容数も入っていません。</p>}
       {c.sizes.map((s) => {
@@ -4348,7 +4349,8 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       {/* ---- 置場の一覧。ここで本数を直す ---- */}
       <Card className="p-3" data-card="list">
         <Collapsible tone="card" title="置場の一覧"
-          note={totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) : "読み込み中…"}
+          note={totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) +
+            (totals.屋内置場数 ? "　屋内 " + totals.屋内置場数 + "か所 " + vizComma(totals.屋内合計) + "本（ヤードマップ・合計には入れない）" : "") : "読み込み中…"}
           closedNote={totals ? totals.置場数 + "か所" : ""}>
           <div className="flex items-center gap-2 mb-2">
             <input value={keyword} onChange={(e) => setKeyword(e.target.value)}
@@ -4400,6 +4402,9 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
                         <span className="text-[11px] tabular-nums shrink-0" style={{ color: VIZ.muted }}>{r.no}</span>
                         <span className="text-[13px] font-semibold" style={{ color: VIZ.ink }}>{r.name}</span>
                         <span className="text-[11px] shrink-0" style={{ color: VIZ.muted }}>{r.position}</span>
+                        {r.屋内 && (
+                          <span data-indoor="1" className="text-[10px] px-1 rounded shrink-0" style={{ background: "#ede9fe", color: "#6d28d9" }}>屋内・ヤードマップ連動</span>
+                        )}
                         {r.状態 && (
                           <span className="text-[10px] px-1 rounded shrink-0"
                             style={r.状態 === "超過"
@@ -4442,6 +4447,12 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
 
                     {open && draft && (
                       <div className="px-3 pb-3 bg-slate-50">
+                        {/* ★ 屋内の置場はヤードマップの区画から1時間おきに本数が入る（11/2）。手で直しても上書きされる */}
+                        {r.屋内 && (
+                          <span className="block text-[11px] mb-1.5 px-2 py-1 rounded" style={{ background: "#ede9fe", color: "#6d28d9" }}>
+                            屋内の置場です。本数はヤードマップ（入込場）の区画から1時間おきに自動で入ります。ここで直しても次の取込で上書きされます。
+                          </span>
+                        )}
                         <span className="flex items-baseline gap-2 mb-1">
                           <span className="text-[11px]" style={{ color: VIZ.ink2 }}>
                             {editMax ? "今ある本数と収容数を直す" : "今ある本数を直す"}

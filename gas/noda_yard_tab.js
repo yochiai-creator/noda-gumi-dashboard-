@@ -90,6 +90,8 @@ function yardtab_shape_(r) {
     状態: rate >= 1 ? '超過' : rate >= 0.8 ? '満杯に近い' : (未設定 ? '収容数なし' : ''),
     updatedAt: r.updatedAt || '', updatedBy: r.updatedBy || '',
     // 敷地図の上の位置（元アプリで動かして保存したもの）。無ければ画面側の初期位置
+    // 屋内（ヤードマップと連動。野外の合計に入れない）
+    屋内: String(r.position || '').trim() === '屋内',
     mapX: yardtab_num_(r.mapX), mapY: yardtab_num_(r.mapY),
     // 置場の囲み（角の座標）。読めなければ null（ピンだけ出す）
     area: yardtab_area_(r.area)
@@ -121,9 +123,14 @@ function yardtab_num_(v) {
 }
 
 function yardtab_totals_(list) {
+  /* ★ 屋内（ヤードマップと連動）の置場は野外の合計に入れない（11/2「ヤードマップ内の在庫は屋外から抜いて」）。
+       屋内は 屋内a20・屋内a50・屋内合計・屋内置場数 に別に数える。 */
   var t = { a20: 0, m20: 0, a30: 0, m30: 0, a50: 0, m50: 0,
-            合計: 0, max: 0, 置場数: list.length, 満杯に近い: 0, 超過: 0, 収容数なし: 0 };
+            合計: 0, max: 0, 置場数: 0, 満杯に近い: 0, 超過: 0, 収容数なし: 0,
+            屋内a20: 0, 屋内a50: 0, 屋内合計: 0, 屋内置場数: 0 };
   list.forEach(function (r) {
+    if (r.屋内) { t.屋内a20 += r.a20; t.屋内a50 += r.a50; t.屋内合計 += r.a20 + r.a30 + r.a50; t.屋内置場数 += 1; return; }
+    t.置場数 += 1;
     ['a20', 'm20', 'a30', 'm30', 'a50', 'm50'].forEach(function (k) { t[k] += r[k]; });
     if (r.状態 === '超過') t.超過 += 1;
     else if (r.状態 === '満杯に近い') t.満杯に近い += 1;
