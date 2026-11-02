@@ -3996,6 +3996,16 @@ function yardPlaceContents_(loc, inYard) {
   return { lots, sizes };
 }
 /* 作業記録の「元・先」は「7 大型製缶」の形。頭の番号で置場を当てる */
+/* ロットの番号の出し方。出荷・入込場で出た番号を除いた「まだ置場にある番号」があればそれを出す（11/2）。
+   例 HEP82101〜82230・82300〜82500 */
+function lotNosLabel_(x) {
+  const w = String(x.from || "").length;
+  const pad = (n) => { let t = String(n); while (t.length < w) t = "0" + t; return t; };
+  if (x.rest && x.rest !== "-") {
+    return x.pre + x.rest.split(",").map((p) => { const [a, b] = p.split("-"); return a === b ? pad(a) : pad(a) + "〜" + pad(b); }).join("・");
+  }
+  return x.pre + x.from + "〜" + x.to;
+}
 function placeNoOf_(text) { return String(text || "").trim().split(/\s+/)[0]; }
 function yardPlaceMoves_(no, moves) {
   return ((moves && moves.rows) || []).filter((r) =>
@@ -4049,7 +4059,7 @@ function YardPlaceDetail({ loc, inYard, moves, onMoveFrom, onEdit, onPlacePin, o
         {c.lots.length === 0 && <p className="text-[11px] text-slate-500">生産の流れで置いたロットはありません。</p>}
         {c.lots.map((x) => (
           <div key={x.id} data-place-lot="1" className="flex items-baseline flex-wrap py-0.5" style={{ columnGap: 8 }}>
-            <span className="text-[12px] tabular-nums font-semibold" style={{ color: VIZ.ink }}>{x.pre}{x.from}〜{x.to}</span>
+            <span className="text-[12px] tabular-nums font-semibold" style={{ color: VIZ.ink }}>{lotNosLabel_(x)}</span>
             <span className="text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>{x.size} 残り{vizComma(x.left)}{x.left !== x.n ? "/" + vizComma(x.n) : ""}本</span>
             <span className="text-[10px] px-1 rounded" style={{ background: (LOT_STATE_TONE[x.state] || LOT_STATE_TONE.出荷済)[0], color: (LOT_STATE_TONE[x.state] || LOT_STATE_TONE.出荷済)[1] }}>{x.state}</span>
             <span className="text-[10px] text-slate-500">{md(x.day)} {x.name}{x.counted ? "" : "（置場の本数には入らないサイズ）"}</span>
@@ -4506,7 +4516,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
                               </span>
                               {c.lots.map((x) => (
                                 <span key={x.id} className="block text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>
-                                  {x.pre}{x.from}〜{x.to}　{x.size} 残り{vizComma(x.left)}本　{x.state}
+                                  {lotNosLabel_(x)}　{x.size} 残り{vizComma(x.left)}本　{x.state}
                                 </span>
                               ))}
                               <span className="flex gap-2 mt-1.5">

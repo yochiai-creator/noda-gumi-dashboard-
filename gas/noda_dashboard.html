@@ -7691,6 +7691,23 @@ function yardPlaceContents_(loc, inYard) {
   };
 }
 /* 作業記録の「元・先」は「7 大型製缶」の形。頭の番号で置場を当てる */
+/* ロットの番号の出し方。出荷・入込場で出た番号を除いた「まだ置場にある番号」があればそれを出す（11/2）。
+   例 HEP82101〜82230・82300〜82500 */
+function lotNosLabel_(x) {
+  const w = String(x.from || "").length;
+  const pad = n => {
+    let t = String(n);
+    while (t.length < w) t = "0" + t;
+    return t;
+  };
+  if (x.rest && x.rest !== "-") {
+    return x.pre + x.rest.split(",").map(p => {
+      const [a, b] = p.split("-");
+      return a === b ? pad(a) : pad(a) + "〜" + pad(b);
+    }).join("・");
+  }
+  return x.pre + x.from + "〜" + x.to;
+}
 function placeNoOf_(text) {
   return String(text || "").trim().split(/\s+/)[0];
 }
@@ -7802,7 +7819,7 @@ function YardPlaceDetail({
     style: {
       color: VIZ.ink
     }
-  }, x.pre, x.from, "\u301C", x.to), /*#__PURE__*/React.createElement("span", {
+  }, lotNosLabel_(x)), /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] tabular-nums",
     style: {
       color: VIZ.ink2
@@ -8598,7 +8615,7 @@ function YardCapacityTab({
         style: {
           color: VIZ.ink2
         }
-      }, x.pre, x.from, "\u301C", x.to, "\u3000", x.size, " \u6B8B\u308A", vizComma(x.left), "\u672C\u3000", x.state)), /*#__PURE__*/React.createElement("span", {
+      }, lotNosLabel_(x), "\u3000", x.size, " \u6B8B\u308A", vizComma(x.left), "\u672C\u3000", x.state)), /*#__PURE__*/React.createElement("span", {
         className: "flex gap-2 mt-1.5"
       }, r.a20 + r.a30 + r.a50 > 0 && /*#__PURE__*/React.createElement("button", {
         onClick: () => moveFrom("移動", r),

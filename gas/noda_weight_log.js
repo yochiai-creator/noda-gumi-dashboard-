@@ -155,8 +155,16 @@ function wlog_plan_(list, lots, from) {
     var same = (lots || []).filter(function (l) { return String(l.容器接頭辞).toUpperCase() === g.pre; });
     // 番号をふさぐロット：手で登録したもの（取消は除く）と、自動のもの（取り消したものも。作り直さない）
     var mine = function (l) { return isAuto(l) && l.状態 !== C && l.生産日 === g.day && l.機種名 === g.kind; };
-    var growable = function (l) { return mine(l) && l.状態 === '未受検' && !l.置場番号 && !(Number(l.出荷済本数) > 0); };
-    var blocks = same.filter(function (l) { return !growable(l) && (l.状態 !== C || isAuto(l)); });
+    /* ★ 20kg を満タン・バラに分けるようにした（11/2）前にできたロット（4401〜4981 のように組をまたぐもの）は、
+         広げずに「ふさぐ」側に回す。広げる候補にも、ふさぐ側にも入らないと、同じ番号でロットを作り直してしまう
+         （11/2 に L20261102-006 と分けたロットが重なった）。 */
+    var split = wlog_size_(g.kind) === '20kg';
+    var segOf = function (n) { var F = WLOG_CONFIG.PALLET20.FULL; return Math.floor((n - 1) / 100) * 2 + ((n - 1) % 100 < F ? 0 : 1); };
+    var oneSeg = function (l) { return !split || segOf(Number(l.容器No開始)) === segOf(Number(l.容器No終了)); };
+    var growable = function (l) { return mine(l) && l.状態 === '未受検' && !l.置場番号 && !(Number(l.出荷済本数) > 0) && oneSeg(l); };
+    // 取り消したロットは後ろに（同じ番号に生きているロットがあれば、そちらで数える）
+    var blocks = same.filter(function (l) { return !growable(l) && (l.状態 !== C || isAuto(l)); })
+      .sort(function (x, y) { return (x.状態 === C ? 1 : 0) - (y.状態 === C ? 1 : 0); });
     var inBlock = function (n) {
       for (var i = 0; i < blocks.length; i++) {
         if (n >= Number(blocks[i].容器No開始) && n <= Number(blocks[i].容器No終了)) return blocks[i];

@@ -30,7 +30,7 @@ const locs = recs.map(s.yardtab_shape_);
     getYardDailyTotals: { error: null, days: [] }, getYardChangeLog: { error: null, rows: [] },
     getProdLots: { error: null, lots: [], totals: {}, inYard: [
       { id: 'L20261028-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-28', state: '受検済', pre: 'HXP', from: '10001', to: '10200', n: 200, left: 200, counted: true },
-      { id: 'L20261029-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-29', state: '入庫済', pre: 'HXP', from: '10201', to: '10300', n: 100, left: 50, counted: true },
+      { id: 'L20261029-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-29', state: '入庫済', pre: 'HXP', from: '10201', to: '10300', n: 100, left: 50, counted: true, rest: '10201-10230,10281-10300' },
       { id: 'L20261029-002', no: '12', size: '20kg', name: '20kg容器', day: '2026-10-29', state: '未受検', pre: 'HXP', from: '20001', to: '20100', n: 100, left: 100, counted: true } ] }, getContainerTypes: { error: null, types: [] },
     getProdPlanData: { error: null, daily: { 工場: [] }, monthly: { 行: [] } },
   });
@@ -103,7 +103,7 @@ const locs = recs.map(s.yardtab_shape_);
   let d = await det();
   chk('★置場の名前と本数', /7 大型製缶/.test(d) && /50kg\s*300本/.test(d), d.slice(0, 200));
   chk('★ロットと番号なしに分けて出す（ロット250・番号なし50）', /ロット 250本・番号なし（前からの在庫など） 50本/.test(d), d);
-  chk('★ロットの容器番号と残り（古い順）', /HXP10001〜10200\s*50kg 残り200本\s*受検済/.test(d) && /HXP10201〜10300\s*50kg 残り50\/100本\s*入庫済/.test(d) && d.indexOf('10001') < d.indexOf('10201'), d);
+  chk('★ロットの容器番号と残り（古い順）', /HXP10001〜10200\s*50kg 残り200本\s*受検済/.test(d) && /HXP10201〜10230・10281〜10300\s*50kg 残り50\/100本\s*入庫済/.test(d) && d.indexOf('10001') < d.indexOf('10201') && !/10231/.test(d), d);
   chk('★ほかの置場のロットは出さない', !/HXP20001/.test(d));
 
   console.log('■ 中身から移動・持ち出し');

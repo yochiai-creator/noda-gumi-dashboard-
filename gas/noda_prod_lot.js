@@ -53,7 +53,10 @@ var LOT_CONFIG = {
             '状態', '受検日', '入庫日', '置場番号', '置場名', '出荷済本数', '出荷日', '依頼No',
             '備考', '登録者', '登録日時', '更新日時',
             // ★ 後から足した列（2026/10/27）。前の列の並びは変えない（古い行がずれるため）
-            '入込場持ち出し本数', '置場から引いた本数'],
+            '入込場持ち出し本数', '置場から引いた本数',
+            // ★ 11/2 落合さん「出荷された番号は在庫から消して」：指図書・入込場に出た番号を除いた、まだ置場にある番号
+            //   （例 82101-82230,82300-82500）。空なら全部残っている。照合のたびに書き直す
+            '残りの番号'],
   // 流れは4つだけ。増やすと現場が迷う。
   STATES: ['未受検', '受検済', '入庫済', '出荷済'],
   /* 「取消」は流れの続きではなく、打ち間違えた行の打ち消し。
@@ -114,7 +117,7 @@ function lot_inYard_(list) {
     if (left <= 0) return;
     out.push({ id: r.ロットID, no: String(r.置場番号), size: r.サイズ, name: r.機種名, day: r.生産日,
                state: r.状態, pre: r.容器接頭辞, from: r.容器No開始, to: r.容器No終了,
-               n: r.本数, left: left, counted: !!LOT_CONFIG.SIZE_KEY[r.サイズ] });
+               n: r.本数, left: left, counted: !!LOT_CONFIG.SIZE_KEY[r.サイズ], rest: r.残りの番号 || '' });
   });
   // 古い順（先に出すべきものが上）
   out.sort(function (a, b) {
@@ -475,7 +478,11 @@ function matchProdLotsWithOrders() {
       if (isIn) out.照合++;
       var hit = isIn ? lot_matchOne_(lot, ships) : { 本数: 0, 累計: lot.出荷済本数, 依頼No: '', 出荷日: '' };
       var yh = String(lot.生産日 || '') >= LOT_CONFIG.YARD_FROM ? lot_yardMatch_(lot, yards) : { spans: [], 累計: 0, pos: [] };
-      var outCov = lot_union_(lot, (isIn ? lot_shipSpans_(lot, ships) : []).concat(yh.spans));
+      var outSpans = (isIn ? lot_shipSpans_(lot, ships) : []).concat(yh.spans);
+      var outCov = lot_union_(lot, outSpans);
+      // まだ置場にある番号（出た番号を除く）。変わったときだけ書く
+      var rest = lot_restText_(lot, outSpans);
+      if (rest !== lot.残りの番号) lot_writeRest_(lot.ロットID, rest);
       var prevOut = lot.置場から引いた本数 == null ? lot.出荷済本数 : lot.置場から引いた本数;
       if (hit.本数 <= 0 && outCov <= prevOut && yh.累計 <= lot.入込場持ち出し本数) continue;
       var r = lot_applyOut_(lot, isIn ? hit : null, yh, outCov);
@@ -540,6 +547,29 @@ function lot_yardMatch_(lot, yards) {
     if (pos.indexOf(y.pos) < 0) pos.push(y.pos);
   });
   return { spans: spans, 累計: lot_union_(lot, spans), pos: pos };
+}
+
+/* ロットの番号から、出た範囲を除いた残り（純関数）。何も出ていなければ ''、全部出たら '-'。
+   例 lot 82101〜82500、出た [[82231,82299]] → '82101-82230,82300-82500' */
+function lot_restText_(lot, spans) {
+  var a = Number(lot.容器No開始), b = Number(lot.容器No終了);
+  var list = (spans || []).map(function (sp) { return [Math.max(a, sp[0]), Math.min(b, sp[1])]; })
+    .filter(function (sp) { return sp[1] >= sp[0]; }).sort(function (x, y) { return x[0] - y[0]; });
+  if (!list.length) return '';
+  var out = [], cur = a;
+  list.forEach(function (sp) {
+    if (sp[0] > cur) out.push(cur + '-' + (sp[0] - 1));
+    if (sp[1] + 1 > cur) cur = sp[1] + 1;
+  });
+  if (cur <= b) out.push(cur + '-' + b);
+  return out.length ? out.join(',') : '-';
+}
+function lot_writeRest_(id, rest) {
+  try {
+    var found = lot_findRow_(id);
+    if (!found) return;
+    lot_writeRow_(found.rowNo, function (row, H) { row[H['残りの番号']] = rest; });
+  } catch (e) { Logger.log('残りの番号を書けませんでした（' + id + '）: ' + e); }
 }
 
 /* 範囲を重ねて数える（同じ容器は1回）。ロットの本数は超えない（純関数） */
@@ -814,8 +844,8 @@ function lot_shapeRows_(values) {
       機種名: String(r[H['機種名']] || ''),
       サイズ: String(r[H['サイズ']] || ''),
       容器接頭辞: String(r[H['容器接頭辞']] || '').toUpperCase(),
-      容器No開始: String(r[H['容器No開始']] || ''),
-      容器No終了: String(r[H['容器No終了']] || ''),
+      容器No開始: String(r[H['容器No開始']] || '').replace(/^'/, ''),
+      容器No終了: String(r[H['容器No終了']] || '').replace(/^'/, ''),
       本数: Number(r[H['本数']]) || 0,
       状態: String(r[H['状態']] || '未受検'),
       受検日: lot_dateText_(r[H['受検日']]),
@@ -829,7 +859,8 @@ function lot_shapeRows_(values) {
       登録者: String(r[H['登録者']] || ''),
       入込場持ち出し本数: Number(r[H['入込場持ち出し本数']]) || 0,
       // 空なら null（古い行。出荷済本数ぶんを引いてあるとみなす）
-      置場から引いた本数: r[H['置場から引いた本数']] === '' || r[H['置場から引いた本数']] == null ? null : Number(r[H['置場から引いた本数']]) || 0
+      置場から引いた本数: r[H['置場から引いた本数']] === '' || r[H['置場から引いた本数']] == null ? null : Number(r[H['置場から引いた本数']]) || 0,
+      残りの番号: String(r[H['残りの番号']] == null ? '' : r[H['残りの番号']]).trim().replace(/^'/, '')
     });
   });
   return out;
@@ -859,7 +890,13 @@ function lot_findRow_(id) {
 function lot_writeRow_(rowNo, fill) {
   var sheet = lot_sheet_();
   var row = sheet.getRange(rowNo, 1, 1, LOT_CONFIG.HEADERS.length).getValues()[0];
-  fill(row, lot_headerIndex_());
+  var H = lot_headerIndex_();
+  fill(row, H);
+  /* ★ 番号の頭の0（HXR04401）が数字に変わって消えないよう、文字のまま書く。残りの番号も日付などに化けないよう文字で */
+  ['容器No開始', '容器No終了', '残りの番号'].forEach(function (h) {
+    var v = row[H[h]];
+    if (typeof v === 'string' && v !== '' && v.charAt(0) !== "'" && (/^0/.test(v) || h === '残りの番号')) row[H[h]] = "'" + v;
+  });
   sheet.getRange(rowNo, 1, 1, LOT_CONFIG.HEADERS.length).setValues([row]);
 }
 
