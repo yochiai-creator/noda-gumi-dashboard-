@@ -38,6 +38,12 @@ var WLOG_CONFIG = {
   DAILY_HEADERS: ['日付', '容器区分', 'サイズ', '本数', '更新日時'],
   AUTO_FROM: '2026-11-01',   // これより前に量った容器はロットにしない
   GAP: 10,                   // 番号の飛びがこれ以下ならつなぐ（欠番・修正など）
+  /* ★ 20kg のパレット（2026/11/02 落合さん）：36本のるパレットに、100本を3枚に分ける。
+       満タン2枚＝72本 と バラ28本。満タンは「15 風呂場跡」に置く、バラは「11・19・18」のどれかに置く。
+       どの番号がどちらかは、100本の組の 01〜72 を満タン、73〜00 をバラとする。
+       満タンのロットは作った時点で15に置く（置場の本数に足す）。バラは現場が置場を選ぶ（画面で11・19・18を先に出す）。
+       ★ 置場の番号を変えたら、ここも直すこと。 */
+  PALLET20: { FULL: 72, FULL_PLACE: '15', BARA_PLACES: ['11', '19', '18'] },
   AUTO_WHO: '（自動：重量転記）',
   AUTO_NOTE: '重量転記アプリで量った容器から自動',
   SKIP_KINDS: ['欠番', '訂正', 'ダブり'],
@@ -172,9 +178,13 @@ function wlog_plan_(list, lots, from) {
     });
     var free = g.nums.filter(function (n) { return !inBlock(n); });
     var grow = same.filter(growable);
-    wlog_runs_(free, WLOG_CONFIG.GAP).forEach(function (run) {
-      // 広げられる自動ロット（範囲が重なるか、GAP以内で隣り合うもの）
+    // 20kg は100本の組ごとに 満タン（01〜72）とバラ（73〜00）に分けて、別々のロットにする
+    var segs = wlog_segments_(free, wlog_size_(g.kind) === '20kg');
+    segs.forEach(function (sg) {
+    wlog_runs_(sg.nums, WLOG_CONFIG.GAP).forEach(function (run) {
+      // 広げられる自動ロット（範囲が重なるか、GAP以内で隣り合うもの）。分けたときは同じ区切りの中のものだけ
       var e = grow.filter(function (l) {
+        if (sg.lo != null && (Number(l.容器No開始) < sg.lo || Number(l.容器No終了) > sg.hi)) return false;
         return run[0] <= Number(l.容器No終了) + WLOG_CONFIG.GAP + 1 && Number(l.容器No開始) <= run[1] + WLOG_CONFIG.GAP + 1;
       })[0];
       if (e) {
@@ -188,10 +198,26 @@ function wlog_plan_(list, lots, from) {
         return;
       }
       acts.push({ op: 'create', 生産日: g.day, pre: g.pre, kind: g.kind, size: wlog_size_(g.kind),
-                  a: run[0], b: run[1], n: run[2], width: g.width });
+                  a: run[0], b: run[1], n: run[2], width: g.width, part: sg.part || '',
+                  place: sg.part === '満タン' ? WLOG_CONFIG.PALLET20.FULL_PLACE : '' });
+    });
     });
   });
   return acts;
+}
+
+/* 番号を区切りに分ける（純関数）。split が false なら1つ（区切りなし）。
+   true なら100本の組ごとに 満タン（01〜FULL）と バラ（FULL+1〜00）。[{ part, lo, hi, nums }] */
+function wlog_segments_(nums, split) {
+  if (!split) return [{ part: '', lo: null, hi: null, nums: (nums || []).slice() }];
+  var F = WLOG_CONFIG.PALLET20.FULL, m = {}, out = [];
+  (nums || []).forEach(function (n) {
+    var g = Math.floor((n - 1) / 100), full = (n - 1) % 100 < F, k = g * 2 + (full ? 0 : 1);
+    if (!m[k]) { m[k] = { part: full ? '満タン' : 'バラ', lo: g * 100 + (full ? 1 : F + 1), hi: g * 100 + (full ? F : 100), nums: [] }; out.push(m[k]); }
+    m[k].nums.push(n);
+  });
+  out.sort(function (a, b) { return a.lo - b.lo; });
+  return out;
 }
 
 // ===== 読む =====
@@ -288,10 +314,16 @@ function wlog_applyLots_(acts) {
           var put = function (h, v) { row[LOT_CONFIG.HEADERS.indexOf(h)] = v; };
           put('ロットID', id); put('生産日', x.生産日); put('機種名', x.kind); put('サイズ', x.size);
           put('容器接頭辞', x.pre); put('容器No開始', "'" + wlog_pad_(x.a, x.width)); put('容器No終了', "'" + wlog_pad_(x.b, x.width));
-          put('本数', x.n); put('状態', '未受検'); put('出荷済本数', 0); put('備考', WLOG_CONFIG.AUTO_NOTE);
+          put('本数', x.n); put('状態', '未受検'); put('出荷済本数', 0);
+          put('備考', WLOG_CONFIG.AUTO_NOTE + (x.part ? '・' + x.part + (x.part === 'バラ' ? '（' + WLOG_CONFIG.PALLET20.BARA_PLACES.join('・') + 'のどれかに置く）' : '（パレット満タン）') : ''));
           put('登録者', WLOG_CONFIG.AUTO_WHO); put('登録日時', now); put('更新日時', now);
           sheet.appendRow(row);
           out.作った++;
+          // 満タンのパレットは決まった置場に置く（置いた時点で置場の本数に足し、作業記録に入庫）
+          if (x.place && typeof placeProdLot === 'function') {
+            var pr = placeProdLot(id, x.place);
+            if (pr && pr.ok === false) out.error = 'ロット ' + id + ' を置場 ' + x.place + ' に置けませんでした：' + pr.error;
+          }
           return;
         }
         var found = lot_findRow_(x.id);

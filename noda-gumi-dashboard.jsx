@@ -528,6 +528,8 @@ function ProdPlanCard({ plan, actual }) {
 }
 
 const LOT_AUTO_WHO = "（自動：重量転記）";
+/* 20kg のバラ（パレット28本の側）を置く置場。サーバの WLOG_CONFIG.PALLET20.BARA_PLACES と合わせる */
+const LOT_BARA_PLACES = ["11", "19", "18"];
 function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, onPlace, saving }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(null);
@@ -707,6 +709,9 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
                   {l.登録者 === LOT_AUTO_WHO && (
                     <span data-lot-auto="1" className="text-[10px] px-1 rounded shrink-0" style={{ background: "#e0f2fe", color: "#0369a1" }}>重量転記から</span>
                   )}
+                  {/(満タン|バラ)/.test(l.備考 || "") && (
+                    <span data-lot-part="1" className="text-[10px] px-1 rounded shrink-0" style={{ background: "#f1f5f9", color: VIZ.ink2 }}>{/満タン/.test(l.備考) ? "満タン" : "バラ"}</span>
+                  )}
                   <span className="text-[10px] ml-auto shrink-0" style={{ color: VIZ.muted }}>{l.生産日}</span>
                 </span>
                 {l.機種名 && (
@@ -726,6 +731,19 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
                   pickFor === "place:" + l.ロットID ? (
                     <span className="block mt-1">
                       <span className="block text-[10px] mb-1" style={{ color: VIZ.ink2 }}>どの置場に置きましたか</span>
+                      {/* ★ 20kg のバラ（28本の側）は 11・19・18 のどれかに置く（11/2 落合さん）。先に大きく出す */}
+                      {/バラ/.test(l.備考 || "") && (
+                        <span className="flex flex-wrap gap-1 mb-1.5" data-bara-places="1">
+                          {LOT_BARA_PLACES.map((no) => locations.find((loc) => String(loc.no) === no)).filter(Boolean).map((loc) => (
+                            <button key={"b" + loc.no} disabled={saving} data-place-lot={loc.no}
+                              onClick={() => onPlace(l.ロットID, loc.no, () => setPickFor(null))}
+                              className="px-3 py-1.5 rounded-md text-[12px] font-bold text-white" style={{ background: NAVY }}>
+                              {loc.no} {loc.name}{loc.position ? "（" + loc.position + "）" : ""}
+                            </button>
+                          ))}
+                          <span className="text-[10px] self-center" style={{ color: VIZ.muted }}>ほかの置場：</span>
+                        </span>
+                      )}
                       <span className="flex flex-wrap gap-1">
                         {locations.map((loc) => (
                           <button key={loc.no} disabled={saving} data-place-lot={loc.no}

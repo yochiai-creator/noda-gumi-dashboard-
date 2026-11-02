@@ -18,6 +18,8 @@ const rows = JSON.parse(fs.readFileSync(__dirname + '/sitemap_rows.json', 'utf8'
 const recs = rows.map((r) => ({ no: r[0], name: r[1], position: r[2], a20: r[3], m20: r[4], a30: r[5], m30: r[6], a50: r[7], m50: r[8], mapX: r[9], mapY: r[10], note: '' }));
 // 50kg を置いた置場を作っておく（7 大型製缶 に 300本）
 recs.find((r) => r.no === '7').a50 = '300';
+// 今の番号（11/2〜）の 18 集会場（東）・19 臨時（池北駐車場）も置く（バラの置場）
+recs.push(Object.assign({}, recs[0], { no: '18', name: '集会場', position: '東' }), Object.assign({}, recs[0], { no: '19', name: '臨時', position: '池北駐車場' }));
 const locs = recs.map(s.yardtab_shape_);
 
 (async () => {
@@ -37,6 +39,7 @@ const locs = recs.map(s.yardtab_shape_);
       monthly: { 月: '2026-11', 合計: 20000, 行: [{ サイズ: '50kg', 月計: 12000 }, { サイズ: '20kg', 月計: 8000 }] } },
     getProdLots: { error: null, totals: { 未受検: 600, 受検済: 0, 入庫済: 0, 出荷済今月: 0 }, lots: [
       { ロットID: 'L20261102-001', 生産日: '2026-11-02', 機種名: '50kg', サイズ: '50kg', 容器接頭辞: 'HEP', 容器No開始: '84001', 容器No終了: '84600', 本数: 600, 状態: '未受検', 置場番号: '', 置場名: '', 出荷済本数: 0, 登録者: '（自動：重量転記）' },
+      { ロットID: 'L20261102-009', 生産日: '2026-11-02', 機種名: '20kg', サイズ: '20kg', 容器接頭辞: 'HXR', 容器No開始: '04073', 容器No終了: '04100', 本数: 28, 状態: '未受検', 置場番号: '', 置場名: '', 出荷済本数: 0, 登録者: '（自動：重量転記）', 備考: '重量転記アプリで量った容器から自動・バラ（11・19・18のどれかに置く）' },
       { ロットID: 'L20261101-001', 生産日: '2026-11-01', 機種名: '50kg容器', サイズ: '50kg', 容器接頭辞: 'HEP', 容器No開始: '83001', 容器No終了: '83010', 本数: 10, 状態: '未受検', 置場番号: '7', 置場名: '大型製缶', 出荷済本数: 0, 登録者: '野田' }],
       inYard: [
       { id: 'L20261028-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-28', state: '受検済', pre: 'HXP', from: '10001', to: '10200', n: 200, left: 200, counted: true },
@@ -84,9 +87,9 @@ const locs = recs.map(s.yardtab_shape_);
   chk('置場の無いサイズ（8kg等）は別に添える', /ほかに置場の無いサイズ 100本/.test(t));
 
   console.log('■ 自動でできたロット');
-  chk('★「重量転記から」の印', await page.locator('[data-lot-auto]').count() === 1);
+  chk('★「重量転記から」の印', await page.locator('[data-lot-auto]').count() === 2);
   chk('★手で登録は「重量転記を通らないもの」だけと書く', /手で登録（重量転記を通らないもの）/.test(t) && /1時間おきに自動でロットになります/.test(t));
-  chk('★置場の無い未受検に「置場に置く」（置場のあるロットには出さない）', await page.locator('[data-lot-place]').count() === 1);
+  chk('★置場の無い未受検に「置場に置く」（置場のあるロットには出さない）', await page.locator('[data-lot-place]').count() === 2);
   await page.locator('[data-lot-place="L20261102-001"]').click();
   await page.waitForTimeout(200);
   chk('置場を選ばせる', /どの置場に置きましたか/.test(await txt()));
@@ -94,6 +97,13 @@ const locs = recs.map(s.yardtab_shape_);
   await page.waitForTimeout(400);
   const calls = await page.evaluate(() => window.__st.calls);
   chk('★選んだ置場でサーバに送る', calls.some((c) => c[0] === 'place' && c[1] === 'L20261102-001' && c[2] === '7'), calls);
+
+  console.log('■ 20kg のバラ');
+  chk('★満タン／バラの印', await page.locator('[data-lot-part]').count() === 1 && /バラ/.test(await page.locator('[data-lot-part]').first().innerText()));
+  await page.locator('[data-lot-place="L20261102-009"]').click();
+  await page.waitForTimeout(200);
+  const bp = await page.evaluate(() => { const e = document.querySelector('[data-bara-places]'); return e ? [...e.querySelectorAll('button')].map((b) => b.innerText) : []; });
+  chk('★バラは 11・19・18 を先に出す', bp.length === 3 && /^11 /.test(bp[0]) && /^19 /.test(bp[1]) && /^18 /.test(bp[2]), bp);
 
   console.log('■ 実績・推移タブに生産の推移');
   await page.locator('button', { hasText: '実績・推移' }).first().click();

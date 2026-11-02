@@ -1378,6 +1378,8 @@ function ProdPlanCard({
   }, "\u5F53\u6708\u8A08\u753B\u3092\u958B\u304F")));
 }
 const LOT_AUTO_WHO = "（自動：重量転記）";
+/* 20kg のバラ（パレット28本の側）を置く置場。サーバの WLOG_CONFIG.PALLET20.BARA_PLACES と合わせる */
+const LOT_BARA_PLACES = ["11", "19", "18"];
 function ProdLotCard({
   data,
   types,
@@ -1641,7 +1643,14 @@ function ProdLotCard({
         background: "#e0f2fe",
         color: "#0369a1"
       }
-    }, "\u91CD\u91CF\u8EE2\u8A18\u304B\u3089"), /*#__PURE__*/React.createElement("span", {
+    }, "\u91CD\u91CF\u8EE2\u8A18\u304B\u3089"), /(満タン|バラ)/.test(l.備考 || "") && /*#__PURE__*/React.createElement("span", {
+      "data-lot-part": "1",
+      className: "text-[10px] px-1 rounded shrink-0",
+      style: {
+        background: "#f1f5f9",
+        color: VIZ.ink2
+      }
+    }, /満タン/.test(l.備考) ? "満タン" : "バラ"), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] ml-auto shrink-0",
       style: {
         color: VIZ.muted
@@ -1668,7 +1677,24 @@ function ProdLotCard({
       style: {
         color: VIZ.ink2
       }
-    }, "\u3069\u306E\u7F6E\u5834\u306B\u7F6E\u304D\u307E\u3057\u305F\u304B"), /*#__PURE__*/React.createElement("span", {
+    }, "\u3069\u306E\u7F6E\u5834\u306B\u7F6E\u304D\u307E\u3057\u305F\u304B"), /バラ/.test(l.備考 || "") && /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap gap-1 mb-1.5",
+      "data-bara-places": "1"
+    }, LOT_BARA_PLACES.map(no => locations.find(loc => String(loc.no) === no)).filter(Boolean).map(loc => /*#__PURE__*/React.createElement("button", {
+      key: "b" + loc.no,
+      disabled: saving,
+      "data-place-lot": loc.no,
+      onClick: () => onPlace(l.ロットID, loc.no, () => setPickFor(null)),
+      className: "px-3 py-1.5 rounded-md text-[12px] font-bold text-white",
+      style: {
+        background: NAVY
+      }
+    }, loc.no, " ", loc.name, loc.position ? "（" + loc.position + "）" : "")), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] self-center",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u307B\u304B\u306E\u7F6E\u5834\uFF1A")), /*#__PURE__*/React.createElement("span", {
       className: "flex flex-wrap gap-1"
     }, locations.map(loc => /*#__PURE__*/React.createElement("button", {
       key: loc.no,
