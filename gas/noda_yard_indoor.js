@@ -14,7 +14,9 @@
 var YARDIN_CONFIG = {
   SHEET: '屋内とヤードマップ',
   KEY: { '50k': 'a50', '20k': 'a20' },
-  WHO: '（自動：ヤードマップ）'
+  WHO: '（自動：ヤードマップ）',
+  // どの置場にも割り当てていない区画の本数（屋内の合計に「その他の区画」として足す）
+  PROP_OTHER: 'yardIndoor.other'
 };
 
 /* 位置が「屋内」か（純関数） */
@@ -42,6 +44,31 @@ function yardin_mappingFrom_(values) {
     if (no && YARDIN_CONFIG.KEY[map] && blocks.length) out.push({ no: no, map: map, blocks: blocks });
   });
   return out;
+}
+
+/* どの置場にも割り当てていない、埋まっている区画の本数（純関数）。
+   11/2 落合さん「置き場細かく指定しなくてもわかるだら？」：残りの区画まで聞かずに、屋内の「その他の区画」として数える */
+function yardin_other_(mapping, raw) {
+  var out = { a20: 0, a50: 0, 区画: 0 };
+  ['50k', '20k'].forEach(function (map) {
+    var used = [];
+    (mapping || []).forEach(function (m) { if (m.map === map) used = used.concat(m.blocks); });
+    ((raw && raw[map]) || []).forEach(function (b) {
+      if (!b || !b.found || b.kind !== 'fill' || used.indexOf(Number(b.pos)) >= 0) return;
+      out[YARDIN_CONFIG.KEY[map]] += Number(b.qty) || 0;
+      out.区画++;
+    });
+  });
+  return out;
+}
+
+/* 毎時の取込で貯めた「その他の区画」を読む（無ければ0） */
+function yardin_readOther_() {
+  try {
+    var v = PropertiesService.getScriptProperties().getProperty(YARDIN_CONFIG.PROP_OTHER);
+    var o = v ? JSON.parse(v) : null;
+    return o ? { a20: Number(o.a20) || 0, a50: Number(o.a50) || 0, 区画: Number(o.区画) || 0, at: o.at || '' } : { a20: 0, a50: 0, 区画: 0, at: '' };
+  } catch (e) { return { a20: 0, a50: 0, 区画: 0, at: '' }; }
 }
 
 /* 置場ごとの本数（純関数）。raw は getYardMapUpdatesBothWithOrderText の結果（{ '50k': [区画…], '20k': […] }）。
@@ -77,6 +104,10 @@ function syncIndoorFromYardMap() {
     var raw = getYardMapUpdatesBothWithOrderText(q['50k'], q['20k'], false);
     raw = typeof raw === 'string' ? JSON.parse(raw) : raw;
     var sums = yardin_sums_(mapping, raw);
+    var other = yardin_other_(mapping, raw);
+    other.at = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    PropertiesService.getScriptProperties().setProperty(YARDIN_CONFIG.PROP_OTHER, JSON.stringify(other));
+    out.その他 = other;
     var sheet = yardGetSheet_();
     var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
     Object.keys(sums).forEach(function (no) {

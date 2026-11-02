@@ -435,7 +435,7 @@ function getYardCapacitySummary() {
       updated: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm'),
       error: null,
       locations: outdoor.length,
-      indoor: indoor,
+      indoor: (function () { try { if (typeof yardin_readOther_ === 'function') { var o = yardin_readOther_(); indoor.other = o.a20 + o.a50; indoor.total += indoor.other; } } catch (e) {} return indoor; })(),
       a20: sum.a20, m20: sum.m20,
       a30: sum.a30, m30: sum.m30,
       a50: sum.a50, m50: sum.m50,

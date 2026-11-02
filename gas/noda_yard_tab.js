@@ -45,6 +45,8 @@ function getYardTabData() {
       return String(a.no).localeCompare(String(b.no), 'ja', { numeric: true });
     });
     data.totals = yardtab_totals_(data.locations);
+    // どの置場にも割り当てていないヤードマップの区画（屋内の「その他の区画」）
+    try { if (typeof yardin_readOther_ === 'function') { var o = yardin_readOther_(); data.totals.屋内その他 = o.a20 + o.a50; data.totals.屋内その他区画 = o.区画; } } catch (e6) { /* 無くても出せる */ }
     try { data.sheetUrl = yardGetSpreadsheet_().getUrl(); } catch (e) { /* 無くても動く */ }
     /* ★ 敷地図（元アプリの敷地レイアウト図）をダッシュボードに入れたので、建屋の位置・向きの
          手直しと、囲みのエリアも一緒に返す。どちらもスクリプトプロパティなので軽い。 */

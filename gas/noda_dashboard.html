@@ -8361,7 +8361,7 @@ function YardCapacityTab({
   }, /*#__PURE__*/React.createElement(Collapsible, {
     tone: "card",
     title: "\u7F6E\u5834\u306E\u4E00\u89A7",
-    note: totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) + (totals.屋内置場数 ? "　屋内 " + totals.屋内置場数 + "か所 " + vizComma(totals.屋内合計) + "本（ヤードマップ・合計には入れない）" : "") : "読み込み中…",
+    note: totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) + (totals.屋内置場数 ? "　屋内 " + totals.屋内置場数 + "か所 " + vizComma(totals.屋内合計) + "本" + (totals.屋内その他 ? "＋その他の区画 " + vizComma(totals.屋内その他) + "本" : "") + "（ヤードマップ・合計には入れない）" : "") : "読み込み中…",
     closedNote: totals ? totals.置場数 + "か所" : ""
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2 mb-2"

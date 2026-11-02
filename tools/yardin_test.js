@@ -23,6 +23,10 @@ chk('★上小屋（20〜22）は北プラットホームに', sums['25'].a50 ==
 chk('★20kの区画は20kgに（コンテナ倉庫 50本）', sums['20'].a20 === 50 && sums['20'].a50 === 0, sums['20']);
 chk('割り当ての無い区画（50k 31）は数えない', !Object.keys(sums).some((k) => sums[k].a50 === 300));
 
+console.log('■ 割り当てていない区画は「その他の区画」');
+const oth = sb.yardin_other_(map, raw);
+chk('★どの置場にも入っていない埋まった区画（50k 31 の100本）を数える', oth.a50 === 100 && oth.a20 === 50 && oth.区画 === 2, oth);
+
 console.log('■ 屋内は野外の合計に入れない');
 const rows = [{ no: '1', name: '駐車場', position: '南', a50: 100, m50: 600 }, { no: '23', name: '北製品倉庫', position: '屋内', a50: 198 }];
 const locs = rows.map(sb.yardtab_shape_);

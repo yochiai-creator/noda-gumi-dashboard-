@@ -4350,7 +4350,8 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
       <Card className="p-3" data-card="list">
         <Collapsible tone="card" title="置場の一覧"
           note={totals ? totals.置場数 + "か所・合計 " + vizComma(totals.合計) + " / 収容 " + vizComma(totals.max) +
-            (totals.屋内置場数 ? "　屋内 " + totals.屋内置場数 + "か所 " + vizComma(totals.屋内合計) + "本（ヤードマップ・合計には入れない）" : "") : "読み込み中…"}
+            (totals.屋内置場数 ? "　屋内 " + totals.屋内置場数 + "か所 " + vizComma(totals.屋内合計) + "本" +
+              (totals.屋内その他 ? "＋その他の区画 " + vizComma(totals.屋内その他) + "本" : "") + "（ヤードマップ・合計には入れない）" : "") : "読み込み中…"}
           closedNote={totals ? totals.置場数 + "か所" : ""}>
           <div className="flex items-center gap-2 mb-2">
             <input value={keyword} onChange={(e) => setKeyword(e.target.value)}
