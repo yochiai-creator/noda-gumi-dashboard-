@@ -7755,6 +7755,33 @@ const LOT_STATE_TONE = {
   入庫済: ["#dcfce7", "#15803d"],
   出荷済: ["#e2e8f0", "#475569"]
 };
+
+/* 11/3 落合さん「これ細かくいらない」：直近7日の動きで、同じ日・同じサイズ・同じ置場への入庫（ロットごと）を1行にまとめる。
+   取消のある動き（移動・持ち出し・廃棄）と取り消した行はまとめない（純関数） */
+function moveGroups_(rows) {
+  const out = [],
+    idx = {};
+  (rows || []).forEach(r => {
+    if (r.kind !== "入庫" || r.canceled) {
+      out.push({
+        key: "r" + r.id,
+        rows: [r]
+      });
+      return;
+    }
+    const k = String(r.at || "").slice(0, 10) + "|" + r.size + "|" + (r.from || "") + "|" + (r.to || "");
+    if (idx[k] != null) {
+      out[idx[k]].rows.push(r);
+      return;
+    }
+    idx[k] = out.length;
+    out.push({
+      key: "g" + k,
+      rows: [r]
+    });
+  });
+  return out;
+}
 function YardPlaceDetail({
   loc,
   inYard,
@@ -7765,7 +7792,12 @@ function YardPlaceDetail({
   onClose
 }) {
   const c = yardPlaceContents_(loc, inYard);
-  const recent = yardPlaceMoves_(loc.no, moves).slice(0, 5);
+  // 同じ日・同じ置場への入庫（ロットごと）は1行にまとめる（moveGroups_）
+  const recent = moveGroups_(yardPlaceMoves_(loc.no, moves)).slice(0, 5).map(g => Object.assign({}, g.rows[0], {
+    id: g.key,
+    qty: g.rows.reduce((a, x) => a + (Number(x.qty) || 0), 0),
+    name: g.rows.length > 1 ? "ロット" + g.rows.length + "件" : g.rows[0].name
+  }));
   const lv = SITE_LEVEL[siteLevel_(loc)];
   const canOut = (loc.a20 || 0) > 0 || (loc.a50 || 0) > 0;
   const canMove = (loc.a20 || 0) + (loc.a30 || 0) + (loc.a50 || 0) > 0;
@@ -7933,6 +7965,7 @@ function StockMoveCard({
   const [to, setTo] = useState("");
   const [qty, setQty] = useState("");
   const [memo, setMemo] = useState("");
+  const [openGroup, setOpenGroup] = useState(null); // まとめた入庫を開いているか
   // 敷地図・置場の中身の「ここから移動」「入込場へ持ち出し」から、種類・サイズ・元を入れた状態で開く
   useEffect(() => {
     if (!preset || !preset.n) return;
@@ -8139,51 +8172,104 @@ function StockMoveCard({
     className: "text-xs text-slate-500"
   }, "\u3053\u306E1\u9031\u9593\u306E\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093\u3002"), /*#__PURE__*/React.createElement("div", {
     className: "divide-y divide-slate-100"
-  }, rows.map(r => /*#__PURE__*/React.createElement("div", {
-    key: r.id,
-    "data-move-row": "1",
-    className: "flex items-baseline flex-wrap py-1.5",
-    style: {
-      columnGap: 8,
-      rowGap: 2,
-      opacity: r.canceled ? 0.55 : 1
+  }, moveGroups_(rows).map(g => {
+    if (g.rows.length > 1 && openGroup !== g.key) {
+      const r = g.rows[0],
+        sum = g.rows.reduce((a, x) => a + (Number(x.qty) || 0), 0);
+      const names = g.rows.map(x => x.name).filter((x, i, a) => x && a.indexOf(x) === i);
+      return /*#__PURE__*/React.createElement("button", {
+        key: g.key,
+        type: "button",
+        "data-move-row": "1",
+        "data-move-group": g.rows.length,
+        onClick: () => setOpenGroup(g.key),
+        className: "w-full text-left flex items-baseline flex-wrap py-1.5",
+        style: {
+          columnGap: 8,
+          rowGap: 2,
+          background: "transparent",
+          border: "none"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-[11px] tabular-nums text-slate-500"
+      }, md(r.at)), /*#__PURE__*/React.createElement("span", {
+        className: "text-[11px] px-1 rounded font-semibold",
+        style: {
+          background: MOVE_TONE.入庫[0],
+          color: MOVE_TONE.入庫[1]
+        }
+      }, "\u5165\u5EAB"), /*#__PURE__*/React.createElement("span", {
+        className: "text-[12px] tabular-nums font-semibold",
+        style: {
+          color: NAVY
+        }
+      }, r.size, " ", sum, "\u672C"), /*#__PURE__*/React.createElement("span", {
+        className: "text-[12px]",
+        style: {
+          color: VIZ.ink
+        }
+      }, r.from || "生産", " \u2192 ", r.to), /*#__PURE__*/React.createElement("span", {
+        className: "text-[11px] text-slate-500"
+      }, "\u30ED\u30C3\u30C8", g.rows.length, "\u4EF6", names.length ? "　" + names.join("・") : ""), /*#__PURE__*/React.createElement("span", {
+        className: "ml-auto text-[10px] text-slate-400"
+      }, "\u304F\u308F\u3057\u304F \u25BE"));
     }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] tabular-nums text-slate-500"
-  }, md(r.at)), /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] px-1 rounded font-semibold",
-    style: {
-      background: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[0],
-      color: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[1]
-    }
-  }, r.kind), /*#__PURE__*/React.createElement("span", {
-    className: "text-[12px] tabular-nums font-semibold",
-    style: {
-      color: NAVY
-    }
-  }, r.size, " ", r.qty, "\u672C"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[12px]",
-    style: {
-      color: VIZ.ink
-    }
-  }, r.from || "生産", " \u2192 ", r.to || (r.kind === "廃棄" ? "廃棄" : "")), /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] text-slate-500"
-  }, r.name, r.memo ? "　" + r.memo : ""), r.canceled ? /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] px-1 rounded",
-    style: {
-      background: "#fee2e2",
-      color: "#b91c1c"
-    }
-  }, "\u53D6\u6D88", r.canceledBy ? "（" + r.canceledBy + "）" : "") : r.kind !== "入庫" && /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      if (!knownWorker) {
-        window.alert("上の「記録する人」で名前を選んでください");
-        return;
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: g.key
+    }, g.rows.length > 1 && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setOpenGroup(null),
+      className: "w-full text-left text-[10px] text-slate-400 py-1",
+      style: {
+        background: "transparent",
+        border: "none"
       }
-      if (window.confirm(r.kind + " " + r.size + " " + r.qty + "本（" + (r.from || "") + " → " + (r.to || r.kind) + "）を取り消して、置場の本数を元に戻しますか？")) onCancel(r.id);
-    },
-    className: "ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100"
-  }, "\u53D6\u6D88"))))));
+    }, "\u25B4 \u305F\u305F\u3080\uFF08", g.rows[0].size, " ", g.rows[0].to, " \u3078\u306E\u5165\u5EAB ", g.rows.length, "\u4EF6\uFF09"), g.rows.map(r => /*#__PURE__*/React.createElement("div", {
+      key: r.id,
+      "data-move-row": "1",
+      className: "flex items-baseline flex-wrap py-1.5",
+      style: {
+        columnGap: 8,
+        rowGap: 2,
+        opacity: r.canceled ? 0.55 : 1
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] tabular-nums text-slate-500"
+    }, md(r.at)), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] px-1 rounded font-semibold",
+      style: {
+        background: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[0],
+        color: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[1]
+      }
+    }, r.kind), /*#__PURE__*/React.createElement("span", {
+      className: "text-[12px] tabular-nums font-semibold",
+      style: {
+        color: NAVY
+      }
+    }, r.size, " ", r.qty, "\u672C"), /*#__PURE__*/React.createElement("span", {
+      className: "text-[12px]",
+      style: {
+        color: VIZ.ink
+      }
+    }, r.from || "生産", " \u2192 ", r.to || (r.kind === "廃棄" ? "廃棄" : "")), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] text-slate-500"
+    }, r.name, r.memo ? "　" + r.memo : ""), r.canceled ? /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] px-1 rounded",
+      style: {
+        background: "#fee2e2",
+        color: "#b91c1c"
+      }
+    }, "\u53D6\u6D88", r.canceledBy ? "（" + r.canceledBy + "）" : "") : r.kind !== "入庫" && /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        if (!knownWorker) {
+          window.alert("上の「記録する人」で名前を選んでください");
+          return;
+        }
+        if (window.confirm(r.kind + " " + r.size + " " + r.qty + "本（" + (r.from || "") + " → " + (r.to || r.kind) + "）を取り消して、置場の本数を元に戻しますか？")) onCancel(r.id);
+      },
+      className: "ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100"
+    }, "\u53D6\u6D88"))));
+  }))));
 }
 function YardCapacityTab({
   summary,

@@ -4036,9 +4036,26 @@ function yardPlaceMoves_(no, moves) {
 }
 const LOT_STATE_TONE = { 未受検: ["#fef3c7", "#b45309"], 受検済: ["#e0f2fe", "#0369a1"], 入庫済: ["#dcfce7", "#15803d"], 出荷済: ["#e2e8f0", "#475569"] };
 
+/* 11/3 落合さん「これ細かくいらない」：直近7日の動きで、同じ日・同じサイズ・同じ置場への入庫（ロットごと）を1行にまとめる。
+   取消のある動き（移動・持ち出し・廃棄）と取り消した行はまとめない（純関数） */
+function moveGroups_(rows) {
+  const out = [], idx = {};
+  (rows || []).forEach((r) => {
+    if (r.kind !== "入庫" || r.canceled) { out.push({ key: "r" + r.id, rows: [r] }); return; }
+    const k = String(r.at || "").slice(0, 10) + "|" + r.size + "|" + (r.from || "") + "|" + (r.to || "");
+    if (idx[k] != null) { out[idx[k]].rows.push(r); return; }
+    idx[k] = out.length;
+    out.push({ key: "g" + k, rows: [r] });
+  });
+  return out;
+}
+
 function YardPlaceDetail({ loc, inYard, moves, onMoveFrom, onEdit, onPlacePin, onClose }) {
   const c = yardPlaceContents_(loc, inYard);
-  const recent = yardPlaceMoves_(loc.no, moves).slice(0, 5);
+  // 同じ日・同じ置場への入庫（ロットごと）は1行にまとめる（moveGroups_）
+  const recent = moveGroups_(yardPlaceMoves_(loc.no, moves)).slice(0, 5).map((g) =>
+    Object.assign({}, g.rows[0], { id: g.key, qty: g.rows.reduce((a, x) => a + (Number(x.qty) || 0), 0),
+      name: g.rows.length > 1 ? "ロット" + g.rows.length + "件" : g.rows[0].name }));
   const lv = SITE_LEVEL[siteLevel_(loc)];
   const canOut = (loc.a20 || 0) > 0 || (loc.a50 || 0) > 0;
   const canMove = (loc.a20 || 0) + (loc.a30 || 0) + (loc.a50 || 0) > 0;
@@ -4120,6 +4137,7 @@ function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCa
   const [to, setTo] = useState("");
   const [qty, setQty] = useState("");
   const [memo, setMemo] = useState("");
+  const [openGroup, setOpenGroup] = useState(null);   // まとめた入庫を開いているか
   // 敷地図・置場の中身の「ここから移動」「入込場へ持ち出し」から、種類・サイズ・元を入れた状態で開く
   useEffect(() => {
     if (!preset || !preset.n) return;
@@ -4224,7 +4242,30 @@ function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCa
         {moves && moves.error && <p className="text-xs text-amber-700">{moves.error}</p>}
         {moves && rows.length === 0 && <p className="text-xs text-slate-500">この1週間の記録はありません。</p>}
         <div className="divide-y divide-slate-100">
-          {rows.map((r) => (
+          {moveGroups_(rows).map((g) => {
+            if (g.rows.length > 1 && openGroup !== g.key) {
+              const r = g.rows[0], sum = g.rows.reduce((a, x) => a + (Number(x.qty) || 0), 0);
+              const names = g.rows.map((x) => x.name).filter((x, i, a) => x && a.indexOf(x) === i);
+              return (
+                <button key={g.key} type="button" data-move-row="1" data-move-group={g.rows.length} onClick={() => setOpenGroup(g.key)}
+                  className="w-full text-left flex items-baseline flex-wrap py-1.5" style={{ columnGap: 8, rowGap: 2, background: "transparent", border: "none" }}>
+                  <span className="text-[11px] tabular-nums text-slate-500">{md(r.at)}</span>
+                  <span className="text-[11px] px-1 rounded font-semibold" style={{ background: MOVE_TONE.入庫[0], color: MOVE_TONE.入庫[1] }}>入庫</span>
+                  <span className="text-[12px] tabular-nums font-semibold" style={{ color: NAVY }}>{r.size} {sum}本</span>
+                  <span className="text-[12px]" style={{ color: VIZ.ink }}>{r.from || "生産"} → {r.to}</span>
+                  <span className="text-[11px] text-slate-500">ロット{g.rows.length}件{names.length ? "　" + names.join("・") : ""}</span>
+                  <span className="ml-auto text-[10px] text-slate-400">くわしく ▾</span>
+                </button>
+              );
+            }
+            return (
+            <React.Fragment key={g.key}>
+            {g.rows.length > 1 && (
+              <button type="button" onClick={() => setOpenGroup(null)} className="w-full text-left text-[10px] text-slate-400 py-1" style={{ background: "transparent", border: "none" }}>
+                ▴ たたむ（{g.rows[0].size} {g.rows[0].to} への入庫 {g.rows.length}件）
+              </button>
+            )}
+            {g.rows.map((r) => (
             <div key={r.id} data-move-row="1" className="flex items-baseline flex-wrap py-1.5" style={{ columnGap: 8, rowGap: 2, opacity: r.canceled ? 0.55 : 1 }}>
               <span className="text-[11px] tabular-nums text-slate-500">{md(r.at)}</span>
               <span className="text-[11px] px-1 rounded font-semibold" style={{ background: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[0], color: (MOVE_TONE[r.kind] || MOVE_TONE.移動)[1] }}>{r.kind}</span>
@@ -4239,7 +4280,10 @@ function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCa
                     className="ml-auto text-[10px] px-1.5 py-0.5 rounded text-slate-500 bg-slate-100">取消</button>
                 )}
             </div>
-          ))}
+            ))}
+            </React.Fragment>
+            );
+          })}
         </div>
       </div>
     </div>
