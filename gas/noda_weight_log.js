@@ -328,6 +328,82 @@ function wlog_planSent_(list, lots, wlots, from) {
   return acts;
 }
 
+/* ★ 2026/11/03 落合さん「ここもロットにして」：前のやり方（量っている途中で作って広げる）でできた細かい自動ロットを、
+     重量転記アプリのロット（100本の成績表）ごと・20kg は満タン／バラごと・置場ごとに1つにまとめる（純関数。何をするかだけ返す）。
+     同じ置場どうしだけまとめるので、置場の本数は変わらない（足し算の付け替えだけ）。
+     出荷・持ち出しで引いたもの、残りの番号があるもの、手で登録したもの、取り消したものには触らない。
+   返す：[{ id（残す）, a, b, n, width, others:[ID…] }] */
+function wlog_planMerge_(lots) {
+  var C = (typeof LOT_CONFIG !== 'undefined' && LOT_CONFIG.CANCELLED) || '取消';
+  var F = WLOG_CONFIG.PALLET20.FULL;
+  var seg = function (size, n) { var g = Math.floor((n - 1) / 100); return size === '20kg' ? g + ((n - 1) % 100 < F ? 'F' : 'B') : String(g); };
+  var groups = {}, order = [];
+  (lots || []).forEach(function (l) {
+    if (String(l.登録者 || '') !== WLOG_CONFIG.AUTO_WHO || l.状態 === C) return;
+    if (Number(l.出荷済本数) || Number(l.入込場持ち出し本数) || Number(l.置場から引いた本数) || String(l.残りの番号 || '')) return;
+    var a = Number(l.容器No開始), b = Number(l.容器No終了);
+    if (!(a > 0) || !(b >= a) || seg(l.サイズ, a) !== seg(l.サイズ, b)) return;
+    var k = [String(l.容器接頭辞).toUpperCase(), l.サイズ, l.状態, l.置場番号 || '', seg(l.サイズ, a)].join('|');
+    if (!groups[k]) { groups[k] = []; order.push(k); }
+    groups[k].push(l);
+  });
+  var out = [];
+  order.forEach(function (k) {
+    var g = groups[k];
+    if (g.length < 2) return;
+    g = g.slice().sort(function (x, y) { return Number(x.容器No開始) - Number(y.容器No開始) || (x.ロットID < y.ロットID ? -1 : 1); });
+    var width = g.reduce(function (m, l) { return Math.max(m, String(l.容器No開始).length, String(l.容器No終了).length); }, 0);
+    out.push({ id: g[0].ロットID,
+               a: g.reduce(function (m, l) { return Math.min(m, Number(l.容器No開始)); }, Infinity),
+               b: g.reduce(function (m, l) { return Math.max(m, Number(l.容器No終了)); }, 0),
+               n: g.reduce(function (m, l) { return m + (Number(l.本数) || 0); }, 0),
+               width: width, others: g.slice(1).map(function (l) { return l.ロットID; }) });
+  });
+  return out;
+}
+
+/* まとめるのを書く（置場の本数・作業記録には触らない） */
+function wlog_applyMerge_(plan) {
+  var out = { まとめた: 0, 消した: 0, error: null };
+  if (!plan || !plan.length) return out;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var sheet = lot_sheet_();
+    var H = lot_headerIndex_();
+    var W = LOT_CONFIG.HEADERS.length;
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, W).getValues();
+    var rowOf = {};
+    values.forEach(function (r, i) { rowOf[String(r[H['ロットID']]).trim()] = i + 2; });
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    plan.forEach(function (m) {
+      if (!rowOf[m.id] || m.others.some(function (id) { return !rowOf[id]; })) return;
+      m.others.forEach(function (id) {
+        lot_writeRow_(rowOf[id], function (row, H) {
+          row[H['状態']] = LOT_CONFIG.CANCELLED;
+          row[H['備考']] = String(row[H['備考']] || '') + '。取消（' + now.slice(5, 10).replace('-', '/') + ' ロット ' + m.id + ' にまとめた）';
+          row[H['更新日時']] = now;
+        });
+        out.消した++;
+      });
+      lot_writeRow_(rowOf[m.id], function (row, H) {
+        row[H['容器No開始']] = "'" + wlog_pad_(m.a, m.width);
+        row[H['容器No終了']] = "'" + wlog_pad_(m.b, m.width);
+        row[H['本数']] = m.n;
+        row[H['備考']] = String(row[H['備考']] || '') + '。' + now.slice(5, 10).replace('-', '/') + ' 細かいロット ' + (m.others.length + 1) + '件を成績表の組ごとに1つにまとめた（' + m.others.join('・') + '）';
+        row[H['更新日時']] = now;
+      });
+      out.まとめた++;
+    });
+  } catch (e) {
+    out.error = String(e && e.message || e);
+    Logger.log('自動ロットをまとめるところでエラー: ' + out.error);
+  } finally {
+    lock.releaseLock();
+  }
+  return out;
+}
+
 // ===== 毎時（harvestDailyData から） =====
 function syncWeightLog() {
   var out = { 読んだ行: 0, 容器: 0, 日: 0, 作った: 0, 広げた: 0, error: null };
@@ -338,6 +414,10 @@ function syncWeightLog() {
     out.読んだ行 = tail.values.length; out.容器 = list.length;
     var daily = wlog_daily_(list, tail.all ? '' : tail.firstDay);
     out.日 = wlog_saveDaily_(daily, tail.all ? '' : tail.firstDay);
+    // ★ 11/3 前のやり方でできた細かい自動ロットを、成績表の組（満タン／バラ）・置場ごとに1つにまとめる
+    var mg = wlog_applyMerge_(wlog_planMerge_(lot_readAll_()));
+    out.まとめた = mg.まとめた;
+    if (mg.error) out.error = mg.error;
     // ★ 11/3〜 ロットは「重量転記アプリのロットが完了してメールで送られたら」まとめて作る（wlog_planSent_）
     var r = wlog_applyLots_(wlog_planSent_(list, lot_readAll_(), wlog_wlots_(ss), WLOG_CONFIG.AUTO_FROM));
     out.作った = r.作った; out.広げた = r.広げた;
