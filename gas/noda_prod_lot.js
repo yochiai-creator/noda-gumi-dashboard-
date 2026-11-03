@@ -132,9 +132,9 @@ function lot_inYard_(list) {
 /* まだ置場に置いていない 20kg のバラ（重量転記から自動でできた28本の側）（純関数）。古い順 */
 function lot_baraWaiting_(list) {
   return (list || []).filter(function (r) {
-    return r.状態 === '未受検' && !r.置場番号 && /バラ/.test(String(r.備考 || ''));
+    return (r.状態 === '未受検' || r.状態 === '受検済') && !r.置場番号 && /バラ/.test(String(r.備考 || ''));
   }).map(function (r) {
-    return { id: r.ロットID, day: r.生産日, pre: r.容器接頭辞, from: r.容器No開始, to: r.容器No終了, n: r.本数 };
+    return { id: r.ロットID, day: r.生産日, pre: r.容器接頭辞, from: r.容器No開始, to: r.容器No終了, n: r.本数, state: r.状態 };
   }).sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : (a.id < b.id ? -1 : 1); });
 }
 
@@ -146,7 +146,8 @@ function placeBaraLots(ids, locationNo) {
     var want = (ids || []).map(String);
     var list = lot_baraWaiting_(lot_readAll_()).filter(function (x) { return !want.length || want.indexOf(String(x.id)) >= 0; });
     for (var i = 0; i < list.length; i++) {
-      var r = placeProdLot(list[i].id, locationNo);
+      // メールで送ったもの（受検済）は入庫済にする。まだのもの（未受検）は置場だけ決める
+      var r = list[i].state === '受検済' ? stockInLot(list[i].id, locationNo) : placeProdLot(list[i].id, locationNo);
       if (r && r.ok === false) { out.ok = false; out.error = r.error; break; }
       out.置いた++; out.本数 += Number(r && r.本数) || 0;
     }

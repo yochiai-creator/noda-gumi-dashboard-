@@ -592,7 +592,7 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
             <span className="block text-[12px] font-bold" style={{ color: "#9a3412" }}>
               20kgのバラ {bw.length}件・{vizComma(total)}本 がまだ置場に入っていません
             </span>
-            <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>置いた置場を押すと、全部まとめて置きます</span>
+            <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>置いた置場を押すと、全部まとめて入庫にします</span>
             <span className="flex flex-wrap gap-1.5">
               {LOT_BARA_PLACES.map((no) => locations.find((loc) => String(loc.no) === no)).filter(Boolean).map((loc) => (
                 <button key={loc.no} data-bara-all={loc.no} disabled={saving}
@@ -608,7 +608,7 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
       {/* ★ 2026/11/01〜 重量転記アプリで量った容器は、1時間おきに自動でロットになる（未受検・置場なし）。
              現場は「置場に置く」で置場を選ぶだけ。手で登録するのは、重量転記を通らないものだけ。 */}
       <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>
-        重量転記アプリで量った容器は、1時間おきに自動でロットになります。置場を選ぶだけで置場の本数に入ります。
+        重量転記アプリの成績表（100本）を完了してメールで送ると、100本ごとにまとめて入庫になります（20kgの満タンは15へ。バラ・50kgは置場を選ぶだけ）。
       </span>
       {!adding ? (
         <button onClick={openAdd}

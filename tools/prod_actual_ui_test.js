@@ -90,7 +90,7 @@ const locs = recs.map(s.yardtab_shape_);
 
   console.log('■ 自動でできたロット');
   chk('★「重量転記から」の印', await page.locator('[data-lot-auto]').count() === 2);
-  chk('★手で登録は「重量転記を通らないもの」だけと書く', /手で登録（重量転記を通らないもの）/.test(t) && /1時間おきに自動でロットになります/.test(t));
+  chk('★手で登録は「重量転記を通らないもの」だけと書く', /手で登録（重量転記を通らないもの）/.test(t) && /メールで送ると、100本ごとにまとめて入庫になります/.test(t));
   chk('★置場の無い未受検に「置場に置く」（置場のあるロットには出さない）', await page.locator('[data-lot-place]').count() === 2);
   await page.locator('[data-lot-place="L20261102-001"]').click();
   await page.waitForTimeout(200);

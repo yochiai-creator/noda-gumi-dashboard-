@@ -547,6 +547,13 @@ console.log('■ 20kg のバラをまとめて置く（11/3）');
   chk('★1回でまとめて置く（2件・55本）', r.ok && r.置いた === 2 && r.本数 === 55 && s.__locs[0].a20 === 55, [r, s.__locs[0].a20]);
   chk('置いたあとはもう出ない', s.getProdLots('', 0).baraWaiting.length === 0);
 }
+{
+  const r0 = lotRow({ id: 'B9', サイズ: '20kg', pre: 'HXR', a: '6073', b: '6100', 本数: 28, 状態: '受検済' }); r0[H.indexOf('備考')] = '自動・バラ';
+  const s = build([r0], [loc({ no: 19, name: '臨時', a20: 0, m20: 0, m50: 1200 })], []);
+  const r = s.placeBaraLots([], 19);
+  const l = s.getProdLots('', 0).lots[0];
+  chk('★メールで送ったバラ（受検済）は、まとめて置くと入庫済になる', r.ok && l.状態 === '入庫済' && l.置場番号 === '19' && s.__locs[0].a20 === 28, [r, l.状態, s.__locs[0].a20]);
+}
 
 console.log('■ 置場の中身（置場に残っているロット）');
 {

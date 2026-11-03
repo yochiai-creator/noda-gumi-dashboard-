@@ -257,6 +257,77 @@ function wlog_sokoLots_(ss) {
   return out;
 }
 
+/* 重量転記アプリのロット（100本の成績表）を読む。[{ id, pre, a, b, kind, state, sent, spec }] */
+function wlog_wlots_(ss) {
+  var sh = ss.getSheetByName(WLOG_CONFIG.LOT_SHEET);
+  if (!sh || sh.getLastRow() < 2) return [];
+  var v = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  return wlog_wlotsFrom_(v[0], v.slice(1));
+}
+/* 見出し＋行 → ロット（純関数） */
+function wlog_wlotsFrom_(head, rows) {
+  var H = {};
+  (head || []).forEach(function (h, i) { H[String(h).trim()] = i; });
+  var g = function (r, k) { return H[k] == null ? '' : r[H[k]]; };
+  return (rows || []).map(function (r) {
+    var sent = g(r, '送信日時');
+    sent = sent instanceof Date ? Utilities.formatDate(sent, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm') : String(sent || '').trim();
+    return { id: String(g(r, 'ロットID') || ''), pre: String(g(r, '記号') || '').toUpperCase(),
+             a: Number(String(g(r, '開始番号')).replace(/^'/, '')), b: Number(String(g(r, '終了番号')).replace(/^'/, '')),
+             width: String(g(r, '開始番号')).replace(/^'/, '').length,
+             kind: String(g(r, '容器区分') || ''), state: String(g(r, '状態') || ''), sent: sent, spec: String(g(r, '仕様') || '') };
+  }).filter(function (w) { return w.id && w.pre && w.a > 0 && w.b >= w.a; });
+}
+
+/* ★ 2026/11/03 落合さん「野外置き場の入庫の本数が細か過ぎるけ、ロット事に揃ってメールで送ったら入庫にして」：
+     量っている途中でロットを作って広げていくのをやめ、重量転記アプリのロット（100本の成績表）が完了して
+     メールで送られたら（送信日時が入ったら）、その100本をまとめて入庫にする（純関数。何をするかだけ返す）。
+     ・20kg は 満タン（01〜72）→ 15 に入庫、バラ（73〜00）→ 受検済で置場待ち（「まとめて置く」で入庫）
+     ・50kg ほか置場容量に列のあるサイズ → 受検済で置場待ち（「入庫する」で置場を選ぶ）
+     ・置場容量に列の無いサイズ（8kg・10kg 等）と底黒は作らない
+     ・始める日より前に量り始めた組、手で登録したロットと重なる番号は作らない
+     ・前のやり方で作った自動ロット（未受検）がその区切りにあれば、本数を数え直して入庫済／受検済にする
+   返す：[{ op:'create', …, state, stockIn } | { op:'update', id, a, b, n, add, 置場番号, state }] */
+function wlog_planSent_(list, lots, wlots, from) {
+  from = from || WLOG_CONFIG.AUTO_FROM;
+  var C = (typeof LOT_CONFIG !== 'undefined' && LOT_CONFIG.CANCELLED) || '取消';
+  var isAuto = function (l) { return String(l.登録者 || '') === WLOG_CONFIG.AUTO_WHO; };
+  var acts = [];
+  (wlots || []).forEach(function (w) {
+    if (w.state !== '完了' || !w.sent || w.spec === WLOG_CONFIG.SOKO) return;
+    var size = wlog_size_(w.kind);
+    if (!size) return;
+    var mine = (list || []).filter(function (r) { return r.pre === w.pre && r.num >= w.a && r.num <= w.b; });
+    if (!mine.length) return;   // 入力記録の読んだ範囲に無い（古い）
+    var started = mine.reduce(function (m, r) { return !m || r.day < m ? r.day : m; }, '');
+    if (started < from) return;
+    var day = mine.reduce(function (m, r) { return !m || r.day > m ? r.day : m; }, '');   // 量り終えた日
+    var same = (lots || []).filter(function (l) { return String(l.容器接頭辞).toUpperCase() === w.pre; });
+    wlog_segments_(mine.map(function (r) { return r.num; }), size === '20kg').forEach(function (sg) {
+      var lo = sg.lo == null ? w.a : Math.max(w.a, sg.lo), hi = sg.hi == null ? w.b : Math.min(w.b, sg.hi);
+      var n = sg.nums.length;
+      var inSeg = function (l) { return Number(l.容器No開始) >= lo && Number(l.容器No終了) <= hi; };
+      var over = function (l) { return Number(l.容器No開始) <= hi && Number(l.容器No終了) >= lo; };
+      // 前のやり方でできた自動ロットがこの区切りの中にあれば、それを入庫済／受検済にする
+      var e = same.filter(function (l) { return isAuto(l) && l.状態 !== C && inSeg(l); })[0];
+      if (e) {
+        if (e.状態 === '未受検' || Number(e.本数) < n || Number(e.容器No開始) !== lo || Number(e.容器No終了) !== hi) {
+          acts.push({ op: 'update', id: e.ロットID, a: lo, b: hi, n: Math.max(n, Number(e.本数)),
+                      add: e.置場番号 ? Math.max(0, n - Number(e.本数)) : 0, 置場番号: e.置場番号 || '',
+                      state: e.状態 === '未受検' ? (e.置場番号 ? '入庫済' : '受検済') : '' });
+        }
+        return;
+      }
+      // 手で登録したロット（取消以外）や、取り消した自動ロットと重なるなら作らない
+      if (same.some(function (l) { return over(l) && (l.状態 !== C || isAuto(l)); })) return;
+      acts.push({ op: 'create', 生産日: day, pre: w.pre, kind: w.kind, size: size, a: lo, b: hi, n: n, width: w.width,
+                  part: sg.part || '', state: '受検済',
+                  stockIn: sg.part === '満タン' ? WLOG_CONFIG.PALLET20.FULL_PLACE : '', wlot: w.id });
+    });
+  });
+  return acts;
+}
+
 // ===== 毎時（harvestDailyData から） =====
 function syncWeightLog() {
   var out = { 読んだ行: 0, 容器: 0, 日: 0, 作った: 0, 広げた: 0, error: null };
@@ -267,7 +338,8 @@ function syncWeightLog() {
     out.読んだ行 = tail.values.length; out.容器 = list.length;
     var daily = wlog_daily_(list, tail.all ? '' : tail.firstDay);
     out.日 = wlog_saveDaily_(daily, tail.all ? '' : tail.firstDay);
-    var r = wlog_applyLots_(wlog_plan_(list, lot_readAll_(), WLOG_CONFIG.AUTO_FROM));
+    // ★ 11/3〜 ロットは「重量転記アプリのロットが完了してメールで送られたら」まとめて作る（wlog_planSent_）
+    var r = wlog_applyLots_(wlog_planSent_(list, lot_readAll_(), wlog_wlots_(ss), WLOG_CONFIG.AUTO_FROM));
     out.作った = r.作った; out.広げた = r.広げた;
     if (r.error) out.error = r.error;
   } catch (err) {
@@ -322,11 +394,18 @@ function wlog_applyLots_(acts) {
           var put = function (h, v) { row[LOT_CONFIG.HEADERS.indexOf(h)] = v; };
           put('ロットID', id); put('生産日', x.生産日); put('機種名', x.kind); put('サイズ', x.size);
           put('容器接頭辞', x.pre); put('容器No開始', "'" + wlog_pad_(x.a, x.width)); put('容器No終了', "'" + wlog_pad_(x.b, x.width));
-          put('本数', x.n); put('状態', '未受検'); put('出荷済本数', 0);
-          put('備考', WLOG_CONFIG.AUTO_NOTE + (x.part ? '・' + x.part + (x.part === 'バラ' ? '（' + WLOG_CONFIG.PALLET20.BARA_PLACES.join('・') + 'のどれかに置く）' : '（パレット満タン）') : ''));
+          put('本数', x.n); put('状態', x.state || '未受検'); put('出荷済本数', 0);
+          if (x.state === '受検済') put('受検日', String(now).slice(0, 10));
+          put('備考', WLOG_CONFIG.AUTO_NOTE + (x.wlot ? '（成績表 ' + x.wlot + ' をメールで送った）' : '') +
+            (x.part ? '・' + x.part + (x.part === 'バラ' ? '（' + WLOG_CONFIG.PALLET20.BARA_PLACES.join('・') + 'のどれかに置く）' : '（パレット満タン）') : ''));
           put('登録者', WLOG_CONFIG.AUTO_WHO); put('登録日時', now); put('更新日時', now);
           sheet.appendRow(row);
           out.作った++;
+          // メールで送った満タンのパレットは、決まった置場に入庫する（置場の本数に足し、作業記録に入庫）
+          if (x.stockIn && typeof stockInLot === 'function') {
+            var si = stockInLot(id, x.stockIn);
+            if (si && si.ok === false) out.error = 'ロット ' + id + ' を置場 ' + x.stockIn + ' に入庫できませんでした：' + si.error;
+          }
           // 満タンのパレットは決まった置場に置く（置いた時点で置場の本数に足し、作業記録に入庫）
           if (x.place && typeof placeProdLot === 'function') {
             var pr = placeProdLot(id, x.place);
@@ -351,6 +430,11 @@ function wlog_applyLots_(acts) {
           row[H['容器No開始']] = "'" + wlog_pad_(x.a, width);
           row[H['容器No終了']] = "'" + wlog_pad_(x.b, width);
           row[H['本数']] = x.n;
+          if (x.state) {   // メールで送った → 置いてあれば入庫済、まだなら受検済（置場待ち）
+            row[H['状態']] = x.state;
+            if (!row[H['受検日']]) row[H['受検日']] = String(now).slice(0, 10);
+            if (x.state === '入庫済' && !row[H['入庫日']]) row[H['入庫日']] = String(now).slice(0, 10);
+          }
           row[H['更新日時']] = now;
         });
         out.広げた++;
@@ -425,7 +509,7 @@ function 重量転記アプリの取込を試す() {
   var tail = wlog_readTail_(ss);
   var list = wlog_firstSeen_(wlog_rows_(tail.head, tail.values, wlog_sokoLots_(ss)));
   var daily = wlog_daily_(list, tail.all ? '' : tail.firstDay);
-  var acts = wlog_plan_(list, lot_readAll_(), WLOG_CONFIG.AUTO_FROM);
+  var acts = wlog_planSent_(list, lot_readAll_(), wlog_wlots_(ss), WLOG_CONFIG.AUTO_FROM);
   Logger.log('読んだ行 ' + tail.values.length + '（最初の日 ' + (tail.firstDay || '全部') + '）・容器 ' + list.length);
   daily.slice(-10).forEach(function (d) { Logger.log(d.日付 + ' ' + d.容器区分 + ' ' + d.本数 + '本'); });
   acts.forEach(function (a) { Logger.log(JSON.stringify(a)); });
