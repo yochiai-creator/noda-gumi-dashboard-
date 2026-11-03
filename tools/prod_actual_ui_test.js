@@ -41,6 +41,7 @@ const locs = recs.map(s.yardtab_shape_);
       { ロットID: 'L20261102-001', 生産日: '2026-11-02', 機種名: '50kg', サイズ: '50kg', 容器接頭辞: 'HEP', 容器No開始: '84001', 容器No終了: '84600', 本数: 600, 状態: '未受検', 置場番号: '', 置場名: '', 出荷済本数: 0, 登録者: '（自動：重量転記）' },
       { ロットID: 'L20261102-009', 生産日: '2026-11-02', 機種名: '20kg', サイズ: '20kg', 容器接頭辞: 'HXR', 容器No開始: '04073', 容器No終了: '04100', 本数: 28, 状態: '未受検', 置場番号: '', 置場名: '', 出荷済本数: 0, 登録者: '（自動：重量転記）', 備考: '重量転記アプリで量った容器から自動・バラ（11・19・18のどれかに置く）' },
       { ロットID: 'L20261101-001', 生産日: '2026-11-01', 機種名: '50kg容器', サイズ: '50kg', 容器接頭辞: 'HEP', 容器No開始: '83001', 容器No終了: '83010', 本数: 10, 状態: '未受検', 置場番号: '7', 置場名: '大型製缶', 出荷済本数: 0, 登録者: '野田' }],
+      baraWaiting: [{ id: 'L20261102-009', day: '2026-11-02', pre: 'HXR', from: '04073', to: '04100', n: 28 }, { id: 'L20261102-010', day: '2026-11-02', pre: 'HXR', from: '04173', to: '04200', n: 27 }],
       inYard: [
       { id: 'L20261028-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-28', state: '受検済', pre: 'HXP', from: '10001', to: '10200', n: 200, left: 200, counted: true },
       { id: 'L20261029-001', no: '7', size: '50kg', name: '50kg容器', day: '2026-10-29', state: '入庫済', pre: 'HXP', from: '10201', to: '10300', n: 100, left: 50, counted: true },
@@ -60,6 +61,7 @@ const locs = recs.map(s.yardtab_shape_);
       recordStockMove: (req) => { st.calls.push(['move', req]);
         st.moves.unshift({ id: 'M' + (++st.n), at: '2026-10-27 09:00', name: req.name, kind: req.kind, size: req.size, qty: req.qty, from: req.from + ' 大型製缶', to: req.kind === '移動' ? req.to + ' 事務所' : req.kind === '持ち出し' ? '50k入込場' : '', memo: req.memo, canceled: false });
         return H.getStockMoves(); },
+      placeBaraLots: (ids, no) => { st.calls.push(['bara', ids, no]); return { ok: true, 置いた: 2, 本数: 55, error: null }; },
       placeProdLot: (id, no) => { st.calls.push(['place', id, no]); return { ok: true, error: null }; },
       saveYardLocation: (no, up) => { st.calls.push(['save', no, up]); return { ok: true, error: null }; },
       cancelStockMove: (req) => { st.calls.push(['cancel', req]); st.moves.forEach((m) => { if (m.id === req.id) { m.canceled = true; m.canceledBy = req.name; } }); return H.getStockMoves(); },
@@ -104,6 +106,14 @@ const locs = recs.map(s.yardtab_shape_);
   await page.waitForTimeout(200);
   const bp = await page.evaluate(() => { const e = document.querySelector('[data-bara-places]'); return e ? [...e.querySelectorAll('button')].map((b) => b.innerText) : []; });
   chk('★バラは 11・19・18 を先に出す', bp.length === 3 && /^11 /.test(bp[0]) && /^19 /.test(bp[1]) && /^18 /.test(bp[2]), bp);
+
+  console.log('■ バラをまとめて置く');
+  const bb = await page.evaluate(() => { const e = document.querySelector('[data-bara-bulk]'); return e ? e.innerText : ''; });
+  chk('★まだ置いていないバラの件数と本数（2件・55本）', /20kgのバラ 2件・55本/.test(bb), bb);
+  await page.locator('[data-bara-all="19"]').click();
+  await page.waitForTimeout(400);
+  const cb = await page.evaluate(() => window.__st.calls.find((c) => c[0] === 'bara'));
+  chk('★置場を押すと、1回で全部まとめて置く', cb && cb[2] === '19' && cb[1].length === 0, cb);
 
   console.log('■ 実績・推移タブに生産の推移');
   await page.locator('button', { hasText: '実績・推移' }).first().click();

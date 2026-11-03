@@ -536,6 +536,18 @@ console.log('■ 出た番号を除いた「残りの番号」（11/2）');
   chk('★置場の中身にも残りの番号を渡す', g.inYard[0].rest === '82131-82200' && g.inYard[0].left === 70, g.inYard[0]);
 }
 
+console.log('■ 20kg のバラをまとめて置く（11/3）');
+{
+  const B = (id, a, b, n) => { const r = lotRow({ id, サイズ: '20kg', pre: 'HXR', a, b, 本数: n, 状態: '未受検' }); r[H.indexOf('備考')] = '重量転記アプリで量った容器から自動・バラ（11・19・18のどれかに置く）'; return r; };
+  const s = build([B('B1', '4473', '4500', 28), B('B2', '4573', '4600', 27), lotRow({ id: 'F1', サイズ: '20kg', pre: 'HXR', a: '4401', b: '4472', 本数: 72, 状態: '未受検' })],
+    [loc({ no: 11, name: 'コンテナ', a20: 0, m20: 1988, m50: 0 })], []);
+  const bw = s.getProdLots('', 0).baraWaiting;
+  chk('★まだ置いていないバラだけ（満タンや印の無いロットは入れない）', bw.length === 2 && bw[0].id === 'B1', bw);
+  const r = s.placeBaraLots([], 11);
+  chk('★1回でまとめて置く（2件・55本）', r.ok && r.置いた === 2 && r.本数 === 55 && s.__locs[0].a20 === 55, [r, s.__locs[0].a20]);
+  chk('置いたあとはもう出ない', s.getProdLots('', 0).baraWaiting.length === 0);
+}
+
 console.log('■ 置場の中身（置場に残っているロット）');
 {
   const withOut = (r, n) => { r[H.indexOf('置場から引いた本数')] = n; return r; };

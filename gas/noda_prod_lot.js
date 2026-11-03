@@ -95,6 +95,8 @@ function getProdLots(state, limit) {
     out.lots = limit ? rows.slice(0, limit) : rows;
     // 置場の中身（敷地図・置場の一覧で出す）。件数で切らない（古いロットも置場に残っているため）
     out.inYard = lot_inYard_(all);
+    // まだ置いていない 20kg のバラ（件数で切らない。まとめて置くボタン用。11/3）
+    out.baraWaiting = lot_baraWaiting_(all);
   } catch (err) {
     out.error = String(err);
     Logger.log('生産ロットの取得でエラー: ' + String(err));
@@ -124,6 +126,33 @@ function lot_inYard_(list) {
     if (a.day !== b.day) return a.day < b.day ? -1 : 1;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
+  return out;
+}
+
+/* まだ置場に置いていない 20kg のバラ（重量転記から自動でできた28本の側）（純関数）。古い順 */
+function lot_baraWaiting_(list) {
+  return (list || []).filter(function (r) {
+    return r.状態 === '未受検' && !r.置場番号 && /バラ/.test(String(r.備考 || ''));
+  }).map(function (r) {
+    return { id: r.ロットID, day: r.生産日, pre: r.容器接頭辞, from: r.容器No開始, to: r.容器No終了, n: r.本数 };
+  }).sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : (a.id < b.id ? -1 : 1); });
+}
+
+// ===== 公開関数：まだ置いていない 20kg のバラをまとめて置く（11/3 落合さん「20kgバラの入力が細かくてダルい」） =====
+/* ids … ロットID の配列（空ならまだ置いていないバラ全部）、locationNo … 置場番号。1件ずつ placeProdLot と同じに置く */
+function placeBaraLots(ids, locationNo) {
+  var out = { ok: true, 置いた: 0, 本数: 0, error: null };
+  try {
+    var want = (ids || []).map(String);
+    var list = lot_baraWaiting_(lot_readAll_()).filter(function (x) { return !want.length || want.indexOf(String(x.id)) >= 0; });
+    for (var i = 0; i < list.length; i++) {
+      var r = placeProdLot(list[i].id, locationNo);
+      if (r && r.ok === false) { out.ok = false; out.error = r.error; break; }
+      out.置いた++; out.本数 += Number(r && r.本数) || 0;
+    }
+  } catch (err) {
+    out.ok = false; out.error = String(err);
+  }
   return out;
 }
 

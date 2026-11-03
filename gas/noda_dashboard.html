@@ -1389,6 +1389,7 @@ function ProdLotCard({
   onStockIn,
   onCancel,
   onPlace,
+  onPlaceBara,
   saving
 }) {
   const [adding, setAdding] = useState(false);
@@ -1448,7 +1449,41 @@ function ProdLotCard({
     }
   }, v == null ? "—" : vizComma(v), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] font-normal"
-  }, " \u672C"))))), /*#__PURE__*/React.createElement("span", {
+  }, " \u672C"))))), (() => {
+    const bw = data && data.baraWaiting || [];
+    if (!bw.length || !onPlaceBara) return null;
+    const total = bw.reduce((a, x) => a + (Number(x.n) || 0), 0);
+    return /*#__PURE__*/React.createElement("div", {
+      "data-bara-bulk": "1",
+      className: "rounded-md p-2 mb-2",
+      style: {
+        background: "#fff7ed",
+        border: "1px solid #fed7aa"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "block text-[12px] font-bold",
+      style: {
+        color: "#9a3412"
+      }
+    }, "20kg\u306E\u30D0\u30E9 ", bw.length, "\u4EF6\u30FB", vizComma(total), "\u672C \u304C\u307E\u3060\u7F6E\u5834\u306B\u5165\u3063\u3066\u3044\u307E\u305B\u3093"), /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mb-1.5",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u7F6E\u3044\u305F\u7F6E\u5834\u3092\u62BC\u3059\u3068\u3001\u5168\u90E8\u307E\u3068\u3081\u3066\u7F6E\u304D\u307E\u3059"), /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap gap-1.5"
+    }, LOT_BARA_PLACES.map(no => locations.find(loc => String(loc.no) === no)).filter(Boolean).map(loc => /*#__PURE__*/React.createElement("button", {
+      key: loc.no,
+      "data-bara-all": loc.no,
+      disabled: saving,
+      onClick: () => onPlaceBara([], loc.no),
+      className: "px-3 py-2 rounded-md text-[13px] font-bold text-white",
+      style: {
+        background: NAVY,
+        opacity: saving ? 0.5 : 1
+      }
+    }, saving ? "置いています…" : loc.no + " " + loc.name + (loc.position ? "（" + loc.position + "）" : "") + " に全部"))));
+  })(), /*#__PURE__*/React.createElement("span", {
     className: "block text-[10px] mb-1.5",
     style: {
       color: VIZ.ink2
@@ -8165,6 +8200,7 @@ function YardCapacityTab({
   onStockInLot,
   onCancelLot,
   onPlaceLot,
+  onPlaceBaraLots,
   plan,
   prodActual,
   saving,
@@ -8354,6 +8390,7 @@ function YardCapacityTab({
     onStockIn: onStockInLot,
     onCancel: onCancelLot,
     onPlace: onPlaceLot,
+    onPlaceBara: onPlaceBaraLots,
     saving: saving
   }))), /*#__PURE__*/React.createElement(Card, {
     className: "p-3",
@@ -9675,6 +9712,7 @@ function App() {
   const inspectLot = id => runLotAction(run => run.markLotInspected(id));
   const stockInLot = (id, no, done) => runLotAction(run => run.stockInLot(id, no), done);
   const placeLot = (id, no, done) => runLotAction(run => run.placeProdLot(id, no), done);
+  const placeBaraLots = (ids, no, done) => runLotAction(run => run.placeBaraLots(ids, no), done);
   const cancelLot = (id, done) => runLotAction(run => run.cancelProdLot(id, "画面から取消"), done);
 
   /* 本数を直して保存する。
@@ -10372,6 +10410,7 @@ function App() {
     onStockInLot: stockInLot,
     onCancelLot: cancelLot,
     onPlaceLot: placeLot,
+    onPlaceBaraLots: placeBaraLots,
     plan: live.plan,
     prodActual: live.prodActual,
     saving: yardSaving,

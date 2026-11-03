@@ -530,7 +530,7 @@ function ProdPlanCard({ plan, actual }) {
 const LOT_AUTO_WHO = "（自動：重量転記）";
 /* 20kg のバラ（パレット28本の側）を置く置場。サーバの WLOG_CONFIG.PALLET20.BARA_PLACES と合わせる */
 const LOT_BARA_PLACES = ["11", "19", "18"];
-function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, onPlace, saving }) {
+function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, onPlace, onPlaceBara, saving }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(null);
   const [pickFor, setPickFor] = useState(null);   // 入庫先を選んでいるロット
@@ -582,6 +582,29 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
         ))}
       </div>
 
+      {/* ★ 11/3 落合さん「20kgバラの入力が細かくてダルい」：まだ置いていないバラを、置場を1回押すだけでまとめて置く */}
+      {(() => {
+        const bw = (data && data.baraWaiting) || [];
+        if (!bw.length || !onPlaceBara) return null;
+        const total = bw.reduce((a, x) => a + (Number(x.n) || 0), 0);
+        return (
+          <div data-bara-bulk="1" className="rounded-md p-2 mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+            <span className="block text-[12px] font-bold" style={{ color: "#9a3412" }}>
+              20kgのバラ {bw.length}件・{vizComma(total)}本 がまだ置場に入っていません
+            </span>
+            <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>置いた置場を押すと、全部まとめて置きます</span>
+            <span className="flex flex-wrap gap-1.5">
+              {LOT_BARA_PLACES.map((no) => locations.find((loc) => String(loc.no) === no)).filter(Boolean).map((loc) => (
+                <button key={loc.no} data-bara-all={loc.no} disabled={saving}
+                  onClick={() => onPlaceBara([], loc.no)}
+                  className="px-3 py-2 rounded-md text-[13px] font-bold text-white" style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>
+                  {saving ? "置いています…" : loc.no + " " + loc.name + (loc.position ? "（" + loc.position + "）" : "") + " に全部"}
+                </button>
+              ))}
+            </span>
+          </div>
+        );
+      })()}
       {/* ★ 2026/11/01〜 重量転記アプリで量った容器は、1時間おきに自動でロットになる（未受検・置場なし）。
              現場は「置場に置く」で置場を選ぶだけ。手で登録するのは、重量転記を通らないものだけ。 */}
       <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>
@@ -4224,7 +4247,7 @@ function StockMoveCard({ locations, staff, worker, onWorker, moves, onMove, onCa
 }
 
 function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSave, onRefresh,
-                          onAddLot, onInspectLot, onStockInLot, onCancelLot, onPlaceLot, plan, prodActual, saving,
+                          onAddLot, onInspectLot, onStockInLot, onCancelLot, onPlaceLot, onPlaceBaraLots, plan, prodActual, saving,
                           staff, worker, onWorker, moves, onMove, onCancelMove, moveSaving, moveMsg }) {
   const [keyword, setKeyword] = useState("");
   const [onlyNearFull, setOnlyNearFull] = useState(false);
@@ -4341,7 +4364,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
             ? "未受検 " + vizComma(lotData.totals.未受検) + " / 入庫済 " + vizComma(lotData.totals.入庫済)
             : ""}>
           <ProdLotCard data={lotData} types={types} locations={list} onAdd={onAddLot}
-            onInspect={onInspectLot} onStockIn={onStockInLot} onCancel={onCancelLot} onPlace={onPlaceLot}
+            onInspect={onInspectLot} onStockIn={onStockInLot} onCancel={onCancelLot} onPlace={onPlaceLot} onPlaceBara={onPlaceBaraLots}
             saving={saving} />
         </Collapsible>
       </Card>
@@ -5205,6 +5228,7 @@ export default function App() {
   const inspectLot = (id) => runLotAction((run) => run.markLotInspected(id));
   const stockInLot = (id, no, done) => runLotAction((run) => run.stockInLot(id, no), done);
   const placeLot = (id, no, done) => runLotAction((run) => run.placeProdLot(id, no), done);
+  const placeBaraLots = (ids, no, done) => runLotAction((run) => run.placeBaraLots(ids, no), done);
   const cancelLot = (id, done) => runLotAction((run) => run.cancelProdLot(id, "画面から取消"), done);
 
   /* 本数を直して保存する。
@@ -5668,7 +5692,7 @@ export default function App() {
             url={live.yardCapUrl}
             onSave={saveYardCount} onRefresh={fetchYardTab}
             onAddLot={addLot} onInspectLot={inspectLot} onStockInLot={stockInLot}
-            onCancelLot={cancelLot} onPlaceLot={placeLot} plan={live.plan} prodActual={live.prodActual}
+            onCancelLot={cancelLot} onPlaceLot={placeLot} onPlaceBaraLots={placeBaraLots} plan={live.plan} prodActual={live.prodActual}
             saving={yardSaving}
             staff={live.workStaff} worker={worker} onWorker={chooseWorker}
             moves={live.stockMoves} onMove={moveUi} onCancelMove={cancelMoveUi} moveSaving={moveSaving} moveMsg={moveMsg} />}
