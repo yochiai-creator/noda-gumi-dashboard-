@@ -4792,9 +4792,32 @@ function drivePreviewUrl_(url) {
   return m ? "https://drive.google.com/file/d/" + m[1] + "/preview" : null;
 }
 
+/* ★ 11/5 落合さん（iPhone）：アプリの中にかぶせた Drive の表示が「401 エラーが発生しました」になる。
+     iPhone・iPad の Safari は、ほかのサイトの中に埋め込んだ Google の画面にログインを渡さない（埋め込みの Cookie を止める）ため。
+     iPhone・iPad・Mac の Safari では、かぶせずに Drive の軽い表示（/preview）を別のタブで開く（そこならログインが効く）。 */
+function pdfInlineBlocked_() {
+  try {
+    const ua = navigator.userAgent || "";
+    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    const safari = /Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|Android/.test(ua);
+    return ios || safari;
+  } catch (err) { return false; }
+}
+
 /* リンクのタップで呼ぶ。開けるならアプリの中で開き、だめなら普通のリンクのまま */
 function openPdfQuick_(e, url, title) {
-  if (!PDF_VIEW.open || !drivePreviewUrl_(url)) return false;
+  const pv = drivePreviewUrl_(url);
+  if (!pv) return false;
+  if (pdfInlineBlocked_()) {
+    // 開けなかったら（ポップアップを止められたら）、普通のリンクのまま開く
+    let w = null;
+    try { w = window.open(pv, "_blank"); } catch (err) { w = null; }
+    if (!w) return false;
+    try { w.opener = null; } catch (err) { /* そのまま */ }
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    return true;
+  }
+  if (!PDF_VIEW.open) return false;
   if (e) { e.preventDefault(); e.stopPropagation(); }
   PDF_VIEW.open(url, title);
   return true;
