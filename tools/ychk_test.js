@@ -399,18 +399,17 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
     t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   await page.waitForTimeout(400);
+  // ★ 11/5〜 Drive の埋め込み（/preview）は iPhone で 401 になるので、PDF.js でアプリの中に描く（中身は tools/pdf_view_test.js）
   let ov = await page.evaluate(() => {
-    const f = document.querySelector('iframe');
-    return { src: f && f.getAttribute('src'), opened: window.__opened, text: document.body.innerText.slice(0, 120) };
+    return { viewer: !!document.querySelector('[data-pdf-viewer]'), iframe: !!document.querySelector('iframe'), opened: window.__opened, text: document.body.innerText.slice(0, 120) };
   });
-  chk('★1件の区画をタップすると、アプリの中に開く（Driveの軽い表示 /preview）',
-    ov.src === 'https://drive.google.com/file/d/1AsJ_XmsS4kr6VupHS37kkrgVGlDzQ1wF/preview', ov);
+  chk('★1件の区画をタップすると、アプリの中に開く（Driveの埋め込みは使わない）', ov.viewer && !ov.iframe, ov);
   chk('★新しいタブは開かない', ov.opened.length === 0, ov.opened);
   chk('見出しに依頼No・枝番・チェックの状態', /指図書 26-60841\(1\)　チェック済/.test(ov.text), ov.text);
   await page.screenshot({ path: SP + '/ychk_viewer.png' });
   await page.locator('button', { hasText: '閉じる' }).first().click();
   await page.waitForTimeout(200);
-  chk('★「閉じる」で元の画面に戻る', await page.evaluate(() => !document.querySelector('iframe')));
+  chk('★「閉じる」で元の画面に戻る', await page.evaluate(() => !document.querySelector('[data-pdf-viewer]')));
   // 明細のボタンからも
   await page.evaluate(() => {
     const t = [...document.querySelectorAll('svg text')].find((x) => x.textContent === '<4>');
@@ -419,8 +418,8 @@ console.log('■ 配車表のマスも50kはヤードと同じ（枝番ごと・
   await page.waitForTimeout(300);
   await page.locator('[data-order-row]', { hasText: '26-20354(1)' }).first().locator('a', { hasText: '開く' }).click();
   await page.waitForTimeout(300);
-  ov = await page.evaluate(() => { const f = document.querySelector('iframe'); return f && f.getAttribute('src'); });
-  chk('IDの短い（見本の）リンクは今までどおり別タブ（アプリの中では開かない）', ov === null, ov);
+  ov = await page.evaluate(() => !!document.querySelector('[data-pdf-viewer]'));
+  chk('IDの短い（見本の）リンクは今までどおり別タブ（アプリの中では開かない）', ov === false, ov);
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent === '閉じる'); if (b) b.click(); });
 
   await page.locator('button', { hasText: '一覧' }).first().click();
