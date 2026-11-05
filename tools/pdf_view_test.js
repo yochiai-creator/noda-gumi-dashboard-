@@ -17,6 +17,7 @@ console.log('■ サーバ：渡してよいファイル');
   vm.createContext(s);
   vm.runInContext(fs.readFileSync(__dirname + '/../gas/noda_pdf_view.js', 'utf8'), s);
   chk('★指図書のPDFは渡す', s.pdfv_allowed_('application/pdf', '出荷作業指図書_26.10.30_26-60846-0(1).pdf', 80000) === '');
+  chk('★書き込みアプリでチェックしたコピー（名前に依頼No）も渡す（11/6 iPhone で断っていた）', s.pdfv_allowed_('application/pdf', '26.11.06_26-30625-0(4)_東部液化石油 茨城東.pdf', 1272621) === '');
   chk('★PDFでないものは渡さない', s.pdfv_allowed_('application/vnd.google-apps.spreadsheet', '指図書の表', 10) !== '');
   chk('★指図書でないPDFは渡さない（このアプリはデプロイした人の権限で動くため）', s.pdfv_allowed_('application/pdf', '給与明細.pdf', 10) !== '');
   const files = { '26-60846-0': { mime: 'application/pdf', name: '出荷作業指図書_x.pdf', size: 3, bytes: [1, 2, 3] }, 'xxxxxxxxxxxx': { mime: 'application/pdf', name: '契約書.pdf', size: 3, bytes: [1] } };
