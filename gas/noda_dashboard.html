@@ -1380,6 +1380,53 @@ function ProdPlanCard({
 const LOT_AUTO_WHO = "（自動：重量転記）";
 /* 20kg のバラ（パレット28本の側）を置く置場。サーバの WLOG_CONFIG.PALLET20.BARA_PLACES と合わせる */
 const LOT_BARA_PLACES = ["11", "19", "18"];
+/* 11/4 落合さん「このログ長くて見にくい」：生産の流れのロット一覧で、もう何もしなくてよい入庫済・出荷済は1行にする。
+   重量転記から自動でできた20kgの満タン・バラは、同じ成績表（100本の組）のものを1行にまとめる。
+   未受検・受検済（ボタンを押すもの）はカードのまま（純関数） */
+function lotListItems_(lots) {
+  const out = [],
+    idx = {};
+  (lots || []).forEach(l => {
+    if (l.状態 !== "入庫済" && l.状態 !== "出荷済") {
+      out.push({
+        key: "c" + l.ロットID,
+        lots: [l]
+      });
+      return;
+    }
+    const a = Number(l.容器No開始);
+    const k = l.登録者 === LOT_AUTO_WHO && a > 0 ? "g" + [l.状態, l.容器接頭辞, l.サイズ, Math.floor((a - 1) / 100)].join("|") : "l" + l.ロットID;
+    if (idx[k] != null) {
+      out[idx[k]].lots.push(l);
+      return;
+    }
+    idx[k] = out.length;
+    out.push({
+      key: k,
+      line: true,
+      lots: [l]
+    });
+  });
+  out.forEach(it => {
+    if (!it.line) return;
+    const ls = it.lots.slice().sort((x, y) => Number(x.容器No開始) - Number(y.容器No開始));
+    it.lots = ls;
+    const pre = ls[0].容器接頭辞 || "";
+    const hi = ls.reduce((m, x) => Number(x.容器No終了) > Number(m.容器No終了) ? x : m, ls[0]);
+    it.label = pre + ls[0].容器No開始 + "〜" + (hi.容器No終了 || "");
+    it.qty = ls.reduce((m, x) => m + (x.状態 === "出荷済" ? x.本数 : x.本数 - (x.出荷済本数 || 0)), 0);
+    it.where = ls.map(x => {
+      const part = /満タン/.test(x.備考 || "") ? "満タン" : /バラ/.test(x.備考 || "") ? "バラ" : "";
+      const at = x.状態 === "出荷済" ? x.出荷日 ? lotMd_(x.出荷日) + " 出荷" : "出荷" : x.置場番号 ? "→" + x.置場番号 + (ls.length === 1 && x.置場名 ? " " + x.置場名 : "") : "";
+      return (ls.length > 1 ? part + x.本数 : "") + at;
+    }).join("・");
+  });
+  return out;
+}
+function lotMd_(d) {
+  const s = String(d || "");
+  return s.length >= 10 ? Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10)) : s;
+}
 function ProdLotCard({
   data,
   types,
@@ -1397,6 +1444,10 @@ function ProdLotCard({
   const [pickFor, setPickFor] = useState(null); // 入庫先を選んでいるロット
   const [cancelFor, setCancelFor] = useState(null); // 取り消そうとしているロット
   const [filter, setFilter] = useState("");
+  const [openLines, setOpenLines] = useState({}); // 1行にまとめた入庫済のロットのうち開いているもの
+  const toggleLine = k => setOpenLines(o => Object.assign({}, o, {
+    [k]: !o[k]
+  }));
   const lots = data && data.lots || [];
   const t = data && data.totals || null;
   const today = (() => {
@@ -1427,6 +1478,216 @@ function ProdLotCard({
     return b - a + 1;
   })();
   const shown = filter ? lots.filter(l => l.状態 === filter) : lots;
+  /* 1つのロットのカード（未受検・受検済はいつも、入庫済・出荷済は1行をタップしたとき） */
+  const renderLot = l => {
+    const tone = LOT_TONE[l.状態] || LOT_TONE.未受検;
+    const nokori = l.本数 - l.出荷済本数;
+    return /*#__PURE__*/React.createElement("div", {
+      key: l.ロットID,
+      className: "px-3 py-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "flex items-baseline gap-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] px-1 rounded shrink-0",
+      style: {
+        background: tone.bg,
+        color: tone.fg
+      }
+    }, l.状態), /*#__PURE__*/React.createElement("span", {
+      className: "text-[13px] font-semibold",
+      style: {
+        color: VIZ.ink
+      }
+    }, l.サイズ || (l.機種コード ? "#" + l.機種コード : "—")), /*#__PURE__*/React.createElement("span", {
+      className: "text-[13px] tabular-nums",
+      style: {
+        color: VIZ.ink
+      }
+    }, vizComma(nokori), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px]"
+    }, " \u672C")), l.出荷済本数 > 0 && l.状態 !== "出荷済" && /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px]",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\uFF08", vizComma(l.出荷済本数), "\u672C \u51FA\u8377\u6E08\uFF09"), l.登録者 === LOT_AUTO_WHO && /*#__PURE__*/React.createElement("span", {
+      "data-lot-auto": "1",
+      className: "text-[10px] px-1 rounded shrink-0",
+      style: {
+        background: "#e0f2fe",
+        color: "#0369a1"
+      }
+    }, "\u91CD\u91CF\u8EE2\u8A18\u304B\u3089"), /(満タン|バラ)/.test(l.備考 || "") && /*#__PURE__*/React.createElement("span", {
+      "data-lot-part": "1",
+      className: "text-[10px] px-1 rounded shrink-0",
+      style: {
+        background: "#f1f5f9",
+        color: VIZ.ink2
+      }
+    }, /満タン/.test(l.備考) ? "満タン" : "バラ"), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] ml-auto shrink-0",
+      style: {
+        color: VIZ.muted
+      }
+    }, l.生産日)), l.機種名 && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] truncate",
+      style: {
+        color: VIZ.ink2
+      }
+    }, l.機種名), /*#__PURE__*/React.createElement("span", {
+      className: "block text-[11px] tabular-nums",
+      style: {
+        color: VIZ.ink2
+      }
+    }, l.容器接頭辞, l.容器No開始, "\u301C", l.容器接頭辞, l.容器No終了), /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px]",
+      style: {
+        color: VIZ.muted
+      }
+    }, l.置場名 ? "置場 " + l.置場名 + "（" + l.置場番号 + "）" : "", l.依頼No ? "　指図書 " + l.依頼No : "", l.出荷日 ? "　" + l.出荷日 + " 出荷" : ""), l.状態 === "未受検" && !l.置場番号 && onPlace && (pickFor === "place:" + l.ロットID ? /*#__PURE__*/React.createElement("span", {
+      className: "block mt-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mb-1",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3069\u306E\u7F6E\u5834\u306B\u7F6E\u304D\u307E\u3057\u305F\u304B"), /バラ/.test(l.備考 || "") && /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap gap-1 mb-1.5",
+      "data-bara-places": "1"
+    }, LOT_BARA_PLACES.map(no => locations.find(loc => String(loc.no) === no)).filter(Boolean).map(loc => /*#__PURE__*/React.createElement("button", {
+      key: "b" + loc.no,
+      disabled: saving,
+      "data-place-lot": loc.no,
+      onClick: () => onPlace(l.ロットID, loc.no, () => setPickFor(null)),
+      className: "px-3 py-1.5 rounded-md text-[12px] font-bold text-white",
+      style: {
+        background: NAVY
+      }
+    }, loc.no, " ", loc.name, loc.position ? "（" + loc.position + "）" : "")), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] self-center",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u307B\u304B\u306E\u7F6E\u5834\uFF1A")), /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap gap-1"
+    }, locations.map(loc => /*#__PURE__*/React.createElement("button", {
+      key: loc.no,
+      disabled: saving,
+      "data-place-lot": loc.no,
+      onClick: () => onPlace(l.ロットID, loc.no, () => setPickFor(null)),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-100",
+      style: {
+        color: VIZ.ink2
+      }
+    }, loc.no, " ", loc.name)), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPickFor(null),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3084\u3081\u308B"))) : /*#__PURE__*/React.createElement("button", {
+      "data-lot-place": l.ロットID,
+      onClick: () => setPickFor("place:" + l.ロットID),
+      className: "mt-1 mr-2 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: "#b45309"
+      }
+    }, "\u7F6E\u5834\u306B\u7F6E\u304F")), l.状態 === "未受検" && pickFor !== "place:" + l.ロットID && /*#__PURE__*/React.createElement("button", {
+      disabled: saving,
+      onClick: () => onInspect(l.ロットID),
+      className: "mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: NAVY,
+        opacity: saving ? 0.5 : 1
+      }
+    }, "\u53D7\u691COK"), l.状態 === "受検済" && l.置場番号 && pickFor !== l.ロットID &&
+    /*#__PURE__*/
+    /* ★ 登録のときに置場が決まっているので、入庫は押すだけ。
+           置き場所を変えたときだけ「別の置場へ」を使う。 */
+    React.createElement("span", {
+      className: "flex flex-wrap items-center gap-2 mt-1"
+    }, /*#__PURE__*/React.createElement("button", {
+      disabled: saving,
+      onClick: () => onStockIn(l.ロットID, l.置場番号),
+      className: "px-3 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: NAVY,
+        opacity: saving ? 0.5 : 1
+      }
+    }, l.置場名, " \u306B\u5165\u5EAB"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPickFor(l.ロットID),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-100",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u5225\u306E\u7F6E\u5834\u3078")), l.状態 === "受検済" && (!l.置場番号 || pickFor === l.ロットID) && (pickFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
+      className: "block mt-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mb-1",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3069\u306E\u7F6E\u5834\u306B\u5165\u308C\u307E\u3059\u304B"), /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap gap-1"
+    }, locations.map(loc => /*#__PURE__*/React.createElement("button", {
+      key: loc.no,
+      disabled: saving,
+      onClick: () => onStockIn(l.ロットID, loc.no, () => setPickFor(null)),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-100",
+      style: {
+        color: VIZ.ink2
+      }
+    }, loc.no, " ", loc.name)), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPickFor(null),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3084\u3081\u308B"))) : /*#__PURE__*/React.createElement("button", {
+      onClick: () => setPickFor(l.ロットID),
+      className: "mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: NAVY
+      }
+    }, "\u5165\u5EAB\u3059\u308B")), l.状態 === "入庫済" && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mt-0.5",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u6307\u56F3\u66F8\u304C\u51FA\u305F\u3089\u81EA\u52D5\u3067\u5F15\u304B\u308C\u307E\u3059"), l.状態 !== "入庫済" && l.状態 !== "出荷済" && l.置場名 && /*#__PURE__*/React.createElement("span", {
+      className: "block text-[10px] mt-0.5",
+      style: {
+        color: VIZ.muted
+      }
+    }, l.置場名, " \u306E\u672C\u6570\u306B\u306F\u5165\u3063\u3066\u3044\u307E\u3059"), l.出荷済本数 === 0 && l.状態 !== "出荷済" && (cancelFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
+      className: "flex flex-wrap items-center gap-2 mt-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px]",
+      style: {
+        color: "#b45309"
+      }
+    }, l.状態 === "入庫済" ? "置場から " + vizComma(l.本数) + " 本 引き戻します" : "この登録を取り消します"), /*#__PURE__*/React.createElement("button", {
+      disabled: saving,
+      onClick: () => onCancel(l.ロットID, () => setCancelFor(null)),
+      className: "px-2 py-1 rounded-md text-[11px] font-semibold text-white",
+      style: {
+        background: "#b45309",
+        opacity: saving ? 0.5 : 1
+      }
+    }, saving ? "取消中…" : "取り消す"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setCancelFor(null),
+      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
+      style: {
+        color: VIZ.ink2
+      }
+    }, "\u3084\u3081\u308B")) : /*#__PURE__*/React.createElement("button", {
+      onClick: () => setCancelFor(l.ロットID),
+      className: "mt-1 ml-2 px-2 py-1 rounded-md text-[11px] bg-slate-100",
+      style: {
+        color: VIZ.muted
+      }
+    }, "\u6253\u3061\u9593\u9055\u3044")));
+  };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-1.5 mb-2"
   }, [["未受検", t && t.未受検], ["受検済", t && t.受検済], ["入庫済", t && t.入庫済], ["出荷済", t && t.出荷済今月]].map(([k, v]) => /*#__PURE__*/React.createElement("button", {
@@ -1640,214 +1901,72 @@ function ProdLotCard({
     className: "text-xs text-slate-500 py-2"
   }, "\u300C", filter, "\u300D\u306E\u30ED\u30C3\u30C8\u306F\u3042\u308A\u307E\u305B\u3093\u3002") : /*#__PURE__*/React.createElement("div", {
     className: "divide-y divide-slate-100 rounded-md border border-slate-200"
-  }, shown.slice(0, 40).map(l => {
-    const tone = LOT_TONE[l.状態] || LOT_TONE.未受検;
-    const nokori = l.本数 - l.出荷済本数;
-    return /*#__PURE__*/React.createElement("div", {
-      key: l.ロットID,
-      className: "px-3 py-2"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "flex items-baseline gap-2"
+  }, lotListItems_(shown).slice(0, 60).map(it => {
+    if (it.lots.length === 1 && !it.line) return renderLot(it.lots[0]);
+    if (openLines[it.key]) return /*#__PURE__*/React.createElement("div", {
+      key: it.key,
+      "data-lot-line-open": "1"
+    }, /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => toggleLine(it.key),
+      className: "w-full text-left px-3 py-1 text-[10px]",
+      style: {
+        color: VIZ.muted,
+        background: "#f8fafc",
+        border: "none"
+      }
+    }, "\u25B4 \u305F\u305F\u3080"), it.lots.map(renderLot));
+    const l0 = it.lots[0],
+      tone = LOT_TONE[l0.状態] || LOT_TONE.未受検;
+    return /*#__PURE__*/React.createElement("button", {
+      key: it.key,
+      type: "button",
+      "data-lot-line": it.lots.length,
+      onClick: () => toggleLine(it.key),
+      className: "w-full text-left px-3 py-1.5 flex items-baseline flex-wrap",
+      style: {
+        columnGap: 8,
+        rowGap: 0,
+        background: "transparent",
+        border: "none"
+      }
     }, /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] px-1 rounded shrink-0",
       style: {
         background: tone.bg,
         color: tone.fg
       }
-    }, l.状態), /*#__PURE__*/React.createElement("span", {
-      className: "text-[13px] font-semibold",
+    }, l0.状態), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] tabular-nums",
+      style: {
+        color: VIZ.muted
+      }
+    }, lotMd_(l0.入庫日 || l0.生産日)), /*#__PURE__*/React.createElement("span", {
+      className: "text-[12px] font-semibold",
       style: {
         color: VIZ.ink
       }
-    }, l.サイズ || (l.機種コード ? "#" + l.機種コード : "—")), /*#__PURE__*/React.createElement("span", {
-      className: "text-[13px] tabular-nums",
+    }, l0.サイズ || "—"), /*#__PURE__*/React.createElement("span", {
+      className: "text-[12px] tabular-nums",
       style: {
         color: VIZ.ink
       }
-    }, vizComma(nokori), /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px]"
-    }, " \u672C")), l.出荷済本数 > 0 && l.状態 !== "出荷済" && /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px]",
+    }, it.label), /*#__PURE__*/React.createElement("span", {
+      className: "text-[12px] tabular-nums font-semibold",
+      style: {
+        color: VIZ.ink
+      }
+    }, vizComma(it.qty), "\u672C"), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] tabular-nums",
+      style: {
+        color: VIZ.ink2
+      }
+    }, it.where), /*#__PURE__*/React.createElement("span", {
+      className: "ml-auto text-[10px]",
       style: {
         color: VIZ.muted
       }
-    }, "\uFF08", vizComma(l.出荷済本数), "\u672C \u51FA\u8377\u6E08\uFF09"), l.登録者 === LOT_AUTO_WHO && /*#__PURE__*/React.createElement("span", {
-      "data-lot-auto": "1",
-      className: "text-[10px] px-1 rounded shrink-0",
-      style: {
-        background: "#e0f2fe",
-        color: "#0369a1"
-      }
-    }, "\u91CD\u91CF\u8EE2\u8A18\u304B\u3089"), /(満タン|バラ)/.test(l.備考 || "") && /*#__PURE__*/React.createElement("span", {
-      "data-lot-part": "1",
-      className: "text-[10px] px-1 rounded shrink-0",
-      style: {
-        background: "#f1f5f9",
-        color: VIZ.ink2
-      }
-    }, /満タン/.test(l.備考) ? "満タン" : "バラ"), /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] ml-auto shrink-0",
-      style: {
-        color: VIZ.muted
-      }
-    }, l.生産日)), l.機種名 && /*#__PURE__*/React.createElement("span", {
-      className: "block text-[11px] truncate",
-      style: {
-        color: VIZ.ink2
-      }
-    }, l.機種名), /*#__PURE__*/React.createElement("span", {
-      className: "block text-[11px] tabular-nums",
-      style: {
-        color: VIZ.ink2
-      }
-    }, l.容器接頭辞, l.容器No開始, "\u301C", l.容器接頭辞, l.容器No終了), /*#__PURE__*/React.createElement("span", {
-      className: "block text-[10px]",
-      style: {
-        color: VIZ.muted
-      }
-    }, l.置場名 ? "置場 " + l.置場名 + "（" + l.置場番号 + "）" : "", l.依頼No ? "　指図書 " + l.依頼No : "", l.出荷日 ? "　" + l.出荷日 + " 出荷" : ""), l.状態 === "未受検" && !l.置場番号 && onPlace && (pickFor === "place:" + l.ロットID ? /*#__PURE__*/React.createElement("span", {
-      className: "block mt-1"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "block text-[10px] mb-1",
-      style: {
-        color: VIZ.ink2
-      }
-    }, "\u3069\u306E\u7F6E\u5834\u306B\u7F6E\u304D\u307E\u3057\u305F\u304B"), /バラ/.test(l.備考 || "") && /*#__PURE__*/React.createElement("span", {
-      className: "flex flex-wrap gap-1 mb-1.5",
-      "data-bara-places": "1"
-    }, LOT_BARA_PLACES.map(no => locations.find(loc => String(loc.no) === no)).filter(Boolean).map(loc => /*#__PURE__*/React.createElement("button", {
-      key: "b" + loc.no,
-      disabled: saving,
-      "data-place-lot": loc.no,
-      onClick: () => onPlace(l.ロットID, loc.no, () => setPickFor(null)),
-      className: "px-3 py-1.5 rounded-md text-[12px] font-bold text-white",
-      style: {
-        background: NAVY
-      }
-    }, loc.no, " ", loc.name, loc.position ? "（" + loc.position + "）" : "")), /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] self-center",
-      style: {
-        color: VIZ.muted
-      }
-    }, "\u307B\u304B\u306E\u7F6E\u5834\uFF1A")), /*#__PURE__*/React.createElement("span", {
-      className: "flex flex-wrap gap-1"
-    }, locations.map(loc => /*#__PURE__*/React.createElement("button", {
-      key: loc.no,
-      disabled: saving,
-      "data-place-lot": loc.no,
-      onClick: () => onPlace(l.ロットID, loc.no, () => setPickFor(null)),
-      className: "px-2 py-1 rounded-md text-[11px] bg-slate-100",
-      style: {
-        color: VIZ.ink2
-      }
-    }, loc.no, " ", loc.name)), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setPickFor(null),
-      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
-      style: {
-        color: VIZ.ink2
-      }
-    }, "\u3084\u3081\u308B"))) : /*#__PURE__*/React.createElement("button", {
-      "data-lot-place": l.ロットID,
-      onClick: () => setPickFor("place:" + l.ロットID),
-      className: "mt-1 mr-2 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
-      style: {
-        background: "#b45309"
-      }
-    }, "\u7F6E\u5834\u306B\u7F6E\u304F")), l.状態 === "未受検" && pickFor !== "place:" + l.ロットID && /*#__PURE__*/React.createElement("button", {
-      disabled: saving,
-      onClick: () => onInspect(l.ロットID),
-      className: "mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
-      style: {
-        background: NAVY,
-        opacity: saving ? 0.5 : 1
-      }
-    }, "\u53D7\u691COK"), l.状態 === "受検済" && l.置場番号 && pickFor !== l.ロットID &&
-    /*#__PURE__*/
-    /* ★ 登録のときに置場が決まっているので、入庫は押すだけ。
-           置き場所を変えたときだけ「別の置場へ」を使う。 */
-    React.createElement("span", {
-      className: "flex flex-wrap items-center gap-2 mt-1"
-    }, /*#__PURE__*/React.createElement("button", {
-      disabled: saving,
-      onClick: () => onStockIn(l.ロットID, l.置場番号),
-      className: "px-3 py-1 rounded-md text-[11px] font-semibold text-white",
-      style: {
-        background: NAVY,
-        opacity: saving ? 0.5 : 1
-      }
-    }, l.置場名, " \u306B\u5165\u5EAB"), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setPickFor(l.ロットID),
-      className: "px-2 py-1 rounded-md text-[11px] bg-slate-100",
-      style: {
-        color: VIZ.muted
-      }
-    }, "\u5225\u306E\u7F6E\u5834\u3078")), l.状態 === "受検済" && (!l.置場番号 || pickFor === l.ロットID) && (pickFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
-      className: "block mt-1"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "block text-[10px] mb-1",
-      style: {
-        color: VIZ.ink2
-      }
-    }, "\u3069\u306E\u7F6E\u5834\u306B\u5165\u308C\u307E\u3059\u304B"), /*#__PURE__*/React.createElement("span", {
-      className: "flex flex-wrap gap-1"
-    }, locations.map(loc => /*#__PURE__*/React.createElement("button", {
-      key: loc.no,
-      disabled: saving,
-      onClick: () => onStockIn(l.ロットID, loc.no, () => setPickFor(null)),
-      className: "px-2 py-1 rounded-md text-[11px] bg-slate-100",
-      style: {
-        color: VIZ.ink2
-      }
-    }, loc.no, " ", loc.name)), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setPickFor(null),
-      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
-      style: {
-        color: VIZ.ink2
-      }
-    }, "\u3084\u3081\u308B"))) : /*#__PURE__*/React.createElement("button", {
-      onClick: () => setPickFor(l.ロットID),
-      className: "mt-1 px-3 py-1 rounded-md text-[11px] font-semibold text-white",
-      style: {
-        background: NAVY
-      }
-    }, "\u5165\u5EAB\u3059\u308B")), l.状態 === "入庫済" && /*#__PURE__*/React.createElement("span", {
-      className: "block text-[10px] mt-0.5",
-      style: {
-        color: VIZ.muted
-      }
-    }, "\u6307\u56F3\u66F8\u304C\u51FA\u305F\u3089\u81EA\u52D5\u3067\u5F15\u304B\u308C\u307E\u3059"), l.状態 !== "入庫済" && l.状態 !== "出荷済" && l.置場名 && /*#__PURE__*/React.createElement("span", {
-      className: "block text-[10px] mt-0.5",
-      style: {
-        color: VIZ.muted
-      }
-    }, l.置場名, " \u306E\u672C\u6570\u306B\u306F\u5165\u3063\u3066\u3044\u307E\u3059"), l.出荷済本数 === 0 && l.状態 !== "出荷済" && (cancelFor === l.ロットID ? /*#__PURE__*/React.createElement("span", {
-      className: "flex flex-wrap items-center gap-2 mt-1"
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px]",
-      style: {
-        color: "#b45309"
-      }
-    }, l.状態 === "入庫済" ? "置場から " + vizComma(l.本数) + " 本 引き戻します" : "この登録を取り消します"), /*#__PURE__*/React.createElement("button", {
-      disabled: saving,
-      onClick: () => onCancel(l.ロットID, () => setCancelFor(null)),
-      className: "px-2 py-1 rounded-md text-[11px] font-semibold text-white",
-      style: {
-        background: "#b45309",
-        opacity: saving ? 0.5 : 1
-      }
-    }, saving ? "取消中…" : "取り消す"), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setCancelFor(null),
-      className: "px-2 py-1 rounded-md text-[11px] bg-slate-200",
-      style: {
-        color: VIZ.ink2
-      }
-    }, "\u3084\u3081\u308B")) : /*#__PURE__*/React.createElement("button", {
-      onClick: () => setCancelFor(l.ロットID),
-      className: "mt-1 ml-2 px-2 py-1 rounded-md text-[11px] bg-slate-100",
-      style: {
-        color: VIZ.muted
-      }
-    }, "\u6253\u3061\u9593\u9055\u3044")));
+    }, "\u25BE"));
   })));
 }
 

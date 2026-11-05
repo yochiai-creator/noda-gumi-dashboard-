@@ -237,10 +237,19 @@ const REPLY = {
   }
 
   /* ---- 生産の流れ ---- */
+  // ★ 11/4〜 入庫済・出荷済は1行にまとめる（「このログ長くて見にくい」）。1行で出ることを確かめてから、開いて中を見る
+  {
+    const lines = await page.evaluate(() => [...document.querySelectorAll('[data-card="lots"] [data-lot-line]')].map((b) => b.innerText.replace(/\n/g, ' ')));
+    chk('★入庫済・出荷済のロットは1行にまとまる（打ち間違いのボタンは出さない）', lines.length === 2 && lines.some((x) => /入庫済/.test(x) && /80本/.test(x)) &&
+      !(await page.evaluate(() => [...document.querySelectorAll('[data-lot-line]')].some((b) => /打ち間違い/.test(b.innerText)))), lines);
+    const n = await page.locator('[data-card="lots"] [data-lot-line]').count();
+    for (let i = 0; i < n; i++) { await page.locator('[data-card="lots"] [data-lot-line]').first().click(); await page.waitForTimeout(150); }
+    chk('★1行をタップするとカードが開く', await page.locator('[data-card="lots"] [data-lot-line-open]').count() === 2);
+  }
   const flow = await page.evaluate(() => {
     const t = document.body.innerText.replace(/\n/g, ' | ');
     // 生産の流れのカードの中だけ（2026/11/01〜 上に敷地図・在庫の動きが来たので、ページ全体だと混ざる）
-    const btns = [...document.querySelectorAll('[data-card="lots"] button')].map((b) => b.textContent.trim());
+    const btns = [...document.querySelectorAll('[data-card="lots"] button')].map((b) => b.textContent.trim()).filter((b) => b !== '▴ たたむ');
     return { t, btns };
   });
   console.log('   生産の流れ:', JSON.stringify(flow.t.slice(flow.t.indexOf('生産の流れ'),

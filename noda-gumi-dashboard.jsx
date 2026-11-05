@@ -530,12 +530,47 @@ function ProdPlanCard({ plan, actual }) {
 const LOT_AUTO_WHO = "（自動：重量転記）";
 /* 20kg のバラ（パレット28本の側）を置く置場。サーバの WLOG_CONFIG.PALLET20.BARA_PLACES と合わせる */
 const LOT_BARA_PLACES = ["11", "19", "18"];
+/* 11/4 落合さん「このログ長くて見にくい」：生産の流れのロット一覧で、もう何もしなくてよい入庫済・出荷済は1行にする。
+   重量転記から自動でできた20kgの満タン・バラは、同じ成績表（100本の組）のものを1行にまとめる。
+   未受検・受検済（ボタンを押すもの）はカードのまま（純関数） */
+function lotListItems_(lots) {
+  const out = [], idx = {};
+  (lots || []).forEach((l) => {
+    if (l.状態 !== "入庫済" && l.状態 !== "出荷済") { out.push({ key: "c" + l.ロットID, lots: [l] }); return; }
+    const a = Number(l.容器No開始);
+    const k = l.登録者 === LOT_AUTO_WHO && a > 0
+      ? "g" + [l.状態, l.容器接頭辞, l.サイズ, Math.floor((a - 1) / 100)].join("|")
+      : "l" + l.ロットID;
+    if (idx[k] != null) { out[idx[k]].lots.push(l); return; }
+    idx[k] = out.length;
+    out.push({ key: k, line: true, lots: [l] });
+  });
+  out.forEach((it) => {
+    if (!it.line) return;
+    const ls = it.lots.slice().sort((x, y) => Number(x.容器No開始) - Number(y.容器No開始));
+    it.lots = ls;
+    const pre = ls[0].容器接頭辞 || "";
+    const hi = ls.reduce((m, x) => (Number(x.容器No終了) > Number(m.容器No終了) ? x : m), ls[0]);
+    it.label = pre + ls[0].容器No開始 + "〜" + (hi.容器No終了 || "");
+    it.qty = ls.reduce((m, x) => m + (x.状態 === "出荷済" ? x.本数 : x.本数 - (x.出荷済本数 || 0)), 0);
+    it.where = ls.map((x) => {
+      const part = /満タン/.test(x.備考 || "") ? "満タン" : /バラ/.test(x.備考 || "") ? "バラ" : "";
+      const at = x.状態 === "出荷済" ? (x.出荷日 ? lotMd_(x.出荷日) + " 出荷" : "出荷") : (x.置場番号 ? "→" + x.置場番号 + (ls.length === 1 && x.置場名 ? " " + x.置場名 : "") : "");
+      return (ls.length > 1 ? part + x.本数 : "") + at;
+    }).join("・");
+  });
+  return out;
+}
+function lotMd_(d) { const s = String(d || ""); return s.length >= 10 ? Number(s.slice(5, 7)) + "/" + Number(s.slice(8, 10)) : s; }
+
 function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCancel, onPlace, onPlaceBara, saving }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(null);
   const [pickFor, setPickFor] = useState(null);   // 入庫先を選んでいるロット
   const [cancelFor, setCancelFor] = useState(null);   // 取り消そうとしているロット
   const [filter, setFilter] = useState("");
+  const [openLines, setOpenLines] = useState({});   // 1行にまとめた入庫済のロットのうち開いているもの
+  const toggleLine = (k) => setOpenLines((o) => Object.assign({}, o, { [k]: !o[k] }));
 
   const lots = (data && data.lots) || [];
   const t = (data && data.totals) || null;
@@ -560,157 +595,8 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
   })();
 
   const shown = filter ? lots.filter((l) => l.状態 === filter) : lots;
-
-  return (
-    <div>
-      {/* 状態ごとの本数。ここが「流れ」の全体像 */}
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {[["未受検", t && t.未受検], ["受検済", t && t.受検済], ["入庫済", t && t.入庫済],
-          ["出荷済", t && t.出荷済今月]].map(([k, v]) => (
-          <button key={k} onClick={() => setFilter(filter === k ? "" : k)}
-            className="px-2 py-1 rounded-md text-left"
-            style={{ background: filter === k ? LOT_TONE[k].fg : LOT_TONE[k].bg, border: "none" }}>
-            <span className="block text-[10px]"
-              style={{ color: filter === k ? "#fff" : LOT_TONE[k].fg }}>
-              {k === "出荷済" ? "今月 出荷済" : k === "受検済" ? "受検済・未入庫" : k}
-            </span>
-            <span className="block text-[15px] font-bold tabular-nums"
-              style={{ color: filter === k ? "#fff" : LOT_TONE[k].fg }}>
-              {v == null ? "—" : vizComma(v)}<span className="text-[10px] font-normal"> 本</span>
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* ★ 11/3 落合さん「20kgバラの入力が細かくてダルい」：まだ置いていないバラを、置場を1回押すだけでまとめて置く */}
-      {(() => {
-        const bw = (data && data.baraWaiting) || [];
-        if (!bw.length || !onPlaceBara) return null;
-        const total = bw.reduce((a, x) => a + (Number(x.n) || 0), 0);
-        return (
-          <div data-bara-bulk="1" className="rounded-md p-2 mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
-            <span className="block text-[12px] font-bold" style={{ color: "#9a3412" }}>
-              20kgのバラ {bw.length}件・{vizComma(total)}本 がまだ置場に入っていません
-            </span>
-            <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>置いた置場を押すと、全部まとめて入庫にします</span>
-            <span className="flex flex-wrap gap-1.5">
-              {LOT_BARA_PLACES.map((no) => locations.find((loc) => String(loc.no) === no)).filter(Boolean).map((loc) => (
-                <button key={loc.no} data-bara-all={loc.no} disabled={saving}
-                  onClick={() => onPlaceBara([], loc.no)}
-                  className="px-3 py-2 rounded-md text-[13px] font-bold text-white" style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>
-                  {saving ? "置いています…" : loc.no + " " + loc.name + (loc.position ? "（" + loc.position + "）" : "") + " に全部"}
-                </button>
-              ))}
-            </span>
-          </div>
-        );
-      })()}
-      {/* ★ 2026/11/01〜 重量転記アプリで量った容器は、1時間おきに自動でロットになる（未受検・置場なし）。
-             現場は「置場に置く」で置場を選ぶだけ。手で登録するのは、重量転記を通らないものだけ。 */}
-      <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>
-        重量転記アプリの成績表（100本）を完了してメールで送ると、100本ごとにまとめて入庫になります（20kgの満タンは15へ。バラ・50kgは置場を選ぶだけ）。
-      </span>
-      {!adding ? (
-        <button onClick={openAdd}
-          className="px-3 py-1.5 rounded-md text-xs font-semibold text-white mb-2"
-          style={{ background: NAVY }}>＋ 手で登録（重量転記を通らないもの）</button>
-      ) : (
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-2 mb-2">
-          <span className="flex flex-wrap items-center gap-2 mb-1.5">
-            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>生産日</span>
-            <input value={form.生産日} onChange={(e) => setForm({ ...form, 生産日: e.target.value })}
-              className="w-28 px-2 py-1 rounded-md border border-slate-200 text-xs tabular-nums" />
-          </span>
-          {/* ★ 機種は在庫照会CSVから取り込んだマスタから選ぶ。
-                 手で打たせると表記がぶれて、集計が合わなくなる。 */}
-          <span className="flex items-center gap-2 mb-1.5">
-            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>機種</span>
-            {typeList.length === 0 ? (
-              <span className="text-[11px]" style={{ color: "#b45309" }}>
-                {(types && types.error) || "機種を読み込み中…"}
-              </span>
-            ) : (
-              <select value={form.機種コード}
-                onChange={(e) => setForm({ ...form, 機種コード: e.target.value })}
-                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-slate-200 text-xs"
-                style={{ background: "#fff" }}>
-                {typeList.map((t) => (
-                  <option key={t.コード} value={t.コード}>{t.分類}｜{t.品名}</option>
-                ))}
-              </select>
-            )}
-          </span>
-          <span className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>容器No</span>
-            <input value={form.接頭辞} placeholder="HEP" inputMode="text"
-              onChange={(e) => setForm({ ...form, 接頭辞: e.target.value })}
-              className="w-14 px-2 py-1 rounded-md border border-slate-200 text-sm" />
-            <input value={form.開始} placeholder="54401" inputMode="numeric"
-              onChange={(e) => setForm({ ...form, 開始: e.target.value })}
-              className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
-            <span className="text-[11px]" style={{ color: VIZ.muted }}>〜</span>
-            <input value={form.終了} placeholder="54480" inputMode="numeric"
-              onChange={(e) => setForm({ ...form, 終了: e.target.value })}
-              className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
-          </span>
-          {/* ★ 本数は番号から数える。人に数えさせると必ずずれる */}
-          <span className="block text-[11px] mb-1.5" style={{ color: count == null ? VIZ.muted : VIZ.ink }}>
-            {count == null ? "番号を入れると本数が出ます" : "本数 " + vizComma(count) + " 本"}
-          </span>
-          {/* ★ 置場容量シートは20/30/50の3列しか無い。それ以外は在庫数に足せない
-                 ので、登録する前に伝えておく（入庫してから気づくのは遅い）。 */}
-          {pickedType && !pickedType.サイズ && (
-            <span className="block text-[10px] mb-1.5" style={{ color: "#b45309" }}>
-              この機種は置場の在庫数には足しません（置場容量に {pickedType.分類} の欄がないため）。
-              流れだけ記録します。
-            </span>
-          )}
-          {/* ★ 置場は作った時点で選ぶ。現場は作ってすぐ置くので、受検まで
-                 置場が決まらない形にすると実物と帳簿がずれる。
-                 野外置場の実績数に足すのは入庫のときのまま。 */}
-          <span className="block text-[11px]" style={{ color: VIZ.ink2 }}>
-            どこに置きますか{form.置場 ? "" : "（後で決めてもかまいません）"}
-          </span>
-          <span className="block text-[10px] mb-1" style={{ color: VIZ.muted }}>
-            選ぶと、その置場の本数にすぐ足されます（受検を待ちません）
-          </span>
-          <span className="flex flex-wrap gap-1 mb-2">
-            {locations.map((loc) => (
-              <button key={loc.no}
-                onClick={() => setForm({ ...form, 置場: form.置場 === loc.no ? "" : loc.no })}
-                className="px-2 py-1 rounded-md text-[11px]"
-                style={form.置場 === loc.no
-                  ? { background: NAVY, color: "#fff" }
-                  : { background: "#f1f5f9", color: VIZ.ink2 }}>
-                {loc.no} {loc.name}
-              </button>
-            ))}
-          </span>
-          <span className="flex items-center gap-2">
-            <button disabled={saving || count == null || !form.機種コード}
-              onClick={() => onAdd(form, () => { setAdding(false); setForm(null); })}
-              className="px-3 py-1.5 rounded-md text-xs font-semibold text-white"
-              style={{ background: NAVY,
-                opacity: saving || count == null || !form.機種コード ? 0.5 : 1 }}>
-              {saving ? "登録中…" : "登録"}
-            </button>
-            <button onClick={() => { setAdding(false); setForm(null); }}
-              className="px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-200"
-              style={{ color: VIZ.ink2 }}>やめる</button>
-          </span>
-        </div>
-      )}
-
-      {data && data.error && (
-        <p className="text-xs text-amber-700 py-1">{data.error}</p>
-      )}
-      {lots.length === 0 ? (
-        <p className="text-xs text-slate-500 py-2">まだ登録がありません。</p>
-      ) : shown.length === 0 ? (
-        <p className="text-xs text-slate-500 py-2">「{filter}」のロットはありません。</p>
-      ) : (
-        <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
-          {shown.slice(0, 40).map((l) => {
+  /* 1つのロットのカード（未受検・受検済はいつも、入庫済・出荷済は1行をタップしたとき） */
+  const renderLot = (l) => {
             const tone = LOT_TONE[l.状態] || LOT_TONE.未受検;
             const nokori = l.本数 - l.出荷済本数;
             return (
@@ -867,6 +753,178 @@ function ProdLotCard({ data, types, locations, onAdd, onInspect, onStockIn, onCa
                   )
                 )}
               </div>
+            );
+  };
+
+  return (
+    <div>
+      {/* 状態ごとの本数。ここが「流れ」の全体像 */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {[["未受検", t && t.未受検], ["受検済", t && t.受検済], ["入庫済", t && t.入庫済],
+          ["出荷済", t && t.出荷済今月]].map(([k, v]) => (
+          <button key={k} onClick={() => setFilter(filter === k ? "" : k)}
+            className="px-2 py-1 rounded-md text-left"
+            style={{ background: filter === k ? LOT_TONE[k].fg : LOT_TONE[k].bg, border: "none" }}>
+            <span className="block text-[10px]"
+              style={{ color: filter === k ? "#fff" : LOT_TONE[k].fg }}>
+              {k === "出荷済" ? "今月 出荷済" : k === "受検済" ? "受検済・未入庫" : k}
+            </span>
+            <span className="block text-[15px] font-bold tabular-nums"
+              style={{ color: filter === k ? "#fff" : LOT_TONE[k].fg }}>
+              {v == null ? "—" : vizComma(v)}<span className="text-[10px] font-normal"> 本</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* ★ 11/3 落合さん「20kgバラの入力が細かくてダルい」：まだ置いていないバラを、置場を1回押すだけでまとめて置く */}
+      {(() => {
+        const bw = (data && data.baraWaiting) || [];
+        if (!bw.length || !onPlaceBara) return null;
+        const total = bw.reduce((a, x) => a + (Number(x.n) || 0), 0);
+        return (
+          <div data-bara-bulk="1" className="rounded-md p-2 mb-2" style={{ background: "#fff7ed", border: "1px solid #fed7aa" }}>
+            <span className="block text-[12px] font-bold" style={{ color: "#9a3412" }}>
+              20kgのバラ {bw.length}件・{vizComma(total)}本 がまだ置場に入っていません
+            </span>
+            <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>置いた置場を押すと、全部まとめて入庫にします</span>
+            <span className="flex flex-wrap gap-1.5">
+              {LOT_BARA_PLACES.map((no) => locations.find((loc) => String(loc.no) === no)).filter(Boolean).map((loc) => (
+                <button key={loc.no} data-bara-all={loc.no} disabled={saving}
+                  onClick={() => onPlaceBara([], loc.no)}
+                  className="px-3 py-2 rounded-md text-[13px] font-bold text-white" style={{ background: NAVY, opacity: saving ? 0.5 : 1 }}>
+                  {saving ? "置いています…" : loc.no + " " + loc.name + (loc.position ? "（" + loc.position + "）" : "") + " に全部"}
+                </button>
+              ))}
+            </span>
+          </div>
+        );
+      })()}
+      {/* ★ 2026/11/01〜 重量転記アプリで量った容器は、1時間おきに自動でロットになる（未受検・置場なし）。
+             現場は「置場に置く」で置場を選ぶだけ。手で登録するのは、重量転記を通らないものだけ。 */}
+      <span className="block text-[10px] mb-1.5" style={{ color: VIZ.ink2 }}>
+        重量転記アプリの成績表（100本）を完了してメールで送ると、100本ごとにまとめて入庫になります（20kgの満タンは15へ。バラ・50kgは置場を選ぶだけ）。
+      </span>
+      {!adding ? (
+        <button onClick={openAdd}
+          className="px-3 py-1.5 rounded-md text-xs font-semibold text-white mb-2"
+          style={{ background: NAVY }}>＋ 手で登録（重量転記を通らないもの）</button>
+      ) : (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-2 mb-2">
+          <span className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>生産日</span>
+            <input value={form.生産日} onChange={(e) => setForm({ ...form, 生産日: e.target.value })}
+              className="w-28 px-2 py-1 rounded-md border border-slate-200 text-xs tabular-nums" />
+          </span>
+          {/* ★ 機種は在庫照会CSVから取り込んだマスタから選ぶ。
+                 手で打たせると表記がぶれて、集計が合わなくなる。 */}
+          <span className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>機種</span>
+            {typeList.length === 0 ? (
+              <span className="text-[11px]" style={{ color: "#b45309" }}>
+                {(types && types.error) || "機種を読み込み中…"}
+              </span>
+            ) : (
+              <select value={form.機種コード}
+                onChange={(e) => setForm({ ...form, 機種コード: e.target.value })}
+                className="flex-1 min-w-0 px-2 py-1 rounded-md border border-slate-200 text-xs"
+                style={{ background: "#fff" }}>
+                {typeList.map((t) => (
+                  <option key={t.コード} value={t.コード}>{t.分類}｜{t.品名}</option>
+                ))}
+              </select>
+            )}
+          </span>
+          <span className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[11px] w-12 shrink-0" style={{ color: VIZ.ink2 }}>容器No</span>
+            <input value={form.接頭辞} placeholder="HEP" inputMode="text"
+              onChange={(e) => setForm({ ...form, 接頭辞: e.target.value })}
+              className="w-14 px-2 py-1 rounded-md border border-slate-200 text-sm" />
+            <input value={form.開始} placeholder="54401" inputMode="numeric"
+              onChange={(e) => setForm({ ...form, 開始: e.target.value })}
+              className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
+            <span className="text-[11px]" style={{ color: VIZ.muted }}>〜</span>
+            <input value={form.終了} placeholder="54480" inputMode="numeric"
+              onChange={(e) => setForm({ ...form, 終了: e.target.value })}
+              className="w-20 px-2 py-1 rounded-md border border-slate-200 text-sm tabular-nums" />
+          </span>
+          {/* ★ 本数は番号から数える。人に数えさせると必ずずれる */}
+          <span className="block text-[11px] mb-1.5" style={{ color: count == null ? VIZ.muted : VIZ.ink }}>
+            {count == null ? "番号を入れると本数が出ます" : "本数 " + vizComma(count) + " 本"}
+          </span>
+          {/* ★ 置場容量シートは20/30/50の3列しか無い。それ以外は在庫数に足せない
+                 ので、登録する前に伝えておく（入庫してから気づくのは遅い）。 */}
+          {pickedType && !pickedType.サイズ && (
+            <span className="block text-[10px] mb-1.5" style={{ color: "#b45309" }}>
+              この機種は置場の在庫数には足しません（置場容量に {pickedType.分類} の欄がないため）。
+              流れだけ記録します。
+            </span>
+          )}
+          {/* ★ 置場は作った時点で選ぶ。現場は作ってすぐ置くので、受検まで
+                 置場が決まらない形にすると実物と帳簿がずれる。
+                 野外置場の実績数に足すのは入庫のときのまま。 */}
+          <span className="block text-[11px]" style={{ color: VIZ.ink2 }}>
+            どこに置きますか{form.置場 ? "" : "（後で決めてもかまいません）"}
+          </span>
+          <span className="block text-[10px] mb-1" style={{ color: VIZ.muted }}>
+            選ぶと、その置場の本数にすぐ足されます（受検を待ちません）
+          </span>
+          <span className="flex flex-wrap gap-1 mb-2">
+            {locations.map((loc) => (
+              <button key={loc.no}
+                onClick={() => setForm({ ...form, 置場: form.置場 === loc.no ? "" : loc.no })}
+                className="px-2 py-1 rounded-md text-[11px]"
+                style={form.置場 === loc.no
+                  ? { background: NAVY, color: "#fff" }
+                  : { background: "#f1f5f9", color: VIZ.ink2 }}>
+                {loc.no} {loc.name}
+              </button>
+            ))}
+          </span>
+          <span className="flex items-center gap-2">
+            <button disabled={saving || count == null || !form.機種コード}
+              onClick={() => onAdd(form, () => { setAdding(false); setForm(null); })}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold text-white"
+              style={{ background: NAVY,
+                opacity: saving || count == null || !form.機種コード ? 0.5 : 1 }}>
+              {saving ? "登録中…" : "登録"}
+            </button>
+            <button onClick={() => { setAdding(false); setForm(null); }}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-200"
+              style={{ color: VIZ.ink2 }}>やめる</button>
+          </span>
+        </div>
+      )}
+
+      {data && data.error && (
+        <p className="text-xs text-amber-700 py-1">{data.error}</p>
+      )}
+      {lots.length === 0 ? (
+        <p className="text-xs text-slate-500 py-2">まだ登録がありません。</p>
+      ) : shown.length === 0 ? (
+        <p className="text-xs text-slate-500 py-2">「{filter}」のロットはありません。</p>
+      ) : (
+        <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+          {lotListItems_(shown).slice(0, 60).map((it) => {
+            if (it.lots.length === 1 && !it.line) return renderLot(it.lots[0]);
+            if (openLines[it.key]) return (
+              <div key={it.key} data-lot-line-open="1">
+                <button type="button" onClick={() => toggleLine(it.key)} className="w-full text-left px-3 py-1 text-[10px]" style={{ color: VIZ.muted, background: "#f8fafc", border: "none" }}>▴ たたむ</button>
+                {it.lots.map(renderLot)}
+              </div>
+            );
+            const l0 = it.lots[0], tone = LOT_TONE[l0.状態] || LOT_TONE.未受検;
+            return (
+              <button key={it.key} type="button" data-lot-line={it.lots.length} onClick={() => toggleLine(it.key)}
+                className="w-full text-left px-3 py-1.5 flex items-baseline flex-wrap" style={{ columnGap: 8, rowGap: 0, background: "transparent", border: "none" }}>
+                <span className="text-[10px] px-1 rounded shrink-0" style={{ background: tone.bg, color: tone.fg }}>{l0.状態}</span>
+                <span className="text-[11px] tabular-nums" style={{ color: VIZ.muted }}>{lotMd_(l0.入庫日 || l0.生産日)}</span>
+                <span className="text-[12px] font-semibold" style={{ color: VIZ.ink }}>{l0.サイズ || "—"}</span>
+                <span className="text-[12px] tabular-nums" style={{ color: VIZ.ink }}>{it.label}</span>
+                <span className="text-[12px] tabular-nums font-semibold" style={{ color: VIZ.ink }}>{vizComma(it.qty)}本</span>
+                <span className="text-[11px] tabular-nums" style={{ color: VIZ.ink2 }}>{it.where}</span>
+                <span className="ml-auto text-[10px]" style={{ color: VIZ.muted }}>▾</span>
+              </button>
             );
           })}
         </div>
