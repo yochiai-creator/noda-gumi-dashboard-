@@ -396,6 +396,11 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
   重いので、Drive の軽い表示（`/file/d/<ID>/preview`）をアプリの上にかぶせて開く（`PdfViewer`）。
   「閉じる」で元の画面、開けないとき用に「別のタブで開く」。ヤード・配車・指図書一覧のリンクと、
   指図書1件の区画のタップが対象。
+  ★ 11/5〜 Drive の埋め込みは iPhone の Safari で「401 エラー」になる（埋め込んだ Google の画面にログインを渡さない）ので、
+  PDF の中身をサーバから受け取って画面で描く：`getShipPdf(fileId)`（gas/noda_pdf_view.js。PDF で名前に「指図書」が入るものだけ。
+  Webアプリはデプロイした人の権限で動くため）→ PDF.js（Mozilla・Apache-2.0、v3.11.174 legacy の min をそのまま
+  gas/pdfjs_lib.html・pdfjs_worker.html に置き、`getPdfViewerLib` で最初に開いたときだけ渡して eval。ワーカーは画面の中で動かす）。
+  全ページを画面の幅で描き、＋／－で拡大。開けないときは理由と「Drive で開く」。テスト tools/pdf_view_test.js。
 
 - **パソコン・タブレットでも見やすく**（2026/10/12〜）：スマホ（390px）は今までどおり1列。
   640px以上はKPIを1行に（`nd-kpis`）。1024px以上は中身を1216pxまで広げ（`nd-wrap`）、段を2列に並べる（`nd-tab`、

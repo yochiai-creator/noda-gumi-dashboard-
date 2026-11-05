@@ -4792,67 +4792,133 @@ function drivePreviewUrl_(url) {
   return m ? "https://drive.google.com/file/d/" + m[1] + "/preview" : null;
 }
 
-/* ★ 11/5 落合さん（iPhone）：アプリの中にかぶせた Drive の表示が「401 エラーが発生しました」になる。
-     iPhone・iPad の Safari は、ほかのサイトの中に埋め込んだ Google の画面にログインを渡さない（埋め込みの Cookie を止める）ため。
-     iPhone・iPad・Mac の Safari では、かぶせずに Drive の軽い表示（/preview）を別のタブで開く（そこならログインが効く）。 */
-function pdfInlineBlocked_() {
-  try {
-    const ua = navigator.userAgent || "";
-    const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-    const safari = /Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg|Android/.test(ua);
-    return ios || safari;
-  } catch (err) { return false; }
-}
-
 /* リンクのタップで呼ぶ。開けるならアプリの中で開き、だめなら普通のリンクのまま */
 function openPdfQuick_(e, url, title) {
-  const pv = drivePreviewUrl_(url);
-  if (!pv) return false;
-  if (pdfInlineBlocked_()) {
-    // 開けなかったら（ポップアップを止められたら）、普通のリンクのまま開く
-    let w = null;
-    try { w = window.open(pv, "_blank"); } catch (err) { w = null; }
-    if (!w) return false;
-    try { w.opener = null; } catch (err) { /* そのまま */ }
-    if (e) { e.preventDefault(); e.stopPropagation(); }
-    return true;
-  }
+  if (!drivePreviewUrl_(url)) return false;
   if (!PDF_VIEW.open) return false;
   if (e) { e.preventDefault(); e.stopPropagation(); }
   PDF_VIEW.open(url, title);
   return true;
 }
 
+/* ★ 11/5 落合さん「指図書をアプリの中で開く仕様が良い」：Drive の表示を埋め込むと iPhone の Safari で 401 になるので、
+     PDF の中身をサーバ（getShipPdf）から受け取り、PDF.js（getPdfViewerLib。最初に開いたときだけ読む）でページを描く。 */
+const PDFJS_LOAD = { p: null };
+function loadPdfJs_() {
+  if (typeof window !== "undefined" && window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (PDFJS_LOAD.p) return PDFJS_LOAD.p;
+  PDFJS_LOAD.p = new Promise((resolve, reject) => {
+    if (typeof google === "undefined" || !google.script || !google.script.run) { reject(new Error("サーバにつながっていません")); return; }
+    google.script.run
+      .withSuccessHandler((r) => {
+        try {
+          // ワーカーは別スレッドにせず、この画面の中で動かす（pdfjsWorker があると PDF.js はそれを使う）
+          (0, eval)(r.worker);
+          (0, eval)(r.lib);
+          if (!window.pdfjsLib) throw new Error("PDF.js を読めませんでした");
+          resolve(window.pdfjsLib);
+        } catch (err) { PDFJS_LOAD.p = null; reject(err); }
+      })
+      .withFailureHandler((err) => { PDFJS_LOAD.p = null; reject(err); })
+      .getPdfViewerLib();
+  });
+  return PDFJS_LOAD.p;
+}
+function pdfFileId_(url) {
+  const t = String(url || "");
+  const m = t.match(/\/d\/([A-Za-z0-9_-]{10,})/) || t.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
+  return m ? m[1] : null;
+}
+function fetchShipPdf_(id) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler((r) => (r && r.ok ? resolve(r) : reject(new Error((r && r.error) || "指図書を読めませんでした"))))
+      .withFailureHandler(reject)
+      .getShipPdf(id);
+  });
+}
+function b64Bytes_(b64) {
+  const bin = atob(b64), out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 function PdfViewer({ doc, onClose }) {
-  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState("指図書を開いています…");
+  const [pages, setPages] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const pdfRef = React.useRef(null);
+  const boxRef = React.useRef(null);
   useEffect(() => {
     // 後ろの画面がスクロールしないように
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, []);
-  const src = drivePreviewUrl_(doc.url);
+  // 読む
+  useEffect(() => {
+    let dead = false;
+    const id = pdfFileId_(doc.url);
+    if (!id) { setStatus("指図書の場所が分かりません"); return undefined; }
+    Promise.all([loadPdfJs_(), fetchShipPdf_(id)])
+      .then(([lib, r]) => lib.getDocument({ data: b64Bytes_(r.b64), isEvalSupported: false }).promise)
+      .then((pdf) => { if (dead) return; pdfRef.current = pdf; setPages(pdf.numPages); setStatus(""); })
+      .catch((err) => { if (!dead) setStatus("開けませんでした：" + String((err && err.message) || err)); });
+    return () => { dead = true; if (pdfRef.current) { try { pdfRef.current.destroy(); } catch (e) { /* そのまま */ } } };
+  }, [doc.url]);
+  // 描く（画面の幅に合わせる。拡大したら細かく描き直す）
+  useEffect(() => {
+    const pdf = pdfRef.current, box = boxRef.current;
+    if (!pdf || !box || !pages) return undefined;
+    let dead = false;
+    const width = Math.max(200, box.clientWidth - 16) * zoom;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    (async () => {
+      for (let n = 1; n <= pages && !dead; n++) {
+        const page = await pdf.getPage(n);
+        const v1 = page.getViewport({ scale: 1 });
+        const scale = width / v1.width;
+        // iPhone は大きすぎる canvas を描けないので、1枚 1,600万画素までに抑える
+        const px = Math.min(dpr, Math.sqrt(16000000 / (v1.width * scale * v1.height * scale)));
+        const vp = page.getViewport({ scale: scale * px });
+        const c = box.querySelector('canvas[data-pdf-page="' + n + '"]');
+        if (!c || dead) return;
+        c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+        c.style.width = Math.floor(vp.width / px) + "px"; c.style.height = Math.floor(vp.height / px) + "px";
+        await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+      }
+    })().catch((err) => { if (!dead) setStatus("描けませんでした：" + String((err && err.message) || err)); });
+    return () => { dead = true; };
+  }, [pages, zoom]);
+  const zbtn = { fontSize: 13, fontWeight: 700, color: "#fff", background: "rgba(255,255,255,.18)", border: "none", borderRadius: 6, padding: "6px 10px" };
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#fff", display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: NAVY, color: "#fff", flexShrink: 0 }}>
+    <div data-pdf-viewer="1" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#e2e8f0", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: NAVY, color: "#fff", flexShrink: 0 }}>
         <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {doc.title || "指図書"}
         </span>
-        <a href={doc.url} target="_blank" rel="noopener noreferrer"
-          style={{ fontSize: 11, color: "#cbd5e1", textDecoration: "underline", whiteSpace: "nowrap" }}>別のタブで開く</a>
+        {pages > 0 && <button data-pdf-zoom="out" onClick={() => setZoom((z) => Math.max(1, z - 0.5))} style={Object.assign({}, zbtn, { opacity: zoom > 1 ? 1 : 0.4 })}>－</button>}
+        {pages > 0 && <button data-pdf-zoom="in" onClick={() => setZoom((z) => Math.min(3, z + 0.5))} style={Object.assign({}, zbtn, { opacity: zoom < 3 ? 1 : 0.4 })}>＋</button>}
         <button onClick={onClose}
           style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", background: "#fff", border: "none", borderRadius: 6, padding: "6px 12px" }}>
           閉じる
         </button>
       </div>
-      <div style={{ position: "relative", flex: 1 }}>
-        {!loaded && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#64748b" }}>
-            指図書を開いています…
+      <div ref={boxRef} data-pdf-box="1" style={{ flex: 1, overflow: "auto", WebkitOverflowScrolling: "touch", padding: 8 }}>
+        {status && (
+          <div data-pdf-status="1" style={{ padding: 24, textAlign: "center", fontSize: 12, color: "#475569", wordBreak: "break-all" }}>
+            {status}
+            {/^(開けません|描けません|指図書の場所)/.test(status) && (
+              <div style={{ marginTop: 12 }}>
+                <a href={doc.url} target="_blank" rel="noopener noreferrer" style={{ color: "#1d4ed8", textDecoration: "underline" }}>Drive で開く</a>
+              </div>
+            )}
           </div>
         )}
-        <iframe title={doc.title || "指図書"} src={src} onLoad={() => setLoaded(true)}
-          allow="autoplay" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0, background: "transparent" }} />
+        {Array.from({ length: pages }, (_, i) => (
+          <canvas key={i} data-pdf-page={i + 1} style={{ display: "block", margin: "0 auto 8px", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.15)" }} />
+        ))}
+        {pages > 1 && <div style={{ textAlign: "center", fontSize: 11, color: "#64748b", paddingBottom: 12 }}>全{pages}ページ</div>}
       </div>
     </div>
   );
