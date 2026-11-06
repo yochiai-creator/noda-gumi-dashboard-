@@ -4573,10 +4573,10 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
 
                     {open && draft && (
                       <div className="px-3 pb-3 bg-slate-50">
-                        {/* ★ 屋内の置場はヤードマップの区画から1時間おきに本数が入る（11/2）。手で直しても上書きされる */}
+                        {/* ★ 屋内の置場はヤードマップの区画から1日1回（朝）本数と収容数が入る（11/2・11/6）。手で直しても上書きされる */}
                         {r.屋内 && (
                           <span className="block text-[11px] mb-1.5 px-2 py-1 rounded" style={{ background: "#ede9fe", color: "#6d28d9" }}>
-                            屋内の置場です。本数はヤードマップ（入込場）の区画から1時間おきに自動で入ります。ここで直しても次の取込で上書きされます。
+                            屋内の置場です。本数と収容数はヤードマップ（入込場）の区画から1日1回（朝）自動で入ります。ここで直しても次の取込で上書きされます。
                           </span>
                         )}
                         <span className="flex items-baseline gap-2 mb-1">

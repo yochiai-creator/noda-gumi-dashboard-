@@ -20,7 +20,7 @@ var YARDIN_CONFIG = {
   PROP_OTHER: 'yardIndoor.other',
   // ★ 11/6 落合さん「ヤードマップはそんなに更新されないから小刻みじゃなくて良いよ」：
   //   毎時の取込（harvestDailyData）からは1日1回だけ（朝 FROM_HOUR 時を過ぎて最初の回）。すぐ取り込みたいときはエディタから 屋内の置場をヤードマップから取り込む()
-  PROP_LAST: 'yardIndoor.lastDay',
+  PROP_LAST: 'yardIndoor.lastDay2',   // 11/6 「1-19」の直しを今日のうちに入れるため名前を変えた（次の回でもう一度取り込む）
   FROM_HOUR: 6
 };
 
@@ -61,7 +61,11 @@ function yardin_mappingFrom_(values) {
   (values || []).forEach(function (r) {
     var no = String(r[0] == null ? '' : r[0]).trim();
     var map = String(r[1] == null ? '' : r[1]).trim().toLowerCase().replace('ｋ', 'k');
-    var blocks = yardin_blocks_(r[2]);
+    // ★ 11/6：シートが「1-19」を日付（1月19日）に変えていて、区画19しか数えていなかった（北製品倉庫が100本・収容100）。
+    //   日付になっていたら「月-日」に戻す（シートの値も文字にしてある）
+    var area = r[2];
+    if (area && typeof area.getMonth === 'function') area = (area.getMonth() + 1) + '-' + area.getDate();
+    var blocks = yardin_blocks_(area);
     if (no && YARDIN_CONFIG.KEY[map] && blocks.length) out.push({ no: no, map: map, blocks: blocks });
   });
   return out;

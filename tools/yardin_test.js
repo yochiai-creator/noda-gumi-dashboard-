@@ -13,6 +13,12 @@ chk('「1-19」「20-22,25」「17〜30」', sb.yardin_blocks_('1-19').length ==
 const map = sb.yardin_mappingFrom_([[23, '50k', '1-19'], [25, '50k', '20-22'], [20, '20ｋ', '17-30'], ['', '50k', '1'], [9, 'x', '1']]);
 chk('★シートの行を読む（全角ｋも・置場番号やマップの無い行は飛ばす）', map.length === 3 && map[2].map === '20k' && map[2].blocks[0] === 17, map);
 
+{
+  // ★ 11/6：シートで「1-19」が日付（1月19日）になっていた
+  const m2 = sb.yardin_mappingFrom_([[23, '50k', new Date(2026, 0, 19)]]);
+  chk('★区画が日付（1月19日）になっていても 1〜19 として読む', m2.length === 1 && m2[0].blocks.length === 19 && m2[0].blocks[0] === 1 && m2[0].blocks[18] === 19, m2);
+}
+
 console.log('■ 本数を足す');
 const raw = { '50k': [{ found: true, pos: 1, kind: 'fill', qty: 100 }, { found: true, pos: 2, kind: 'empty', qty: 0 }, { found: true, pos: 19, kind: 'fill', qty: 98 },
                      { found: true, pos: 20, kind: 'fill', qty: 100 }, { found: true, pos: 31, kind: 'fill', qty: 100 }],

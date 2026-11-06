@@ -597,7 +597,7 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
   シート「屋内とヤードマップ」（置場番号・マップ 50k/20k・区画 例 `1-19`）：50k 1〜19→23、50k 20〜22（上小屋）→25、
   20k 17〜30→20、20k 31〜40→21、20k 1〜16・41〜50→22、50k 23〜26→24。
   残りの区画（50k 27〜32、20k 51〜70）は、11/2「置き場細かく指定しなくてもわかるだら？」により聞かずに、屋内の
-  「その他の区画」として数える（`yardin_other_`。スクリプトプロパティ `yardIndoor.other`。一覧の見出し・KPIの `indoor.other`）。1日1回（11/6〜「ヤードマップはそんなに更新されないから小刻みじゃなくて良い」。`harvestDailyData` の朝6時を過ぎて最初の回、`syncIndoorFromYardMapDaily`・プロパティ `yardIndoor.lastDay`。日次記録の前）に、埋まっている区画の
+  「その他の区画」として数える（`yardin_other_`。スクリプトプロパティ `yardIndoor.other`。一覧の見出し・KPIの `indoor.other`）。1日1回（11/6〜「ヤードマップはそんなに更新されないから小刻みじゃなくて良い」。`harvestDailyData` の朝6時を過ぎて最初の回、`syncIndoorFromYardMapDaily`・プロパティ `yardIndoor.lastDay2`。区画の「1-19」はシートで日付に化けるので文字で入れ、日付なら月-日に戻す。日次記録の前）に、埋まっている区画の
   qty を足して実績（50k→50kg、20k→20kg）に書く（`syncIndoorFromYardMap`。手で直しても上書き）。
   収容数（MAX）は割り当てた区画の大きさ（更新用一覧の「本数」。空いている区画も）の合計を書く（`yardin_caps_`。11/6「収容数がから」）。
   位置「屋内」の置場は、野外置場の合計（`yardtab_totals_`・`getYardCapacitySummary`・日次在庫）に入れず、
