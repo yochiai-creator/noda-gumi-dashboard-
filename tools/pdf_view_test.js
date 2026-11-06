@@ -27,6 +27,14 @@ console.log('■ サーバ：渡してよいファイル');
   chk('getShipPdf は base64 で渡す', r.ok && r.b64 === 'AQID', r);
   r = s.getShipPdf('xxxxxxxxxxxx');
   chk('getShipPdf は指図書でないPDFを断る', !r.ok && /指図書/.test(r.error), r);
+  {
+    // ★ 11/6 iPhone：JS をそのまま .html に置いたら HtmlService が「形式が正しくない HTML」で読めなかった。英数字の base64 だけにしてある
+    const raw = (n) => fs.readFileSync(__dirname + '/../gas/' + n + '.html', 'utf8');
+    const body = (n) => raw(n).replace(/<!--[\s\S]*?-->/, '').replace(/<script type="text\/plain" id="pdfjs-b64">|<\/script>/g, '');
+    chk('★PDF.js のファイルは中身が英数字（base64）だけ', ['pdfjs_lib', 'pdfjs_worker'].every((n) => /^[A-Za-z0-9+\/=\s]+$/.test(body(n))));
+    const back = Buffer.from(s.pdfv_b64From_(raw('pdfjs_lib')), 'base64').toString('utf8');
+    chk('base64 を戻すと PDF.js の本体', /pdfjsLib/.test(back) && /Mozilla Foundation/.test(back) && back.length > 300000, back.length);
+  }
   r = s.getShipPdf('../etc');
   chk('おかしな番号は断る', !r.ok, r);
 }
@@ -37,7 +45,11 @@ console.log('■ サーバ：渡してよいファイル');
   const mkp = await (await b.newContext()).newPage();
   await mkp.setContent('<div style="font:40px sans-serif;height:900px;border:8px solid #000">出荷作業指図書 1ページ目</div><div style="page-break-before:always;font:40px sans-serif">2ページ目</div>');
   const pdfB64 = (await mkp.pdf({ format: 'A4' })).toString('base64');
-  const LIB = { lib: fs.readFileSync(__dirname + '/../gas/pdfjs_lib.html', 'utf8'), worker: fs.readFileSync(__dirname + '/../gas/pdfjs_worker.html', 'utf8') };
+  // サーバと同じ読み方（ファイルの中の base64 を取り出す）。HtmlService は中身をそのまま返す偽物
+  const sv = { HtmlService: { createTemplateFromFile: (n) => ({ getRawContent: () => fs.readFileSync(__dirname + '/../gas/' + n + '.html', 'utf8') }) }, String, RegExp, Error };
+  vm.createContext(sv);
+  vm.runInContext(fs.readFileSync(__dirname + '/../gas/noda_pdf_view.js', 'utf8'), sv);
+  const LIB = JSON.parse(JSON.stringify(sv.getPdfViewerLib()));
 
   const data = {}; Object.keys(REPLY).forEach((k) => { data[k] = REPLY[k](); });
   const item = (key, no) => ({ key, no, eda: 0, ver: 1, date: '', size: '50kg', qty: 2, dest: '萩', check: 'チェック前', url: 'https://drive.google.com/file/d/' + key + '/view', copyUrl: null, fileId: null, mark: null, dcheck: null, shipped: null });

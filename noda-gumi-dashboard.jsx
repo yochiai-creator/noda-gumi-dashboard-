@@ -4813,8 +4813,10 @@ function loadPdfJs_() {
       .withSuccessHandler((r) => {
         try {
           // ワーカーは別スレッドにせず、この画面の中で動かす（pdfjsWorker があると PDF.js はそれを使う）
-          (0, eval)(r.worker);
-          (0, eval)(r.lib);
+          // サーバからは base64（GAS の HTML に JS をそのまま置けないため）。UTF-8 に戻してから動かす
+          const dec = (b64) => new TextDecoder("utf-8").decode(b64Bytes_(b64));
+          (0, eval)(dec(r.worker64));
+          (0, eval)(dec(r.lib64));
           if (!window.pdfjsLib) throw new Error("PDF.js を読めませんでした");
           resolve(window.pdfjsLib);
         } catch (err) { PDFJS_LOAD.p = null; reject(err); }

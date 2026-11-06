@@ -5,7 +5,7 @@
  *   今までは Drive の表示（/preview）をアプリの上に埋め込んでいたが、iPhone の Safari は埋め込んだ Google の画面に
  *   ログインを渡さないので「401 エラーが発生しました」になる。
  *   そこで、PDF の中身をこのWebアプリ（デプロイした人として動く）が Drive から読んで画面に渡し、
- *   画面側で PDF.js（Mozilla、Apache-2.0。gas/pdfjs_lib.html・pdfjs_worker.html に v3.11.174 の legacy ビルドをそのまま置いた）で描く。
+ *   画面側で PDF.js（Mozilla、Apache-2.0。gas/pdfjs_lib.html・pdfjs_worker.html に v3.11.174 の legacy ビルドを base64 で置いた）で描く。
  *   PDF.js は重い（約1.5MB）ので、最初に指図書を開いたときだけ読む（getPdfViewerLib）。
  * ★ このWebアプリはデプロイした人の権限で動くので、何でも読めると困る。
  *   渡すのは「PDF」で、名前に「指図書」か依頼No（26-30625-0）が入っているファイルだけ。
@@ -20,12 +20,23 @@ var PDFV_CONFIG = {
   MAX_BYTES: 20 * 1024 * 1024
 };
 
-/* PDF.js（画面で eval する）。{ lib, worker } */
+/* PDF.js（画面で base64 を戻して eval する）。{ lib64, worker64 }
+   ★ 11/6：JS をそのまま .html に置くと HtmlService が「形式が正しくない HTML コンテンツ」で読めなかった。
+     英数字だけの base64 にして <script type="text/plain"> に入れてある（tools/pdfjs_pack.js で作る） */
 function getPdfViewerLib() {
-  return {
-    lib: HtmlService.createHtmlOutputFromFile('pdfjs_lib').getContent(),
-    worker: HtmlService.createHtmlOutputFromFile('pdfjs_worker').getContent()
-  };
+  return { lib64: pdfv_readB64_('pdfjs_lib'), worker64: pdfv_readB64_('pdfjs_worker') };
+}
+function pdfv_readB64_(name) {
+  var t;
+  try { t = HtmlService.createTemplateFromFile(name).getRawContent(); }
+  catch (e) { t = HtmlService.createHtmlOutputFromFile(name).getContent(); }
+  return pdfv_b64From_(t);
+}
+/* ファイルの中身 → base64 だけ（純関数） */
+function pdfv_b64From_(text) {
+  var m = String(text || '').match(/<script[^>]*>([\sA-Za-z0-9+\/=]+)<\/script>/);
+  if (!m) throw new Error('PDF.js のファイルが読めません');
+  return m[1].replace(/\s+/g, '');
 }
 
 /* 渡してよいファイルか（純関数） */
