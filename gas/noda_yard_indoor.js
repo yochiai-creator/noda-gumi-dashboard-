@@ -4,7 +4,7 @@
  * ★ 2026/11/02 落合さん「ヤードマップ内の在庫は屋外から抜いて」「20〜25 屋内を追加して、これらはヤードマップと連動させて」
  *   入込場マップ（50k・20k の区画）のどの区画がどの屋内の置場にあるかを、置場容量のスプレッドシートのシート
  *   「屋内とヤードマップ」（置場番号・マップ〔50k/20k〕・区画〔例 1-19,25〕）に持つ。
- *   1時間おき（harvestDailyData）に、埋まっている区画の本数を足して、その置場の実績（50k→50kg、20k→20kg）に書く。
+ *   1日1回（harvestDailyData の朝の回。11/6〜。前は1時間おき）に、埋まっている区画の本数を足して、その置場の実績（50k→50kg、20k→20kg）に書く。
  *   収容数（MAX）は割り当てた区画の大きさの合計（空いている区画も。11/6〜）。
  *   手で直さない（書いても次の取込で上書きされる）。
  * ★ 位置が「屋内」の置場は、野外置場の合計（KPI・一覧の合計・日次在庫の推移）に入れない。屋内は別に数える。
@@ -17,8 +17,28 @@ var YARDIN_CONFIG = {
   KEY: { '50k': 'a50', '20k': 'a20' },
   WHO: '（自動：ヤードマップ）',
   // どの置場にも割り当てていない区画の本数（屋内の合計に「その他の区画」として足す）
-  PROP_OTHER: 'yardIndoor.other'
+  PROP_OTHER: 'yardIndoor.other',
+  // ★ 11/6 落合さん「ヤードマップはそんなに更新されないから小刻みじゃなくて良いよ」：
+  //   毎時の取込（harvestDailyData）からは1日1回だけ（朝 FROM_HOUR 時を過ぎて最初の回）。すぐ取り込みたいときはエディタから 屋内の置場をヤードマップから取り込む()
+  PROP_LAST: 'yardIndoor.lastDay',
+  FROM_HOUR: 6
 };
+
+/* 今日もう取り込んだか（純関数）。now は 'yyyy-MM-dd HH:mm'（日本時間）、lastDay は 'yyyy-MM-dd' */
+function yardin_due_(lastDay, now) {
+  var day = String(now || '').slice(0, 10), hour = Number(String(now || '').slice(11, 13));
+  return !!day && String(lastDay || '') !== day && hour >= YARDIN_CONFIG.FROM_HOUR;
+}
+
+/* 毎時の取込から呼ぶ。1日1回だけ syncIndoorFromYardMap */
+function syncIndoorFromYardMapDaily() {
+  var props = PropertiesService.getScriptProperties();
+  var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+  if (!yardin_due_(props.getProperty(YARDIN_CONFIG.PROP_LAST), now)) return { skipped: '今日はもう取り込んだ（1日1回）' };
+  var r = syncIndoorFromYardMap();
+  if (!r.error) props.setProperty(YARDIN_CONFIG.PROP_LAST, now.slice(0, 10));
+  return r;
+}
 
 /* 位置が「屋内」か（純関数） */
 function yardin_isIndoor_(r) { return String((r && r.position) || '').trim() === '屋内'; }
