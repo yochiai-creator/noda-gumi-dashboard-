@@ -84,7 +84,7 @@ console.log('■ サーバ：渡してよいファイル');
   await link.click();
   await page.waitForSelector('[data-pdf-viewer]', { timeout: 5000 });
   chk('★アプリの中にかぶせて開く（Drive の埋め込みは使わない）', await page.locator('[data-pdf-viewer] iframe').count() === 0 && page.url().startsWith('file://'));
-  await page.waitForFunction(() => document.querySelectorAll('canvas[data-pdf-page]').length === 2 && !document.querySelector('[data-pdf-status]'), null, { timeout: 15000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelectorAll('canvas[data-pdf-page][data-drawn]').length === 2 && !document.querySelector('[data-pdf-status]'), null, { timeout: 15000 }).catch(() => {});
   const info = await page.evaluate(() => {
     const cs = [...document.querySelectorAll('canvas[data-pdf-page]')];
     return { n: cs.length, w: cs.map((c) => [c.width, c.style.width]), status: (document.querySelector('[data-pdf-status]') || {}).innerText || '',
@@ -92,9 +92,9 @@ console.log('■ サーバ：渡してよいファイル');
       text: document.querySelector('[data-pdf-viewer]').innerText };
   });
   chk('★2ページとも描く', info.n === 2 && info.ink.every((k) => k > 200), info);
-  chk('★画面の幅に合わせて、細かく（iPhoneの画素で）描く', parseInt(info.w[0][1]) <= 374 && parseInt(info.w[0][1]) >= 340 && info.w[0][0] > 900, info.w);
+  chk('★画面の幅に合わせて、細かく（iPhoneの画素で）描く', parseInt(info.w[0][1]) <= 374 && parseInt(info.w[0][1]) >= 340 && info.w[0][0] >= 680, info.w);
   chk('全何ページかを出す', /全2ページ/.test(info.text), info.text);
-  chk('PDF.js は最初の1回だけ読む・PDFはサーバから', JSON.stringify(await page.evaluate(() => window.__st.calls)) === JSON.stringify(['lib', 'pdf:PDFOK00000']), await page.evaluate(() => window.__st.calls));
+  chk('PDF.js は最初の1回だけ読む・PDFはサーバから', JSON.stringify((await page.evaluate(() => window.__st.calls)).slice().sort()) === JSON.stringify(['lib', 'pdf:PDFOK00000']), await page.evaluate(() => window.__st.calls));
   await page.screenshot({ path: SP + '/pdf_view.png' });
 
   await page.locator('[data-pdf-zoom="in"]').click();
@@ -111,6 +111,28 @@ console.log('■ サーバ：渡してよいファイル');
   const ng = await page.evaluate(() => document.querySelector('[data-pdf-viewer]').innerText);
   chk('★理由と「Drive で開く」を出す', /開けませんでした：指図書のファイルではありません/.test(ng) && /Drive で開く/.test(ng), ng);
   chk('2回目は PDF.js を読み直さない', (await page.evaluate(() => window.__st.calls)).filter((c) => c === 'lib').length === 1);
+
+  console.log('■ 待ちを短く（11/6「開けたけど待ちが長い」）');
+  await page.locator('button', { hasText: '閉じる' }).click();
+  await page.reload();
+  await page.waitForTimeout(6500);
+  let st2 = await page.evaluate(() => ({ calls: window.__st.calls, lib: !!window.pdfjsLib }));
+  chk('★2回目にアプリを開いたら、PDF.js は iPhone の中にしまったものを使う（サーバから受け取らない）・開いて少ししたら裏で用意しておく', st2.lib && st2.calls.indexOf('lib') < 0, st2);
+  await page.locator('button', { hasText: '出荷の進捗' }).first().click();
+  await page.waitForTimeout(500);
+  const t0 = Date.now();
+  await page.locator('a[href*="PDFOK00000"]').first().click();
+  await page.waitForFunction(() => document.querySelectorAll('canvas[data-pdf-page][data-drawn]').length === 2 && !document.querySelector('[data-pdf-status]'), null, { timeout: 15000 }).catch(() => {});
+  const ms = Date.now() - t0;
+  st2 = await page.evaluate(() => window.__st.calls);
+  chk('★そのあと指図書を開くと、受け取るのは PDF だけで、すぐ出る', JSON.stringify(st2) === JSON.stringify(['pdf:PDFOK00000']) && ms < 3000, { st2, ms });
+  // 新しいアプリ（しまったものが無い）では、開いて5秒ほどで裏で受け取っておく
+  const p3 = await (await b.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await p3.addInitScript(() => { window.__libCalls = 0; const H = { getPdfViewerLib: () => { window.__libCalls++; return null; } };
+    window.google = { script: { get run() { let ok = null; const px = new Proxy({}, { get(t, fn) { if (fn === 'withSuccessHandler') return (f) => { ok = f; return px; }; if (fn === 'withFailureHandler') return () => px; if (H[fn]) return () => { H[fn](); return px; }; return () => px; } }); return px; } } }; });
+  await p3.goto('file://' + SP + '/pdf_page.html');
+  await p3.waitForTimeout(7000);
+  chk('★はじめてのときも、アプリを開いて少ししたら裏で PDF.js を受け取っておく', await p3.evaluate(() => window.__libCalls) === 1);
   chk('画面のエラーなし', errs.length === 0, errs);
   await b.close();
   console.log('\n===== ' + pass + ' PASS / ' + fail + ' FAIL =====');

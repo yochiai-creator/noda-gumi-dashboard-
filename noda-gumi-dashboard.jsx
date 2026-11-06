@@ -4804,27 +4804,65 @@ function openPdfQuick_(e, url, title) {
 /* ★ 11/5 落合さん「指図書をアプリの中で開く仕様が良い」：Drive の表示を埋め込むと iPhone の Safari で 401 になるので、
      PDF の中身をサーバ（getShipPdf）から受け取り、PDF.js（getPdfViewerLib。最初に開いたときだけ読む）でページを描く。 */
 const PDFJS_LOAD = { p: null };
+/* ★ 11/6 落合さん「開けたけど待ちが長い」：PDF.js（約1.5MB）を毎回サーバから受け取っていた。
+     一度受け取ったら iPhone の中（IndexedDB）にしまって次からはそれを使い、アプリを開いて少ししたら裏で先に読んでおく。 */
+const PDFJS_CACHE = { db: "noda-pdfjs", store: "lib", key: "3.11.174" };
+function pdfjsIdb_(mode, fn) {
+  return new Promise((resolve) => {
+    try {
+      if (typeof indexedDB === "undefined") { resolve(null); return; }
+      const rq = indexedDB.open(PDFJS_CACHE.db, 1);
+      rq.onupgradeneeded = () => { try { rq.result.createObjectStore(PDFJS_CACHE.store); } catch (e) { /* そのまま */ } };
+      rq.onerror = () => resolve(null);
+      rq.onsuccess = () => {
+        try {
+          const tx = rq.result.transaction(PDFJS_CACHE.store, mode);
+          const r = fn(tx.objectStore(PDFJS_CACHE.store));
+          tx.oncomplete = () => { resolve(r && "result" in r ? r.result : true); rq.result.close(); };
+          tx.onerror = tx.onabort = () => { resolve(null); rq.result.close(); };
+        } catch (e) { resolve(null); }
+      };
+    } catch (e) { resolve(null); }
+  });
+}
+function runPdfJs_(code) {
+  // ワーカーは別スレッドにせず、この画面の中で動かす（pdfjsWorker があると PDF.js はそれを使う）
+  (0, eval)(code.worker);
+  (0, eval)(code.lib);
+  if (!window.pdfjsLib) throw new Error("PDF.js を読めませんでした");
+  return window.pdfjsLib;
+}
 function loadPdfJs_() {
   if (typeof window !== "undefined" && window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
   if (PDFJS_LOAD.p) return PDFJS_LOAD.p;
-  PDFJS_LOAD.p = new Promise((resolve, reject) => {
-    if (typeof google === "undefined" || !google.script || !google.script.run) { reject(new Error("サーバにつながっていません")); return; }
-    google.script.run
-      .withSuccessHandler((r) => {
-        try {
-          // ワーカーは別スレッドにせず、この画面の中で動かす（pdfjsWorker があると PDF.js はそれを使う）
-          // サーバからは base64（GAS の HTML に JS をそのまま置けないため）。UTF-8 に戻してから動かす
-          const dec = (b64) => new TextDecoder("utf-8").decode(b64Bytes_(b64));
-          (0, eval)(dec(r.worker64));
-          (0, eval)(dec(r.lib64));
-          if (!window.pdfjsLib) throw new Error("PDF.js を読めませんでした");
-          resolve(window.pdfjsLib);
-        } catch (err) { PDFJS_LOAD.p = null; reject(err); }
-      })
-      .withFailureHandler((err) => { PDFJS_LOAD.p = null; reject(err); })
-      .getPdfViewerLib();
-  });
+  PDFJS_LOAD.p = pdfjsIdb_("readonly", (st) => st.get(PDFJS_CACHE.key))
+    .then((saved) => {
+      if (saved && saved.lib && saved.worker) {
+        try { return runPdfJs_(saved); } catch (e) { /* しまってあったものが壊れていたら受け取り直す */ }
+      }
+      return new Promise((resolve, reject) => {
+        if (typeof google === "undefined" || !google.script || !google.script.run) { reject(new Error("サーバにつながっていません")); return; }
+        google.script.run
+          .withSuccessHandler((r) => {
+            try {
+              // サーバからは base64（GAS の HTML に JS をそのまま置けないため）。UTF-8 に戻してから動かす
+              const dec = (b64) => new TextDecoder("utf-8").decode(b64Bytes_(b64));
+              const code = { lib: dec(r.lib64), worker: dec(r.worker64) };
+              const lib = runPdfJs_(code);
+              pdfjsIdb_("readwrite", (st) => { st.put(code, PDFJS_CACHE.key); return null; });
+              resolve(lib);
+            } catch (err) { reject(err); }
+          })
+          .withFailureHandler(reject)
+          .getPdfViewerLib();
+      });
+    })
+    .catch((err) => { PDFJS_LOAD.p = null; throw err; });
   return PDFJS_LOAD.p;
+}
+/* アプリを開いて少ししたら、裏で PDF.js を用意しておく（指図書をタップしたときに待たないように） */
+function preloadPdfJs_() {
+  try { loadPdfJs_().catch(() => { /* 開くときにもう一度やる */ }); } catch (e) { /* そのまま */ }
 }
 function pdfFileId_(url) {
   const t = String(url || "");
@@ -4874,7 +4912,7 @@ function PdfViewer({ doc, onClose }) {
     if (!pdf || !box || !pages) return undefined;
     let dead = false;
     const width = Math.max(200, box.clientWidth - 16) * zoom;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     (async () => {
       for (let n = 1; n <= pages && !dead; n++) {
         const page = await pdf.getPage(n);
@@ -4888,6 +4926,7 @@ function PdfViewer({ doc, onClose }) {
         c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
         c.style.width = Math.floor(vp.width / px) + "px"; c.style.height = Math.floor(vp.height / px) + "px";
         await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+        c.setAttribute("data-drawn", String(zoom));
       }
     })().catch((err) => { if (!dead) setStatus("描けませんでした：" + String((err && err.message) || err)); });
     return () => { dead = true; };
@@ -5025,7 +5064,8 @@ export default function App() {
   const [pdfDoc, setPdfDoc] = useState(null);
   useEffect(() => {
     PDF_VIEW.open = (url, title) => setPdfDoc({ url, title });
-    return () => { PDF_VIEW.open = null; };
+    const pre = setTimeout(preloadPdfJs_, 5000);
+    return () => { PDF_VIEW.open = null; clearTimeout(pre); };
   }, []);
   const [snap0] = useState(() =>
     (typeof google !== "undefined" && google.script && google.script.run) ? snapLoad_() : null);
