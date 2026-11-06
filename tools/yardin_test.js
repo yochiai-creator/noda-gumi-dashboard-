@@ -23,6 +23,15 @@ chk('★上小屋（20〜22）は北プラットホームに', sums['25'].a50 ==
 chk('★20kの区画は20kgに（コンテナ倉庫 50本）', sums['20'].a20 === 50 && sums['20'].a50 === 0, sums['20']);
 chk('割り当ての無い区画（50k 31）は数えない', !Object.keys(sums).some((k) => sums[k].a50 === 300));
 
+console.log('■ 収容数（11/6「収容数がから」）');
+{
+  const caps = sb.yardin_caps_(map, raw);
+  chk('★収容数は割り当てた区画の大きさの合計（空いている区画も入れる）', caps['23'].m50 === 198 && caps['23'].m20 === 0, caps['23']);
+  chk('★20kの区画は20kgの収容数に', caps['20'].m20 === 50 && caps['20'].m50 === 0, caps['20']);
+  const real = sb.yardin_caps_(sb.yardin_mappingFrom_([[23, '50k', '1-19']]), { '50k': Array.from({ length: 32 }, (_, i) => ({ found: true, pos: i + 1, kind: i % 3 ? 'fill' : 'empty', qty: 100 })) });
+  chk('★北製品倉庫（50kの1〜19、1区画100本）は 1,900本', real['23'].m50 === 1900, real);
+}
+
 console.log('■ 割り当てていない区画は「その他の区画」');
 const oth = sb.yardin_other_(map, raw);
 chk('★どの置場にも入っていない埋まった区画（50k 31 の100本）を数える', oth.a50 === 100 && oth.a20 === 50 && oth.区画 === 2, oth);

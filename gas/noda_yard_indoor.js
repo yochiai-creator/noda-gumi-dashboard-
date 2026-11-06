@@ -5,6 +5,7 @@
  *   入込場マップ（50k・20k の区画）のどの区画がどの屋内の置場にあるかを、置場容量のスプレッドシートのシート
  *   「屋内とヤードマップ」（置場番号・マップ〔50k/20k〕・区画〔例 1-19,25〕）に持つ。
  *   1時間おき（harvestDailyData）に、埋まっている区画の本数を足して、その置場の実績（50k→50kg、20k→20kg）に書く。
+ *   収容数（MAX）は割り当てた区画の大きさの合計（空いている区画も。11/6〜）。
  *   手で直さない（書いても次の取込で上書きされる）。
  * ★ 位置が「屋内」の置場は、野外置場の合計（KPI・一覧の合計・日次在庫の推移）に入れない。屋内は別に数える。
  *
@@ -88,6 +89,21 @@ function yardin_sums_(mapping, raw) {
   return out;
 }
 
+/* 置場ごとの収容数（純関数）。割り当てた区画の大きさ（更新用一覧の「本数」。空いている区画も）を足す。
+   ★ 11/6 落合さん「収容数がから」：屋内の置場は収容数が0のままだった → { 置場番号: { m20: n, m50: n } } */
+function yardin_caps_(mapping, raw) {
+  var out = {};
+  (mapping || []).forEach(function (m) {
+    var o = out[m.no] = out[m.no] || { m20: 0, m50: 0 };
+    var key = YARDIN_CONFIG.KEY[m.map] === 'a20' ? 'm20' : 'm50';
+    ((raw && raw[m.map]) || []).forEach(function (b) {
+      if (!b || !b.found || m.blocks.indexOf(Number(b.pos)) < 0) return;
+      o[key] += Number(b.qty) || 0;
+    });
+  });
+  return out;
+}
+
 function yardin_mapping_() {
   var sh = yardGetSpreadsheet_().getSheetByName(YARDIN_CONFIG.SHEET);
   if (!sh || sh.getLastRow() < 2) return [];
@@ -104,6 +120,7 @@ function syncIndoorFromYardMap() {
     var raw = getYardMapUpdatesBothWithOrderText(q['50k'], q['20k'], false);
     raw = typeof raw === 'string' ? JSON.parse(raw) : raw;
     var sums = yardin_sums_(mapping, raw);
+    var caps = yardin_caps_(mapping, raw);
     var other = yardin_other_(mapping, raw);
     other.at = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
     PropertiesService.getScriptProperties().setProperty(YARDIN_CONFIG.PROP_OTHER, JSON.stringify(other));
@@ -121,13 +138,17 @@ function syncIndoorFromYardMap() {
         if (!has) return;
         var cell = sheet.getRange(rowNum, yardColumnIndex_(k));
         if (Number(cell.getValue()) !== s[k]) { cell.setValue(s[k]); changed = true; }
+        // 収容数（区画の大きさの合計）。0（読めなかった）なら触らない
+        var mk = k === 'a20' ? 'm20' : 'm50', cap = (caps[no] || {})[mk] || 0;
+        var mcell = sheet.getRange(rowNum, yardColumnIndex_(mk));
+        if (cap > 0 && Number(mcell.getValue()) !== cap) { mcell.setValue(cap); changed = true; }
       });
       if (changed) {
         sheet.getRange(rowNum, yardColumnIndex_('updatedAt')).setValue(now);
         sheet.getRange(rowNum, yardColumnIndex_('updatedBy')).setValue(YARDIN_CONFIG.WHO);
         out.書いた++;
       }
-      out.明細.push({ no: no, a20: s.a20, a50: s.a50, 区画: s.区画 });
+      out.明細.push({ no: no, a20: s.a20, a50: s.a50, 区画: s.区画, 収容: caps[no] });
     });
   } catch (err) {
     out.error = String(err && err.message || err);

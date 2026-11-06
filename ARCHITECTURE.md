@@ -599,6 +599,7 @@ clasp deploy -i AKfycbwxqaHutswueMr_P_FEKqcIl9i0ffPGv_AMxTFRIMFFuLJKgYeawNDa-GNs
   残りの区画（50k 27〜32、20k 51〜70）は、11/2「置き場細かく指定しなくてもわかるだら？」により聞かずに、屋内の
   「その他の区画」として数える（`yardin_other_`。スクリプトプロパティ `yardIndoor.other`。一覧の見出し・KPIの `indoor.other`）。1時間おき（`harvestDailyData`、日次記録の前）に、埋まっている区画の
   qty を足して実績（50k→50kg、20k→20kg）に書く（`syncIndoorFromYardMap`。手で直しても上書き）。
+  収容数（MAX）は割り当てた区画の大きさ（更新用一覧の「本数」。空いている区画も）の合計を書く（`yardin_caps_`。11/6「収容数がから」）。
   位置「屋内」の置場は、野外置場の合計（`yardtab_totals_`・`getYardCapacitySummary`・日次在庫）に入れず、
   屋内a20/屋内a50/屋内合計/屋内置場数（KPIは `indoor`）に別に数える。画面は一覧に「屋内・ヤードマップ連動」の印。
 
