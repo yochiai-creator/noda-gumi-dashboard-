@@ -4535,6 +4535,8 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
                           <span className="text-[10px] px-1 rounded shrink-0"
                             style={r.状態 === "超過"
                               ? { background: "#fee2e2", color: "#b91c1c" }
+                              : r.状態 === "満杯"
+                              ? { background: "#ffedd5", color: "#c2410c" }
                               : r.状態 === "収容数なし"
                                 ? { background: "#e2e8f0", color: "#475569" }
                                 : { background: "#fef3c7", color: "#b45309" }}>{r.状態}</span>
@@ -4557,7 +4559,7 @@ function YardCapacityTab({ summary, data, daily, log, lotData, types, url, onSav
                             <span className="flex-1 h-1.5 rounded-full" style={{ background: "#e2e8f0" }}>
                               <span className="block h-1.5 rounded-full" style={{
                                 width: Math.min(100, Math.round((sz.率 || 0) * 100)) + "%",
-                                background: (sz.率 || 0) >= 1 ? "#dc2626" : (sz.率 || 0) >= 0.8 ? "#f59e0b" : VIZ.s1,
+                                background: (sz.率 || 0) > 1 ? "#dc2626" : (sz.率 || 0) >= 1 ? "#ea580c" : (sz.率 || 0) >= 0.8 ? "#f59e0b" : VIZ.s1,
                               }} />
                             </span>
                             <span className="text-[10px] tabular-nums w-9 text-right shrink-0" style={{ color: VIZ.muted }}>
